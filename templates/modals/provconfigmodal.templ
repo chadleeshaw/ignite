@@ -43,6 +43,7 @@
                 hx-target="#currentFilename" 
                 hx-swap="innerHTML"
                 style="display: none;"
+                hx-on::after-request="document.body.dispatchEvent(new Event('newFilename'))"
                 >
                 </div>
                 <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
