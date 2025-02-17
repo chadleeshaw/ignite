@@ -1,0 +1,77 @@
+#version=RHEL8
+# Use text mode install
+text
+
+# Keyboard layouts
+keyboard --vckeymap=us --xlayouts='us'
+
+# System language
+lang en_US.UTF-8
+
+# Network information
+network  --bootproto=static --device=eth0 --gateway={{ .gateway }} --ip={{ .ip }} --netmask={{ .subnet }} --ipv6=disable --activate
+network  --hostname={{ .hostname }}
+
+# Set up the root password
+rootpw --iscrypted $1$some-salted-hash
+
+# System timezone
+timezone America/Denver --isUtc
+
+# Disk partitioning information
+clearpart --all --initlabel
+autopart --type=lvm
+part /boot --fstype="xfs" --size=500
+part / --fstype="xfs" --size=10000 --grow
+part /var --fstype="xfs" --size=10000
+
+# Package installation
+%packages --ignoremissing
+@core
+sudo
+openssh-server
+fail2ban
+firewalld
+htop
+logrotate
+rsyslog
+vim-enhanced
+git
+curl
+nmap
+%end
+
+# Post installation script
+%post --log=/root/ks-post.log
+# Update system
+dnf update -y
+dnf upgrade -y
+
+# Install additional packages if not included in the package group
+dnf install -y apt-transport-https
+
+# Remove unnecessary packages
+dnf remove -y cups samba
+
+# Clean up
+dnf clean all
+
+# Enable and start services
+systemctl enable sshd
+systemctl start sshd
+
+systemctl enable firewalld
+systemctl start firewalld
+
+# Set up basic firewall rules if needed
+firewall-cmd --permanent --add-service=ssh
+firewall-cmd --reload
+
+# Optionally, reboot the system
+echo "Installation complete, rebooting..."
+reboot
+%end
+
+# Additional configuration (if any)
+%addon com_redhat_kdump --enable --reserve-mb='auto'
+%end

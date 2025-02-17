@@ -1,0 +1,71 @@
+#cloud-config
+
+hostname: {{ .hostname }}
+
+# Configure network
+write_files:
+  - content: |
+      network:
+        version: 2
+        ethernets:
+          eth0:
+            dhcp4: false
+            dhcp6: false
+            accept-ra: false
+            link-local: []
+            addresses:
+              - {{ .ip }}/{{ .subnet }}
+            gateway4: {{ .gateway }}
+            nameservers:
+              addresses:
+                - {{ .dns }}
+    path: /etc/netplan/50-eth0.yaml
+    owner: root:root
+    permissions: '0644'
+
+# Packages to install
+packages:
+  - sudo
+  - openssh-server
+  - fail2ban
+  - ufw
+  - htop
+  - logrotate
+  - rsyslog
+  - vim
+  - git
+  - curl
+  - nmap
+
+# Run commands to apply network changes and partition the disk
+runcmd:
+  - netplan apply
+  - parted /dev/sda --script mklabel gpt
+  - parted /dev/sda --script mkpart primary ext4 500MiB 2GiB
+  - parted /dev/sda --script mkpart primary ext4 10Gib 20GiB
+  - parted /dev/sda --script mkpart primary ext4 20GiB 100%
+
+# Format partitions
+  - mkfs.ext4 -L boot /dev/sda1
+  - mkfs.ext4 -L var /dev/sda2
+  - mkfs.ext4 -L root /dev/sda3
+
+# Mount partitions
+  - mkdir -p /mnt/boot /mnt/var /mnt/root
+  - mount /dev/sda1 /mnt/boot
+  - mount /dev/sda2 /mnt/var
+  - mount /dev/sda3 /mnt/root
+
+# Write fstab entries
+  - echo "/dev/sda1  /boot  ext4    defaults        0       1" >> /etc/fstab
+  - echo "/dev/sda2  /var   ext4    defaults        0       2" >> /etc/fstab
+  - echo "/dev/sda3  /      ext4    defaults        0       2" >> /etc/fstab
+
+# Ensure mounts are applied after reboot
+  - mount -a
+
+# Signal to cloud-init that the network configuration is done
+  - cloud-init status --wait
+
+# Optionally, reboot to apply all changes
+  - [ shutdown, -r, now ]

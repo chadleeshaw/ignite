@@ -1,0 +1,74 @@
+{{define "content"}}
+<main role="main" class="container mx-auto px-4 py-6">
+    <button id="new-dhcp-btn" 
+        hx-get="/open_modal?template=dhcpmodal" 
+        hx-target="#modal-content" 
+        hx-swap="innerHTML"
+        class="btn btn-primary btn-sm mb-6">
+        New DHCP Server
+    </button>
+
+    <!-- Placeholder for modal -->
+    <div id="modal-content"></div>
+
+    {{range .Servers}}
+    <div class="ip-container card bg-base-200 p-6 rounded-lg shadow-lg mb-6">
+        <div class="header flex items-center justify-between mb-4">
+            <div class="flex items-center space-x-2">
+                <span class="ip-address text-xl font-bold text-primary" name="tftpip">{{ .TFTPIP }}</span>
+                <span class="status-icon">
+                    <span class="badge {{ .Status }} badge-xs"></span>
+                </span>
+            </div>
+            <div class="flex items-center space-x-2">
+                <button class="btn btn-xs btn-success" hx-post="/dhcp/start?network={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML">Start</button>
+                <button class="btn btn-xs btn-error" hx-post="/dhcp/stop?network={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML">Stop</button>
+                <button class="btn btn-xs btn-warning" hx-post="/dhcp/delete?network={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML">Delete</button>
+            </div>
+        </div>
+
+        <div class="overflow-x-auto">
+            <table class="table table-zebra w-full">
+                <thead>
+                    <tr>
+                        <th class="px-4 py-2 text-left">MAC Address</th>
+                        <th class="px-4 py-2 text-left">IP Address</th>
+                        <th class="px-4 py-2 text-left">Reserved</th>
+                        <th class="px-4 py-2 text-left">BootMenu</th>
+                        <th class="px-4 py-2 text-left">IPMI</th>
+                    </tr>
+                </thead>
+
+                <tbody>
+                    {{ $tftpip := .TFTPIP }}
+                    {{range .Leases}}
+                    <tr>
+
+                        <td class="px-4 py-2">{{ .MAC }}</td>
+                        <td class="px-4 py-2">{{ .IP }}</td>
+
+                        <td class="px-4 py-2">
+                            <button id="reserveBtn-{{ .MAC }}" class="modal-opener" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">
+                            {{if .Static}}
+                                <span class="text-success">✓</span>
+                            {{else}}
+                                <span class="text-error">✗</span>
+                            {{end}}
+                            </button>
+                        </td>
+
+                        <td class="px-4 py-2">
+                            <button hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs m-1 {{if .Menu.Filename}}btn-success{{else}}btn-error{{end}}">BootMenu</button>
+                        </td>
+                        <td class="px-4 py-2">
+                            <button hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs m-1 {{if .IPMI.Username}}btn-success{{else}}btn-error{{end}}">IPMI</button>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+    </div>
+    {{end}}
+</main>
+{{end}}

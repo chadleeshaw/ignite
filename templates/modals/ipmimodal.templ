@@ -1,0 +1,61 @@
+<div id="ipmiModal" class="modal modal-open">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg">Commands via Redfish API</h3>
+        <form id="ipmiForm" action="/pxe/submit_ipmi" method="POST">
+
+            <div class="form-control">
+                <label class="label cursor-pointer">
+                    <span class="label-text">Set Boot Order to Netboot</span> 
+                    <input type="checkbox" name="setBootOrder" class="checkbox"{{ if .pxeboot }} checked{{ end }}/>
+                </label>
+            </div>
+
+            <div class="form-control">
+                <label class="label cursor-pointer">
+                    <span class="label-text">Reboot</span> 
+                    <input type="checkbox" name="reboot" class="checkbox"{{ if .reboot }} checked{{ end }} />
+                </label>
+            </div>
+
+            <div class="form-control w-full max-w-xs">
+                <label class="label">
+                    <span class="label-text">TFTP IP</span>
+                </label>
+                <input type="text" id="ipmi-tftpip" name="tftpip" value="{{ .tftpip }}" class="input input-bordered w-full max-w-xs" readonly />
+            </div>
+
+            <div class="form-control w-full max-w-xs">
+                <label class="label">
+                    <span class="label-text">MAC Address</span>
+                </label>
+                <input type="text" id="ipmi-macAddress" name="mac" value="{{ .mac }}" class="input input-bordered w-full max-w-xs" readonly />
+            </div>
+
+            <div class="form-control w-full max-w-xs">
+                <label class="label">
+                    <span class="label-text">IPMI IP</span>
+                </label>
+                <input type="text" name="ip" placeholder="Enter IP Address" value="{{ .ip }}" class="input input-bordered w-full max-w-xs" required />
+            </div>
+
+            <div class="form-control w-full max-w-xs">
+                <label class="label">
+                    <span class="label-text">Username</span>
+                </label>
+                <input type="text" name="username" placeholder="Enter Username" value="{{ .username }}" class="input input-bordered w-full max-w-xs" required />
+            </div>
+
+            <div class="form-control w-full max-w-xs">
+                <label class="label">
+                    <span class="label-text">Password (Not Saved)</span>
+                </label>
+                <input type="password" name="password" placeholder="Enter Password" class="input input-bordered w-full max-w-xs" required />
+            </div>
+
+            <div class="modal-action">
+                <button type="submit" class="btn btn-primary">Submit</button>
+                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>

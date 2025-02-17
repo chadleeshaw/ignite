@@ -1,0 +1,15 @@
+{{ define "content" }}
+<main role="main" class="container mx-auto px-4 py-6">
+    <h1 class="text-2xl font-bold mb-4">Service Status Overview</h1>
+
+    <div class="bg-base-200 p-4 rounded-lg shadow-lg mb-4 flex items-center">
+        <span class="badge badge-{{if .DHCPStatus}}success{{else}}error{{end}} badge-lg mr-4">DHCP</span>
+        <span class="text-lg">DHCP Server is {{if .DHCPStatus}}Running{{else}}Stopped{{end}}</span>
+    </div>
+
+    <div class="bg-base-200 p-4 rounded-lg shadow-lg flex items-center">
+        <span class="badge badge-{{if .TFTPStatus}}success{{else}}error{{end}} badge-lg mr-4">TFTP</span>
+        <span class="text-lg">TFTP Server is {{if .TFTPStatus}}Running{{else}}Stopped{{end}}</span>
+    </div>
+</main>
+{{end}}

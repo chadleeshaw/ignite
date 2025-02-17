@@ -1,0 +1,8 @@
+default {{.Name}}
+timeout 300
+MENU TITLE PXE Boot Menu
+
+LABEL {{.Name}}
+  MENU LABEL Install {{.Name}}
+  KERNEL {{.Kernel}}
+  APPEND initrd={{.Initrd}} {{.Options}}

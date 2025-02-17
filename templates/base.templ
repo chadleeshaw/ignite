@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="sunset">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
+    <title>{{.Title}}</title>
+    <link rel="stylesheet" href="/public/http/css/tailwind.css"/>
+</head>
+<body>
+    <header class="shadow-lg bg-base-100">
+        <div class="container mx-auto px-4 py-2">
+            <nav class="flex justify-between items-center">
+                <div class="flex items-center space-x-4">
+                    <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-8 w-12 -mr-4">
+                    <div class="text-xl font-bold text-primary">ignite</div>
+                    <div class="hidden md:flex space-x-4">
+                        <a href="/" class="text-primary">Home</a>
+                        <a href="/dhcp" class="text-primary">Dhcp</a>
+                        <a href="/provision" class="text-primary">Provision</a>
+                        <a href="/tftp" class="text-primary">Tftp</a>
+                        <a href="/status" class="text-primary">Status</a>
+                    </div>
+                </div>
+                <div class="md:hidden">
+                    <button id="menu-btn" class="focus:outline-none">
+                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
+                        </svg>
+                    </button>
+                </div>
+            </nav>
+        </div>
+    </header>
+
+    {{ template "content" . }}
+
+    <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 right-0 z-10 bg-base-100 shadow-lg">
+        <div class="container mx-auto px-4 py-2">
+            <a href="/" class="block py-2 text-primary">Home</a>
+            <a href="/dhcp" class="block py-2 text-primary">Dhcp</a>
+            <a href="/tftp" class="block py-2 text-primary">Tftp</a>
+            <a href="/status" class="block py-2 text-primary">Status</a>
+        </div>
+    </div>
+
+    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.9" defer></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+</body>
+</html>

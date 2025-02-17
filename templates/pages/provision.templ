@@ -1,0 +1,48 @@
+
+{{ define "content" }}
+<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/themes/prism.min.css" rel="stylesheet" />
+<link href="/public/http/css/provision.css" rel="stylesheet" />
+
+<!-- Placeholder for modal -->
+<div id="modal-content" class="w-full flex justify-center"></div>
+
+<div class="flex flex-col items-center justify-center h-full">
+    <h1 class="mt-4 text-2xl mb-6">Provisioning Scripts</h1>
+    <div class="bg-base-200 p-4 rounded-lg shadow-lg mb-6 flex items-center justify-between w-full max-w-5xl">
+        <div>
+            <p id="currentFilename" class="text-left">Filename: untitled</p>
+        </div>
+        <div>
+            <p id="currentLanguage" class="text-right">Language: yaml</p>
+        </div>
+    </div>
+    <div id="editor" class="w-full">
+        <textarea id="editableTextarea" spellcheck="false"></textarea>
+        <div id="highlightedCode">
+            <pre><code id="codeblock" name="codeblock" class="language-yaml"></code></pre>
+        </div>
+    </div>
+
+    <!-- Hidden input to hold codeblock content -->
+    <input type="hidden" id="codeContent" name="codeContent">
+
+    <div class="flex mt-4">
+        <button id="saveBtn" class="ml-2" 
+            hx-post="/prov/save" 
+            hx-include="#codeContent" 
+            hx-trigger="click"
+            hx-target="this" 
+            hx-swap="none"
+            hx-on::after-request="if (event.detail.successful) { eval(event.detail.xhr.responseText); }"
+            >
+            Save
+        </button>
+        <button id="clearCacheBtn" class="ml-2" onclick="clearSpecificLocalStorage()">Clear Cache</button>
+        <button id="loadConfigBtn" class="ml-2" hx-get="/open_modal?template=provconfigmodal" hx-target="#modal-content" hx-swap="innerHTML">Load Config</button>
+        <button id="newTemplateBtn" class="ml-2" hx-get="/open_modal?template=provsaveasmodal" hx-target="#modal-content" hx-swap="innerHTML">New Template</button> 
+        <button id="loadTemplateBtn" class="ml-2" hx-get="/open_modal?template=provtempmodal" hx-target="#modal-content" hx-swap="innerHTML">Load Template</button>
+    </div>
+</div>
+
+<script type="module" src="/public/http/js/provision.js"></script>
+{{ end }}

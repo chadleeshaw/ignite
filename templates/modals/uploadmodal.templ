@@ -1,0 +1,12 @@
+<div id="upload-modal" class="modal modal-open">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg">Upload File to TFTP Server</h3>
+        <form action="/tftp/upload_file?dir={{.Directory}}" method="post" enctype="multipart/form-data">
+            <input type="file" class="file-input file-input-bordered file-input-primary w-full max-w-xs" name="file">
+            <div class="modal-action">
+                <button type="submit" class="btn btn-primary">Upload</button>
+                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>

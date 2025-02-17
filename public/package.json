@@ -1,0 +1,7 @@
+{
+  "dependencies": {
+    "daisyui": "^4.12.23",
+    "prism-code-editor": "^3.4.0",
+    "prismjs": "^1.29.0"
+  }
+}

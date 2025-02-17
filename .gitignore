@@ -1,0 +1,10 @@
+.vscode
+.DS_Store
+.idea
+.codegpt
+ignite.db
+bin
+public/node_modules
+public/tftp/pxelinux.cfg/*
+public/provision/configs/cloud-init/*
+public/provision/configs/kickstart/*

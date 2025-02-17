@@ -1,0 +1,93 @@
+#editor {
+    width: 65%;
+    height: 600px;
+    position: relative;
+    border: 1px solid #073642;
+    border-radius: 5px;
+    background: #002b36;
+    overflow: auto;
+    text-shadow: none;
+    box-shadow: none;
+    outline: none
+}
+
+#editableTextarea {
+    width: 100%;
+    height: 100%;
+    position: absolute;
+    top: 0;
+    left: 0;
+    background: transparent;
+    color: transparent;
+    caret-color: #839496; 
+    border: none;
+    padding: 10px;
+    font-size: 18px;
+    outline: none;
+    resize: none;
+    z-index: 2;
+    text-shadow: none;
+    box-shadow: none;
+    font-family: monospace; 
+}
+
+#highlightedCode {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    padding: 10px; 
+    box-sizing: border-box;
+    overflow: auto;
+    z-index: 1;
+    text-shadow: none;
+    box-shadow: none;
+    outline: none
+}
+
+#highlightedCode pre, #highlightedCode code {
+    color: #839496; 
+    margin: 0;
+    width: 100%;
+    background: #002b36 !important;
+    white-space: pre-wrap;
+    word-wrap: break-word;
+    overflow-wrap: break-word;
+    direction: ltr;
+    text-align: left;
+    outline: none;
+    font-size: 18px;
+    font-family: monospace; 
+    padding: 0;
+    text-shadow: none;
+    box-shadow: none;
+    outline: none
+}
+
+/* Override Highlighted Text */
+.token {
+    text-shadow: none !important;
+    box-shadow: none !important;
+}
+
+#saveBtn, #loadConfigBtn, #loadTemplateBtn, #newTemplateBtn, #clearTemplateBtn, #clearCacheBtn {
+    margin-top: 10px;
+    padding: 10px;
+    font-size: 18px; /* Increased from 16px to 18px */
+    cursor: pointer;
+    background-color: #268bd2;
+    color: #002b36;
+    border: none;
+    border-radius: 5px;
+}
+
+#saveBtn:hover, #loadConfigBtn:hover, #loadTemplateBtn:hover, #newTemplateBtn:hover, #clearTemplateBtn:hover, #clearCacheBtn:hover  {
+    background-color: #2aa198;
+}   
+
+#currentFilename, #currentLanguage {
+    font-size: 14px;
+    color: #839496;
+    padding: 20px;
+}
