@@ -5,6 +5,7 @@
 ignite.db
 bin
 public/node_modules
+public/http/css/tailwind.css
 public/tftp/pxelinux.cfg/*
 public/provision/configs/cloud-init/*
 public/provision/configs/kickstart/*
