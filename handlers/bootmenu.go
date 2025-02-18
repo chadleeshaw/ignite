@@ -88,7 +88,7 @@ func SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
 
 // generateBootData constructs the boot configuration data based on provided OS and network details.
 func generateBootData(formData map[string]string, configFile string) BootMenuData {
-	options := getBootOptions(formData["os"], formData["ip"], formData["gateway"], formData["subnet"], formData["hostname"], formData["dns"], formData["tftpip"], configFile)
+	options := getBootOptions(formData["os"], formData["dns"], formData["tftpip"], configFile)
 
 	return BootMenuData{
 		Name:    osToName(formData["os"]),
@@ -99,14 +99,14 @@ func generateBootData(formData map[string]string, configFile string) BootMenuDat
 }
 
 // getBootOptions returns the appropriate boot options string based on the operating system.
-func getBootOptions(os, ip, gateway, subnet, hostname, dns, tftpip, configFile string) string {
+func getBootOptions(os, dns, tftpip, configFile string) string {
 	switch os {
 	case "Ubuntu", "NixOS":
-		return fmt.Sprintf(`ip=%s::%s:%s:ubuntu-server:eth0:off url=http://%s/%s autoinstall ds=nocloud-net;s=http://%s/ nameserver=%s`,
-			ip, gateway, subnet, tftpip, configFile, tftpip, dns)
+		return fmt.Sprintf(`url=http://%s/%s autoinstall ds=nocloud-net;s=http://%s/ nameserver=%s`,
+			tftpip, configFile, tftpip, dns)
 	case "Redhat":
-		return fmt.Sprintf(`ip=%s::%s:%s:%s:eth0:off ks=http://%s/%s nameserver=%s`,
-			ip, gateway, subnet, hostname, tftpip, configFile, dns)
+		return fmt.Sprintf(`ks=http://%s/%s nameserver=%s`,
+			tftpip, configFile, dns)
 	}
 	return ""
 }
