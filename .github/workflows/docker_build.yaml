@@ -1,0 +1,27 @@
+name: Deploy Images to GHCR
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  push-to-ghcr:
+    name: Push Docker image to GHCR
+    permissions: write-all
+    runs-on: ubuntu-latest
+    steps:
+      - name: 'Checkout GitHub Action'
+        uses: actions/checkout@main
+
+      - name: 'Login to GitHub Container Registry'
+        uses: docker/login-action@v1
+        with:
+          registry: ghcr.io
+          username: ${{github.actor}}
+          password: ${{secrets.GITHUB_TOKEN}}
+
+      - name: 'Build And Push Image'
+        run: |
+          docker build . --tag ghcr.io/chadleeshaw/ignite:latest
+          docker push ghcr.io/chadleeshaw/ignite:latest
