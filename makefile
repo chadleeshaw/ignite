@@ -6,7 +6,7 @@ test: # Run unit tests
 	@go test ./...
 
 build: css # Build the Go application
-	@GOOS=linux GOARCH=amd64 go build -o bin/app main.go
+	@GOOS=darwin GOARCH=arm64 go build -o bin/app main.go
 
 run: build # Run the compiled Go application
 	@./bin/app
@@ -14,8 +14,11 @@ run: build # Run the compiled Go application
 clean: # Clean up the build artifacts
 	@rm -rf bin public/http/css/tailwind.css ignite.db
 
-css: # Compile Tailwind CSS
-	@tailwindcss -i public/http/css/includes.css -o public/http/css/tailwind.css
+css: # Compile CSS theme and Tailwind CSS
+	@npm install --prefix ./public daisyui
+	@npm install --prefix ./public prismjs
+	@npm install --prefix ./public prism-code-editor
+	@npx tailwindcss -i ./public/http/css/includes.css -o ./public/http/css/tailwind.css
 
 help: ## Display this help screen
 	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'

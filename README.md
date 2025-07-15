@@ -32,6 +32,8 @@ This project was inspired by [GoPXE](https://github.com/ppetko/GoPXE), but exten
 ### Prerequisites
 
 - Golang installed on your system
+- NPM installed on your system
+- Tailwindcss@3 installed on your system
 - Basic understanding of network booting concepts
 
 ### Setup
@@ -42,14 +44,14 @@ This project was inspired by [GoPXE](https://github.com/ppetko/GoPXE), but exten
    cd ignite
    ```
 
-2. **Build the project:**
+2. **Build the CSS:**
    ```sh
-   go build -o ignite main.go
+   make css
    ```
 
 3. **Run the server:**
    ```sh
-   ./ignite
+   make run
    ```
 
 ## Configuration
