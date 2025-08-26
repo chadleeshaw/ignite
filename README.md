@@ -1,5 +1,4 @@
-
-![Ignite Small](./public/http/img/Ignite_small.png?raw=true)
+<img src="./public/http/img/Ignite_small.png" alt="Ignite" width="400"/>
 
 # ignite
 
