@@ -1,60 +1,57 @@
 <div id="new-dhcp-server-modal" class="modal modal-open">
-    <div class="modal-box">
-        <h3 class="font-bold text-lg">New DHCP Server</h3>
-        <form action="/dhcp/submit_dhcp" method="post">
+    <div class="modal-box bg-base-100">
+        <h3 class="font-bold text-2xl text-primary mb-4">New DHCP Server</h3>
+        <form hx-post="/dhcp/submit_dhcp" hx-target="body" hx-swap="innerHTML">
             <div class="form-control">
                 <label class="label">
                     <span class="label-text">Network</span>
                 </label>
-                <div class="dropdown">
-                    <label tabindex="0" class="btn btn-ghost btn-block">Select Network</label>
-                    <ul tabindex="0" class="dropdown-content menu p-2 shadow bg-base-100 rounded-box w-full">
-                        {{ range .Networks }}
-                        <li><a href="#" onclick="document.getElementById('selectedNetwork').value = '{{ . }}'; this.closest('.dropdown').querySelector('.btn').innerText = '{{ . }}'; return false;">{{ . }}</a></li>
-                        {{ end }}
-                    </ul>
-                </div>
-                <input type="hidden" name="network" id="selectedNetwork" required>
+                <select name="network" class="select select-bordered w-full">
+                    <option disabled selected>Select Network</option>
+                    {{ range .Networks }}
+                    <option value="{{ . }}">{{ . }}</option>
+                    {{ end }}
+                </select>
             </div>
 
-            <div class="form-control">
+            <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Subnet Mask</span>
                 </label>
                 <input type="text" name="subnet" placeholder="e.g., 255.255.255.0" class="input input-bordered" id="subnet" required />
             </div>
 
-            <div class="form-control">
+            <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Gateway IP</span>
                 </label>
-            <input type="text" name="gateway" placeholder="e.g., 192.168.1.100" class="input input-bordered" id="gateway" required />
+                <input type="text" name="gateway" placeholder="e.g., 192.168.1.1" class="input input-bordered" id="gateway" required />
             </div>
 
-            <div class="form-control">
+            <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">DNS IP</span>
                 </label>
-            <input type="text" name="dns" placeholder="e.g., 192.168.1.100" class="input input-bordered" id="dns" required />
+                <input type="text" name="dns" placeholder="e.g., 8.8.8.8" class="input input-bordered" id="dns" required />
             </div>
 
-            <div class="form-control">
+            <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Start IP</span>
                 </label>
-            <input type="text" name="startIP" placeholder="e.g., 192.168.1.100" class="input input-bordered" id="startIP" required />
+                <input type="text" name="startIP" placeholder="e.g., 192.168.1.100" class="input input-bordered" id="startIP" required />
             </div>
 
-            <div class="form-control">
+            <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Number of Leases</span>
                 </label>
-            <input type="number" name="numLeases" placeholder="e.g., 50" class="input input-bordered" min="1" id="numLeases" required />
+                <input type="number" name="numLeases" placeholder="e.g., 50" class="input input-bordered" min="1" id="numLeases" required />
             </div>
 
-            <div class="modal-action">
-                <button type="submit" class="btn btn-primary">Submit</button>
-                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+            <div class="modal-action mt-6">
+                <button type="submit" class="btn btn-primary">Create</button>
+                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
             </div>
         </form>
     </div>

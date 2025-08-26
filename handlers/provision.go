@@ -75,6 +75,7 @@ func LoadFile(w http.ResponseWriter, r *http.Request) {
 	defer file.Close()
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 
 	content, err := io.ReadAll(file)
 	if err != nil {
@@ -189,6 +190,7 @@ func LoadTemplate(w http.ResponseWriter, r *http.Request) {
 	Filename = filename // for global reference
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.Header().Set("Cache-Control", "no-cache")
 
 	content, err := io.ReadAll(file)
 	if err != nil {

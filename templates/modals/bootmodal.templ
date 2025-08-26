@@ -1,108 +1,81 @@
 <div id="bootMenuModal" class="modal modal-open">
-    <div class="modal-box">
-        <h3 class="font-bold text-lg">Build PXE Boot Menu</h3>
-        <form id="bootMenuForm" action="/pxe/submit_menu" method="POST">
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">TFTP IP</span>
-                </label>
-                <input type="text" id="boot-tftpip" name="tftpip" value="{{ .tftpip }}" class="input input-bordered w-full max-w-xs" readonly />
-            </div>
+    <div class="modal-box bg-base-100 w-11/12 max-w-4xl">
+        <h3 class="font-bold text-2xl text-primary mb-4">Build PXE Boot Menu</h3>
+        <form id="bootMenuForm" hx-post="/pxe/submit_menu" hx-target="body" hx-swap="innerHTML">
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
+                <!-- Column 1 -->
+                <div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">TFTP IP</span></label>
+                        <input type="text" name="tftpip" value="{{ .tftpip }}" class="input input-bordered" readonly />
+                    </div>
 
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">MAC Address</span>
-                </label>
-                <input type="text" id="boot-macAddress" name="mac"  value="{{ .mac }}" class="input input-bordered w-full max-w-xs" readonly />
-            </div>
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">MAC Address</span></label>
+                        <input type="text" name="mac" value="{{ .mac }}" class="input input-bordered" readonly />
+                    </div>
 
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">Operating System</span>
-                </label>
-                <div class="flex flex-wrap gap-2">
-                    <label class="cursor-pointer label">
-                        <input id="os-ubuntu" type="radio" name="os" value="Ubuntu" class="radio radio-xs" {{ if eq .os "Ubuntu" }}checked{{ end }} required>
-                        <span class="label-text">Ubuntu</span>
-                    </label>
-                    <label class="cursor-pointer label">
-                        <input id="os-nixos" type="radio" name="os" value="NixOS" class="radio radio-xs" {{ if eq .os "NixOS" }}checked{{ end }} required>
-                        <span class="label-text">NixOS</span>
-                    </label>
-                    <label class="cursor-pointer label">
-                        <input id="os-redhat" type="radio" name="os" value="Redhat" class="radio radio-xs" {{ if eq .os "Redhat" }}checked{{ end }} required>
-                        <span class="label-text">Red Hat</span>
-                    </label>
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">Operating System</span></label>
+                        <div class="flex flex-wrap gap-4">
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="Ubuntu" class="radio radio-primary" {{ if eq .os "Ubuntu" }}checked{{ end }} required><span class="label-text ml-2">Ubuntu</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="NixOS" class="radio radio-primary" {{ if eq .os "NixOS" }}checked{{ end }} required><span class="label-text ml-2">NixOS</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="Redhat" class="radio radio-primary" {{ if eq .os "Redhat" }}checked{{ end }} required><span class="label-text ml-2">Red Hat</span></label>
+                        </div>
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">Template Type</span></label>
+                        <div class="flex flex-wrap gap-4">
+                            <label class="cursor-pointer label"><input type="radio" name="typeSelect" value="cloud-init" class="radio radio-secondary" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "cloud-init" }}checked{{ end }} required><span class="label-text ml-2">Cloud-Init</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="typeSelect" value="kickstart" class="radio radio-secondary" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "kickstart" }}checked{{ end }} required><span class="label-text ml-2">Kickstart</span></label>
+                        </div>
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">Template Filename</span></label>
+                        <select id="template_name" name="template_name" class="select select-bordered" required>
+                            {{ if eq .template_name "" }}
+                            <option value="" disabled selected>Select a filename</option>
+                            {{ else }}
+                            <option value="{{ .template_name }}" selected>{{ .template_name }}</option>
+                            {{ end }}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- Column 2 -->
+                <div>
+                    <div class="form-control">
+                        <label class="label"><span class="label-text">Hostname</span></label>
+                        <input type="text" name="hostname" value="{{ .hostname }}" class="input input-bordered" required/>
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">IP Address</span></label>
+                        <input type="text" name="ip" value="{{ .ip }}" class="input input-bordered" required/>
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">Subnet Mask</span></label>
+                        <input type="text" name="subnet" value="{{ .subnet }}" class="input input-bordered" required/>
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">Gateway</span></label>
+                        <input type="text" name="gateway" value="{{ .gateway }}" class="input input-bordered" required/>
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">DNS Server</span></label>
+                        <input type="text" name="dns" value="{{ .dns }}" class="input input-bordered" required/>
+                    </div>
                 </div>
             </div>
-            
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">Template Type</span>
-                </label>
-                <div class="flex space-x-2">
-                    <label class="cursor-pointer label">
-                        <input id="type-cloudinit" type="radio" name="typeSelect" value="cloud-init" class="radio radio-xs" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "cloud-init" }}checked{{ end }} required>
-                        <span class="label-text">Cloud-Init</span>
-                    </label>
-                    <label class="cursor-pointer label">
-                        <input id="type-kickstart" type="radio" name="typeSelect" value="kickstart" class="radio radio-xs" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "kickstart" }}checked{{ end }} required>
-                        <span class="label-text">Kickstart</span>
-                    </label>
-                </div>
-            </div>
-            
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">Template Filename</span>
-                </label>
-                <select id="template_name" name="template_name" class="select select-bordered w-full max-w-xs" required>
-                    {{ if eq .template_name "" }}
-                    <option value="">Select a filename</option>
-                    {{ else }}
-                    <option value="{{ .template_name }}">{{ .template_name }}</option>
-                    {{ end }}
-                </select>
-            </div>
 
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">Hostname</span>
-                </label>
-                <input type="text" name="hostname"  value="{{ .hostname }}" class="input input-bordered w-full max-w-xs" required/>
-            </div>
-
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">IP Address</span>
-                </label>
-                <input type="text" name="ip" value="{{ .ip }}" class="input input-bordered w-full max-w-xs" required/>
-            </div>
-
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">Subnet Mask</span>
-                </label>
-                <input type="text" name="subnet"  value="{{ .subnet }}" class="input input-bordered w-full max-w-xs" required/>
-            </div>
-
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">Gateway</span>
-                </label>
-                <input type="text" name="gateway"  value="{{ .gateway }}" class="input input-bordered w-full max-w-xs" required/>
-            </div>
-
-            <div class="form-control w-full max-w-xs">
-                <label class="label">
-                    <span class="label-text">DNS Server</span>
-                </label>
-                <input type="text" name="dns"  value="{{ .dns }}" class="input input-bordered w-full max-w-xs" required/>
-            </div>
-
-            <div class="modal-action">
+            <div class="modal-action mt-6">
                 <button type="submit" class="btn btn-primary">Write Files</button>
-                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
             </div>
         </form>
     </div>

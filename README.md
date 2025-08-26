@@ -1,5 +1,4 @@
-
-![Ignite Small](https://platformops.s3.us-west-2.amazonaws.com/images/Ignite_small.png)
+<img src="./public/http/img/Ignite_small.png" alt="Ignite" width="400"/>
 
 # ignite
 

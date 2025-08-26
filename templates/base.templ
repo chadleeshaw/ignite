@@ -1,25 +1,33 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="sunset">
+<html lang="en" data-theme="ignite">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
     <title>{{.Title}}</title>
     <link rel="stylesheet" href="/public/http/css/tailwind.css"/>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Roboto', sans-serif;
+        }
+    </style>
 </head>
-<body>
-    <header class="shadow-lg bg-base-100">
+<body class="bg-base-100">
+    <header class="sticky top-0 z-50 shadow-lg bg-neutral text-white">
         <div class="container mx-auto px-4 py-2">
             <nav class="flex justify-between items-center">
                 <div class="flex items-center space-x-4">
-                    <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-8 w-12 -mr-4">
-                    <div class="text-xl font-bold text-primary">ignite</div>
-                    <div class="hidden md:flex space-x-4">
-                        <a href="/" class="text-primary">Home</a>
-                        <a href="/dhcp" class="text-primary">Dhcp</a>
-                        <a href="/provision" class="text-primary">Provision</a>
-                        <a href="/tftp" class="text-primary">Tftp</a>
-                        <a href="/status" class="text-primary">Status</a>
-                    </div>
+                    <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-10 -mr-4">
+                    <div class="text-2xl font-bold text-primary">ignite</div>
+                </div>
+                <div class="hidden md:flex items-center space-x-4">
+                    <a href="/" class="hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
+                    <a href="/dhcp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
+                    <a href="/provision" class="hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
+                    <a href="/tftp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
+                    <a href="/status" class="hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
                 </div>
                 <div class="md:hidden">
                     <button id="menu-btn" class="focus:outline-none">
@@ -32,19 +40,29 @@
         </div>
     </header>
 
-    {{ template "content" . }}
+    <main class="container mx-auto px-4 py-8">
+        {{ template "content" . }}
+    </main>
 
-    <div id="mobile-menu" class="hidden md:hidden absolute top-full left-0 right-0 z-10 bg-base-100 shadow-lg">
+    <div id="mobile-menu" class="hidden md:hidden fixed top-0 left-0 right-0 z-40 bg-neutral shadow-lg pt-16">
         <div class="container mx-auto px-4 py-2">
-            <a href="/" class="block py-2 text-primary">Home</a>
-            <a href="/dhcp" class="block py-2 text-primary">Dhcp</a>
-            <a href="/tftp" class="block py-2 text-primary">Tftp</a>
-            <a href="/status" class="block py-2 text-primary">Status</a>
+            <a href="/" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
+            <a href="/dhcp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
+            <a href="/provision" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
+            <a href="/tftp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
+            <a href="/status" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
         </div>
     </div>
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/htmx.org@1.9.9/dist/htmx.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
+    <script>
+        $(document).ready(function() {
+            $('#menu-btn').click(function() {
+                $('#mobile-menu').toggleClass('hidden');
+            });
+        });
+    </script>
 </body>
 </html>
