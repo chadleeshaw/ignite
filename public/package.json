@@ -3,5 +3,8 @@
     "daisyui": "^4.12.24",
     "prism-code-editor": "^4.1.0",
     "prismjs": "^1.30.0"
+  },
+  "devDependencies": {
+    "tailwindcss": "^3.4.1"
   }
 }

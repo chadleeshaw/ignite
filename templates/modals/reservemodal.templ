@@ -1,33 +1,35 @@
 <div id="reserveModal" class="modal modal-open">
-    <div class="modal-box">
-        <h3 class="font-bold text-lg">DHCP Reservation</h3>
+    <div class="modal-box bg-base-100">
+        <h3 class="font-bold text-2xl text-primary mb-4">DHCP Reservation</h3>
         <form>
-            <div class="form-control w-full max-w-xs">
+            <div class="form-control">
                 <label class="label">
                     <span class="label-text">DHCP Server</span>
                 </label>
-                <input type="text" id="static-dhcp" name="static-dhcp" value="{{ .tftpip }}" class="input input-bordered w-full max-w-xs" readonly />
+                <input type="text" id="static-dhcp" name="static-dhcp" value="{{ .tftpip }}" class="input input-bordered" readonly />
             </div>
-            <div class="form-control w-full max-w-xs">
+            <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">MAC Address</span>
                 </label>
-                <input type="text" id="static-mac" name="static-mac" value="{{ .mac }}" class="input input-bordered w-full max-w-xs" readonly />
+                <input type="text" id="static-mac" name="static-mac" value="{{ .mac }}" class="input input-bordered" readonly />
             </div>
-            <div class="form-control w-full max-w-xs">
+            <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Reserved IP</span>
                 </label>
-                <input type="text" id="static-ip" name="static-ip" value="{{ .ip }}" class="input input-bordered w-full max-w-xs"/>
+                <input type="text" id="static-ip" name="static-ip" value="{{ .ip }}" class="input input-bordered"/>
             </div>
-            <div class="modal-action">
-                {{ if .static }}
-                <button type="button" class="btn btn-success" hx-post="/dhcp/remove_reserve?network={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="#modal-content" hx-swap="innerHTML transition:true" onclick="location.reload();">UnReserve</button>
-                {{ else }}
-                <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?network={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="#modal-content" hx-swap="innerHTML transition:true" onclick="location.reload();">Reserve</button>
-                {{ end }}
-                <button type="button" class="btn btn-error" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
-                <button type="button" class="btn btn-warning" hx-post="/dhcp/delete_lease?network={{ .tftpip }}&mac={{ urlquery .mac }}" hx-target="#modal-content" hx-swap="innerHTML transition:true" onclick="location.reload();">Delete Lease</button>
+            <div class="modal-action mt-6 flex justify-between">
+                <div>
+                    {{ if .static }}
+                    <button type="button" class="btn btn-warning" hx-post="/dhcp/remove_reserve?network={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Un-Reserve</button>
+                    {{ else }}
+                    <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?network={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Reserve</button>
+                    {{ end }}
+                    <button type="button" class="btn btn-error" hx-post="/dhcp/delete_lease?network={{ .tftpip }}&mac={{ urlquery .mac }}" hx-target="body" hx-swap="innerHTML">Delete Lease</button>
+                </div>
+                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
             </div>
         </form>
     </div>
