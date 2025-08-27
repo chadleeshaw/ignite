@@ -9,7 +9,7 @@ ENV HTTP_DIR=./public/http
 ENV HTTP_PORT=8080
 ENV PROV_DIR=./public/provision
 WORKDIR /app
-RUN wget -O ./app https://github.com/chadleeshaw/ignite/releases/download/v1.0/app && \
+RUN wget -O ./app https://github.com/chadleeshaw/ignite/releases/download/v2.0/app && \
     chmod +x ./app
 COPY ./public /app/public
 EXPOSE 8080
