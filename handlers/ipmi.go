@@ -40,23 +40,22 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Update lease in DHCP handler
-	for i, lease := range dhcpHandler.Leases {
-		if lease.MAC == mac {
-			updatedLease := lease
-			updatedLease.IPMI = dhcp.IPMI{
-				Pxeboot:  bootConfigChecked,
-				Reboot:   rebootChecked,
-				IP:       net.ParseIP(ip),
-				Username: username,
-			}
-			dhcpHandler.Leases[i] = updatedLease
-			if err := dhcpHandler.UpdateDBState(); err != nil {
-				fmt.Printf("Failed to update DB state: %v\n", err)
-				http.Error(w, "Failed to update DHCP lease", http.StatusInternalServerError)
-				return
-			}
-			break
+	if lease, ok := dhcpHandler.Leases[mac]; ok {
+		lease.IPMI = dhcp.IPMI{
+			Pxeboot:  bootConfigChecked,
+			Reboot:   rebootChecked,
+			IP:       net.ParseIP(ip),
+			Username: username,
 		}
+		dhcpHandler.Leases[mac] = lease
+		if err := dhcpHandler.UpdateDBState(); err != nil {
+			fmt.Printf("Failed to update DB state: %v\n", err)
+			http.Error(w, "Failed to update DHCP lease", http.StatusInternalServerError)
+			return
+		}
+	} else {
+		http.Error(w, fmt.Sprintf("Lease not found for MAC: %s", mac), http.StatusNotFound)
+		return
 	}
 
 	// Configure Redfish client for IPMI operations
