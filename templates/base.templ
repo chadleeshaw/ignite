@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
     <style>
         body {
             font-family: 'Roboto', sans-serif;
@@ -56,12 +57,42 @@
 
     <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
     <script src="https://unpkg.com/htmx.org@1.9.9/dist/htmx.min.js" defer></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
     <script>
         $(document).ready(function() {
             $('#menu-btn').click(function() {
                 $('#mobile-menu').toggleClass('hidden');
             });
+        });
+
+        document.body.addEventListener('htmx:afterRequest', function(evt) {
+            if (evt.detail.failed) {
+                let errorMessage = "An unknown error occurred.";
+                if (evt.detail.xhr.responseText) {
+                    errorMessage = evt.detail.xhr.responseText;
+                }
+                Toastify({
+                    text: errorMessage,
+                    duration: 3000,
+                    close: true,
+                    gravity: "top",
+                    position: "right",
+                    backgroundColor: "linear-gradient(to right, #ff5f6d, #ffc371)",
+                }).showToast();
+            } else if (evt.detail.successful) {
+                let successMessage = evt.detail.xhr.responseText;
+                if (successMessage && !successMessage.trim().startsWith('<')) {
+                    Toastify({
+                        text: successMessage,
+                        duration: 3000,
+                        close: true,
+                        gravity: "top",
+                        position: "right",
+                        backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
+                    }).showToast();
+                }
+            }
         });
     </script>
 </body>

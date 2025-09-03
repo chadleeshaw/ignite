@@ -44,8 +44,8 @@ func SecurityHeadersMiddleware(next http.Handler) http.Handler {
 
 		// Content Security Policy - Allow required CDN resources
 		cspPolicy := "default-src 'self'; " +
-			"script-src 'self' 'unsafe-inline' https://code.jquery.com https://unpkg.com https://cdnjs.cloudflare.com; " +
-			"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; " +
+			"script-src 'self' 'unsafe-inline' https://code.jquery.com https://unpkg.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
+			"style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; " +
 			"font-src 'self' https://fonts.gstatic.com; " +
 			"img-src 'self' data:; " +
 			"connect-src 'self'"
