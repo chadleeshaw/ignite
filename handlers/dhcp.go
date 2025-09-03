@@ -367,11 +367,15 @@ func DeleteDHCPServer(w http.ResponseWriter, r *http.Request) {
 	network, err := GetQueryParam(r, "network")
 	if err != nil {
 		log.Printf("Error getting network param: %v", err)
+		http.Error(w, "Network parameter is required", http.StatusBadRequest)
+		return
 	}
 
 	err = db.KV.DeleteKV(config.Defaults.DB.Bucket, []byte(network))
 	if err != nil {
 		log.Printf("Error deleting DHCP server: %v", err)
+		http.Error(w, "Failed to delete DHCP server", http.StatusInternalServerError)
+		return
 	}
 
 	SetNoCacheHeaders(w)
@@ -479,6 +483,14 @@ func DeleteLease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if _, ok := dhcpHandler.Leases[mac]; !ok {
+		http.Error(w, "Lease not found", http.StatusNotFound)
+		return
+	}
+
 	delete(dhcpHandler.Leases, mac)
-	dhcpHandler.UpdateDBState()
+	if err := dhcpHandler.UpdateDBState(); err != nil {
+		http.Error(w, "Failed to delete lease", http.StatusInternalServerError)
+		return
+	}
 }

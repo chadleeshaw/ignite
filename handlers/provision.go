@@ -366,7 +366,7 @@ func HandleSave(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
 	w.WriteHeader(http.StatusOK)
-	w.Header().Set("Content-Type", "application/javascript")
-	fmt.Fprintf(w, `alert("File saved successfully!");`)
+	fmt.Fprintf(w, "File saved successfully!")
 }
