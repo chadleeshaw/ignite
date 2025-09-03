@@ -3,11 +3,14 @@ package handlers
 import (
 	"fmt"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
+
+	"ignite/internal/errors"
+	"ignite/internal/validation"
 )
 
 // FileInfo represents file metadata for display
@@ -54,11 +57,23 @@ func HandleTFTPPage(w http.ResponseWriter, r *http.Request) {
 // HandleDelete removes a specified file from the TFTP server directory.
 func HandleDelete(w http.ResponseWriter, r *http.Request) {
 	fileName := r.URL.Query().Get("file")
-	if err := deleteFile(filepath.Join(TFTPDir, fileName)); err != nil {
-		log.Printf("error deleting file: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	if fileName == "" {
+		http.Error(w, "File parameter is required", http.StatusBadRequest)
 		return
 	}
+
+	// Validate and secure the file path
+	safePath, err := validation.ValidateFilePath(TFTPDir, fileName)
+	if err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_path", err))
+		return
+	}
+
+	if err := deleteFile(safePath); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewFileSystemError("delete_file", err))
+		return
+	}
+
 	SetNoCacheHeaders(w)
 	http.Redirect(w, r, fmt.Sprintf("/tftp/open?file=%s", fileName), http.StatusSeeOther)
 }
@@ -66,9 +81,19 @@ func HandleDelete(w http.ResponseWriter, r *http.Request) {
 // HandleDownload allows for downloading files from the TFTP server.
 func HandleDownload(w http.ResponseWriter, r *http.Request) {
 	fileName := r.URL.Query().Get("file")
-	filePath := filepath.Join(TFTPDir, fileName)
+	if fileName == "" {
+		http.Error(w, "File parameter is required", http.StatusBadRequest)
+		return
+	}
 
-	file, err := os.Open(filePath)
+	// Validate and secure the file path
+	safePath, err := validation.ValidateFilePath(TFTPDir, fileName)
+	if err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_path", err))
+		return
+	}
+
+	file, err := os.Open(safePath)
 	if err != nil {
 		if os.IsNotExist(err) {
 			http.Error(w, "File not found", http.StatusNotFound)
@@ -98,7 +123,7 @@ func HandleDownload(w http.ResponseWriter, r *http.Request) {
 func HandleUpload(w http.ResponseWriter, r *http.Request) {
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "Error retrieving file", http.StatusInternalServerError)
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("retrieve_file", err))
 		return
 	}
 	defer file.Close()
@@ -109,21 +134,44 @@ func HandleUpload(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	filePath := filepath.Join(TFTPDir, dir, filepath.Base(handler.Filename))
-	if err := os.MkdirAll(filepath.Dir(filePath), os.ModePerm); err != nil {
-		http.Error(w, "Error creating directory", http.StatusInternalServerError)
+	// Validate filename
+	filename := filepath.Base(handler.Filename)
+	if err := validation.ValidateFilename(filename); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_filename", err))
 		return
 	}
 
-	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE, 0666)
+	// Validate directory path
+	safeDir, err := validation.ValidateFilePath(TFTPDir, dir)
 	if err != nil {
-		http.Error(w, "Error saving file", http.StatusInternalServerError)
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_dir", err))
+		return
+	}
+
+	// Create the safe file path
+	filePath := filepath.Join(safeDir, filename)
+
+	// Ensure the file is still within the safe directory after joining
+	if !strings.HasPrefix(filePath, TFTPDir) {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_final_path", 
+			fmt.Errorf("path outside allowed directory")))
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewFileSystemError("create_directory", err))
+		return
+	}
+
+	f, err := os.OpenFile(filePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0644)
+	if err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewFileSystemError("create_file", err))
 		return
 	}
 	defer f.Close()
 
 	if _, err := io.Copy(f, file); err != nil {
-		http.Error(w, "Error copying file", http.StatusInternalServerError)
+		errors.HandleHTTPError(w, slog.Default(), errors.NewFileSystemError("copy_file", err))
 		return
 	}
 

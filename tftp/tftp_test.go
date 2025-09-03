@@ -2,6 +2,7 @@ package tftp
 
 import (
 	"io"
+	"log/slog"
 	"net"
 	"os"
 	"testing"
@@ -9,7 +10,7 @@ import (
 
 func TestNewServer(t *testing.T) {
 	serveDir := "."
-	server := NewServer(serveDir)
+	server := NewServer(serveDir, slog.Default())
 	if server.serveDir != serveDir {
 		t.Errorf("Expected serveDir to be %s, but got %s", serveDir, server.serveDir)
 	}
@@ -23,7 +24,7 @@ func TestNewServer(t *testing.T) {
 
 func TestServerStart(t *testing.T) {
 	serveDir := "."
-	server := NewServer(serveDir)
+	server := NewServer(serveDir, slog.Default())
 
 	err := server.Start()
 	if err != nil {
@@ -46,8 +47,8 @@ func TestServerStart(t *testing.T) {
 }
 
 func TestReadHandler(t *testing.T) {
-	serveDir := "."
-	server := NewServer(serveDir)
+	serveDir := t.TempDir()
+	server := NewServer(serveDir, slog.Default())
 
 	testFile := serveDir + "/testfile.txt"
 	err := os.WriteFile(testFile, []byte("test content"), 0644)
@@ -68,8 +69,8 @@ func TestReadHandler(t *testing.T) {
 }
 
 func TestWriteHandler(t *testing.T) {
-	serveDir := "."
-	server := NewServer(serveDir)
+	serveDir := t.TempDir()
+	server := NewServer(serveDir, slog.Default())
 
 	wt := &mockWriterTo{data: []byte("test write content")}
 	err := server.writeHandler("testwritefile.txt", wt)

@@ -9,6 +9,7 @@ require (
 	github.com/stmcginnis/gofish v0.20.0
 	github.com/stretchr/testify v1.10.0
 	go.etcd.io/bbolt v1.3.11
+	golang.org/x/time v0.12.0
 )
 
 require (

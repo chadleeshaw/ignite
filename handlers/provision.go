@@ -4,12 +4,14 @@ import (
 	"fmt"
 	"html/template"
 	"io"
-
-	"ignite/config"
-
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
+
+	"ignite/config"
+	"ignite/internal/errors"
+	"ignite/internal/validation"
 )
 
 var ProvDir = config.Defaults.Provision.Dir
@@ -31,16 +33,46 @@ func SaveHandler(w http.ResponseWriter, r *http.Request) {
 	filename := r.FormValue("filename")
 	scriptType := r.FormValue("type")
 
-	if filename == "" || scriptType == "" || content == "" {
-		http.Error(w, "Field or content is missing", http.StatusBadRequest)
+	// Validate required fields
+	if err := validation.ValidateRequired("filename", filename); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_filename", err))
+		return
+	}
+	if err := validation.ValidateRequired("type", scriptType); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_type", err))
+		return
+	}
+	if err := validation.ValidateRequired("content", content); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_content", err))
 		return
 	}
 
-	err := os.WriteFile(filepath.Join(ProvDir, scriptType, filename), []byte(content), 0644)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Validate filename for safety
+	if err := validation.ValidateFilename(filename); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_filename", err))
 		return
 	}
+
+	// Validate and secure the file path
+	relativePath := filepath.Join(scriptType, filename)
+	safePath, err := validation.ValidateFilePath(ProvDir, relativePath)
+	if err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_path", err))
+		return
+	}
+
+	// Ensure directory exists
+	dir := filepath.Dir(safePath)
+	if err := os.MkdirAll(dir, 0755); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewFileSystemError("create_directory", err))
+		return
+	}
+
+	if err := os.WriteFile(safePath, []byte(content), 0644); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewFileSystemError("write_file", err))
+		return
+	}
+
 	fmt.Fprintf(w, "File saved successfully")
 }
 
@@ -49,15 +81,33 @@ func LoadFile(w http.ResponseWriter, r *http.Request) {
 	filename := r.FormValue("filename")
 	scriptType := r.FormValue("type")
 
-	if filename == "" || scriptType == "" {
-		http.Error(w, "Field is missing", http.StatusBadRequest)
+	// Validate required fields
+	if err := validation.ValidateRequired("filename", filename); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_filename", err))
+		return
+	}
+	if err := validation.ValidateRequired("type", scriptType); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_type", err))
+		return
+	}
+
+	// Validate filename for safety
+	if err := validation.ValidateFilename(filename); err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_filename", err))
 		return
 	}
 
 	Filename = filename // for global reference
 
-	filePath := filepath.Join(ProvDir, scriptType, filename)
-	fileInfo, err := os.Stat(filePath)
+	// Validate and secure the file path
+	relativePath := filepath.Join(scriptType, filename)
+	safePath, err := validation.ValidateFilePath(ProvDir, relativePath)
+	if err != nil {
+		errors.HandleHTTPError(w, slog.Default(), errors.NewValidationError("validate_path", err))
+		return
+	}
+
+	fileInfo, err := os.Stat(safePath)
 	if os.IsNotExist(err) {
 		http.Error(w, "File not found", http.StatusNotFound)
 		return
@@ -67,7 +117,7 @@ func LoadFile(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	file, err := os.Open(filePath)
+	file, err := os.Open(safePath)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Error opening file: %v", err), http.StatusInternalServerError)
 		return
