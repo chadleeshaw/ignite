@@ -3,12 +3,11 @@ package routes
 import (
 	"github.com/gorilla/mux"
 
-	h "ignite/handlers"
-	ih "ignite/internal/handlers"
+	handlers "ignite/internal/handlers"
 )
 
 // Setup configures and returns a new router with all defined routes for the application.
-func Setup(handlers *ih.Handlers) *mux.Router {
+func Setup(handlers *handlers.Handlers) *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
 
 	// GET routes for serving pages and retrieving data.
@@ -21,28 +20,28 @@ func Setup(handlers *ih.Handlers) *mux.Router {
 }
 
 // setupGetRoutes defines all routes that handle GET requests.
-func setupGetRoutes(router *mux.Router, handlers *ih.Handlers) {
-	router.HandleFunc("/", h.Index).Methods("GET").Name("Index")
+func setupGetRoutes(router *mux.Router, handlers *handlers.Handlers) {
+	router.HandleFunc("/", handlers.Index).Methods("GET").Name("Index")
 	router.HandleFunc("/open_modal", handlers.OpenModalHandler).Methods("GET").Name("OpenModal")
-	router.HandleFunc("/close_modal", h.CloseModalHandler).Methods("GET").Name("CloseModal")
+	router.HandleFunc("/close_modal", handlers.CloseModalHandler).Methods("GET").Name("CloseModal")
 	router.HandleFunc("/dhcp", handlers.HandleDHCPPage).Methods("GET").Name("DHCPPage")
 	router.HandleFunc("/dhcp/servers", handlers.GetDHCPServers).Methods("GET").Name("DHCPServers")
-	router.HandleFunc("/status", h.HandleStatusPage).Methods("GET").Name("Status")
-	router.HandleFunc("/provision", h.HomeHandler).Methods("GET").Name("Provision")
-	router.HandleFunc("/tftp", h.HandleTFTPPage).Methods("GET").Name("TFTPPage")
-	router.HandleFunc("/tftp/open", h.HandleTFTPPage).Methods("GET").Name("OpenTFTP")
-	router.HandleFunc("/tftp/download", h.HandleDownload).Methods("GET").Name("DownloadFile")
-	router.HandleFunc("/tftp/view", h.ViewFile).Methods("GET").Name("ViewFile")
-	router.HandleFunc("/tftp/serve", h.ServeFile).Methods("GET").Name("ServeFile")
-	router.HandleFunc("/prov/gettemplates", h.HandleFileOptions).Methods("GET").Name("GetTemplateOptions")
-	router.HandleFunc("/prov/loadtemplate", h.LoadTemplate).Methods("GET").Name("LoadTemplate")
-	router.HandleFunc("/prov/getconfigs", h.HandleConfigOptions).Methods("GET").Name("GetConfigOptions")
-	router.HandleFunc("/prov/loadconfig", h.LoadConfig).Methods("GET").Name("LoadConfig")
-	router.HandleFunc("/prov/getfilename", h.UpdateFilename).Methods("GET").Name("GetFilename")
+	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET").Name("Status")
+	router.HandleFunc("/provision", handlers.HomeHandler).Methods("GET").Name("Provision")
+	router.HandleFunc("/tftp", handlers.HandleTFTPPage).Methods("GET").Name("TFTPPage")
+	router.HandleFunc("/tftp/open", handlers.HandleTFTPPage).Methods("GET").Name("OpenTFTP")
+	router.HandleFunc("/tftp/download", handlers.HandleDownload).Methods("GET").Name("DownloadFile")
+	router.HandleFunc("/tftp/view", handlers.ViewFile).Methods("GET").Name("ViewFile")
+	router.HandleFunc("/tftp/serve", handlers.ServeFile).Methods("GET").Name("ServeFile")
+	router.HandleFunc("/prov/gettemplates", handlers.HandleFileOptions).Methods("GET").Name("GetTemplateOptions")
+	router.HandleFunc("/prov/loadtemplate", handlers.LoadTemplate).Methods("GET").Name("LoadTemplate")
+	router.HandleFunc("/prov/getconfigs", handlers.HandleConfigOptions).Methods("GET").Name("GetConfigOptions")
+	router.HandleFunc("/prov/loadconfig", handlers.LoadConfig).Methods("GET").Name("LoadConfig")
+	router.HandleFunc("/prov/getfilename", handlers.UpdateFilename).Methods("GET").Name("GetFilename")
 }
 
 // setupPostRoutes defines all routes that handle POST requests.
-func setupPostRoutes(router *mux.Router, handlers *ih.Handlers) {
+func setupPostRoutes(router *mux.Router, handlers *handlers.Handlers) {
 	router.HandleFunc("/dhcp/start", handlers.StartDHCPServer).Methods("POST").Name("StartDHCP")
 	router.HandleFunc("/dhcp/stop", handlers.StopDHCPServer).Methods("POST").Name("StopDHCP")
 	router.HandleFunc("/dhcp/delete", handlers.DeleteDHCPServer).Methods("POST").Name("DeleteDHCP")
@@ -50,10 +49,10 @@ func setupPostRoutes(router *mux.Router, handlers *ih.Handlers) {
 	router.HandleFunc("/dhcp/submit_reserve", handlers.ReserveLease).Methods("POST").Name("ReserveLease")
 	router.HandleFunc("/dhcp/remove_reserve", handlers.UnreserveLease).Methods("POST").Name("UnreserveLease")
 	router.HandleFunc("/dhcp/delete_lease", handlers.DeleteLease).Methods("POST").Name("DeleteLease")
-	router.HandleFunc("/tftp/delete_file", h.HandleDelete).Methods("POST").Name("DeleteFile")
-	router.HandleFunc("/tftp/upload_file", h.HandleUpload).Methods("POST").Name("UploadFile")
+	router.HandleFunc("/tftp/delete_file", handlers.HandleDelete).Methods("POST").Name("DeleteFile")
+	router.HandleFunc("/tftp/upload_file", handlers.HandleUpload).Methods("POST").Name("UploadFile")
 	router.HandleFunc("/pxe/submit_menu", handlers.SubmitBootMenu).Methods("POST").Name("SubmitBootMenu")
 	router.HandleFunc("/pxe/submit_ipmi", handlers.SubmitIPMI).Methods("POST").Name("SubmitIPMI")
-	router.HandleFunc("/prov/newtemplate", h.HandleNewTemplate).Methods("POST").Name("NewTemplate")
-	router.HandleFunc("/prov/save", h.HandleSave).Methods("POST").Name("SaveFile")
+	router.HandleFunc("/prov/newtemplate", handlers.HandleNewTemplate).Methods("POST").Name("NewTemplate")
+	router.HandleFunc("/prov/save", handlers.HandleSave).Methods("POST").Name("SaveFile")
 }

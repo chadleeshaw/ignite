@@ -2,18 +2,21 @@ package handlers
 
 import (
 	"fmt"
-	"ignite/dhcp"
 	"net"
 	"net/http"
+
+	"ignite/dhcp"
+	"ignite/internal/errors"
+	"ignite/internal/validation"
 
 	"github.com/stmcginnis/gofish"
 	"github.com/stmcginnis/gofish/redfish"
 )
 
 // SubmitIPMI handles the configuration of IPMI settings for a system, including PXE boot setup and potential reboot.
-func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("parse_form", err))
 		return
 	}
 
@@ -23,19 +26,20 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	username := r.Form.Get("username")
 	password := r.Form.Get("password")
 
-	if ip == "" || username == "" || password == "" {
-		http.Error(w, "IP, username, and password are required", http.StatusBadRequest)
-		return
+	for k, v := range map[string]string{"ip": ip, "username": username, "password": password} {
+		if err := validation.ValidateRequired(k, v); err != nil {
+			errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("validate_required", err))
+			return
+		}
 	}
 
 	bootConfigChecked := r.Form.Get("setBootOrder") == "on"
 	rebootChecked := r.Form.Get("reboot") == "on"
 
 	// Retrieve DHCP handler
-	dhcpHandler, err := dhcp.GetDHCPServer(tftpip)
+	dhcpHandler, err := h.App.GetDhcpServer(tftpip)
 	if err != nil {
-		fmt.Printf("Unable to get DHCP server: %v\n", err)
-		http.Error(w, "Unable to retrieve DHCP server", http.StatusInternalServerError)
+		errors.HandleHTTPError(w, h.Logger, errors.NewDHCPError("get_dhcp_server", err))
 		return
 	}
 
@@ -49,12 +53,12 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 		}
 		dhcpHandler.Leases[mac] = lease
 		if err := dhcpHandler.UpdateDBState(); err != nil {
-			fmt.Printf("Failed to update DB state: %v\n", err)
-			http.Error(w, "Failed to update DHCP lease", http.StatusInternalServerError)
+			errors.HandleHTTPError(w, h.Logger, errors.NewDatabaseError("update_lease", err))
 			return
 		}
 	} else {
-		http.Error(w, fmt.Sprintf("Lease not found for MAC: %s", mac), http.StatusNotFound)
+		err := fmt.Errorf("lease not found for MAC: %s", mac)
+		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("lease_not_found", err))
 		return
 	}
 
@@ -68,7 +72,8 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 
 	client, err := gofish.Connect(clientConfig)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to connect to Redfish service: %s", err.Error()), http.StatusInternalServerError)
+		err = fmt.Errorf("failed to connect to redfish: %w", err)
+		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("redfish_connect", err))
 		return
 	}
 	defer client.Logout()
@@ -77,7 +82,8 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	service := client.Service
 	systems, err := service.Systems()
 	if err != nil || len(systems) == 0 {
-		http.Error(w, "No systems found or error retrieving systems", http.StatusNotFound)
+		err = fmt.Errorf("failed to retrieve systems: %w", err)
+		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("redfish_get_systems", err))
 		return
 	}
 
@@ -90,7 +96,8 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	// Set PXE boot if checked
 	if bootConfigChecked {
 		if err := system.SetBoot(bootConfig); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to set PXE boot: %s", err.Error()), http.StatusInternalServerError)
+			err = fmt.Errorf("failed to set boot config: %w", err)
+			errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("redfish_set_boot", err))
 			return
 		}
 	}
@@ -98,7 +105,8 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	// Reboot system if checked
 	if rebootChecked {
 		if err := system.Reset(redfish.ForceRestartResetType); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to reboot system: %s", err.Error()), http.StatusInternalServerError)
+			err = fmt.Errorf("failed to reset system: %w", err)
+			errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("redfish_reset", err))
 			return
 		}
 	}

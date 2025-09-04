@@ -106,8 +106,8 @@ func (h *Handlers) getAllDHCPServers() ([]*dhcp.DHCPHandler, error) {
 	for k, v := range kv {
 		var dhcpServer dhcp.DHCPHandler
 		if err := json.Unmarshal(v, &dhcpServer); err != nil {
-			h.Logger.Warn("Failed to unmarshal DHCP server data", 
-				slog.String("key", k), 
+			h.Logger.Warn("Failed to unmarshal DHCP server data",
+				slog.String("key", k),
 				slog.String("error", err.Error()))
 			continue // Skip this item but continue with others
 		}
@@ -153,7 +153,7 @@ func (h *Handlers) OpenModalHandler(w http.ResponseWriter, r *http.Request) {
 	templates := handlers.LoadTemplates()
 	if t, ok := templates[template]; !ok {
 		h.Logger.Warn("Template not found", slog.String("template", template))
-		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("template_not_found", 
+		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("template_not_found",
 			fmt.Errorf("template %s not found", template)))
 		return
 	} else {
@@ -188,7 +188,7 @@ func (h *Handlers) OpenModalHandler(w http.ResponseWriter, r *http.Request) {
 		case "provsaveasmodal":
 		default:
 			h.Logger.Warn("Unhandled template type", slog.String("template", template))
-			errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("unhandled_template", 
+			errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("unhandled_template",
 				fmt.Errorf("unhandled template type: %s", template)))
 			return
 		}
@@ -255,7 +255,7 @@ func (h *Handlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if d == nil {
-		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("dhcp_server_not_found", 
+		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("dhcp_server_not_found",
 			fmt.Errorf("DHCP server not found")))
 		return
 	}
@@ -285,7 +285,7 @@ func (h *Handlers) StopDHCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if d == nil {
-		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("dhcp_server_not_found", 
+		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("dhcp_server_not_found",
 			fmt.Errorf("DHCP server not found")))
 		return
 	}
@@ -428,4 +428,10 @@ func (h *Handlers) DeleteLease(w http.ResponseWriter, r *http.Request) {
 	dhcpHandler.UpdateDBState()
 
 	h.Logger.Info("Deleted lease", slog.String("mac", mac))
+}
+
+// CloseModalHandler closes the modal by returning an empty div.
+func (h *Handlers) CloseModalHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "text/html")
+	w.Write([]byte("<div id=\"modal-content\"></div>"))
 }

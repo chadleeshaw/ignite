@@ -8,7 +8,7 @@ import (
 )
 
 // HandleStatusPage renders the status overview page, showing whether DHCP and TFTP services are running.
-func HandleStatusPage(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
 	templates := LoadTemplates()
 
 	data := struct {
