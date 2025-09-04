@@ -20,7 +20,7 @@ type BootMenuData struct {
 }
 
 // SubmitBootMenu handles the submission of PXE boot menu configurations.
-func SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
+func (h *Handlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
 		return
@@ -47,8 +47,8 @@ func SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buildpxe := fmt.Sprintf("pxelinux.cfg/01-%s", strings.ReplaceAll(formData["mac"], ":", "-"))
-	pxefile := filepath.Join(TFTPDir, buildpxe)
-	pxetempl := fmt.Sprintf("%s/templates/bootmenu/default.templ", ProvDir)
+	pxefile := filepath.Join(h.GetTFTPDir(), buildpxe)
+	pxetempl := fmt.Sprintf("%s/templates/bootmenu/default.templ", h.GetProvisionDir())
 
 	bootMenu := dhcp.BootMenu{
 		Filename:      pxefile,
@@ -63,9 +63,9 @@ func SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
 	}
 
 	buildconfig := fmt.Sprintf("configs/%s/%s", formData["typeSelect"], strings.ReplaceAll(formData["mac"], ":", "-"))
-	configFile := filepath.Join(ProvDir, buildconfig)
+	configFile := filepath.Join(h.GetProvisionDir(), buildconfig)
 	templBuild := fmt.Sprintf("templates/%s/%s", formData["typeSelect"], formData["template_name"])
-	configTempl := filepath.Join(ProvDir, templBuild)
+	configTempl := filepath.Join(h.GetProvisionDir(), templBuild)
 
 	pxedata := generateBootData(formData, configFile)
 

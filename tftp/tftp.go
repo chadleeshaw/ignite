@@ -20,6 +20,7 @@ type Server struct {
 	listener   *net.UDPConn
 	tftpServer *v3.Server
 	logger     *slog.Logger
+	Port       int
 }
 
 // NewServer creates and returns a new TFTP server instance with the specified directory for serving files.
@@ -30,13 +31,14 @@ func NewServer(serveDir string, logger *slog.Logger) *Server {
 	return &Server{
 		serveDir: serveDir,
 		logger:   logger,
+		Port:     69,
 	}
 }
 
-// Start initiates the TFTP server, listening for incoming connections on port 69.
+// Start initiates the TFTP server, listening for incoming connections on the configured port.
 func (s *Server) Start() error {
 	var err error
-	s.listener, err = net.ListenUDP("udp4", &net.UDPAddr{Port: 69})
+	s.listener, err = net.ListenUDP("udp4", &net.UDPAddr{Port: s.Port})
 	if err != nil {
 		return err
 	}

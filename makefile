@@ -6,7 +6,7 @@ test: # Run unit tests
 	@go test ./...
 
 build: css # Build the Go application
-	@GOOS=darwin GOARCH=arm64 go build -o bin/app main.go
+	@go build -o bin/app main.go
 
 run: build # Run the compiled Go application
 	@./bin/app
