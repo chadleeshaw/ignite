@@ -81,9 +81,6 @@ func NewApp() (*App, error) {
 	// Initialize TFTP server
 	tftpServer := tftp.NewServer(cfg.TFTP.Dir, logger)
 
-	// Initialize handlers with dependencies
-	appHandlers := handlers.NewHandlers(database, cfg, logger)
-	
 	ctx, cancel := context.WithCancel(context.Background())
 
 	app := &App{
@@ -91,10 +88,12 @@ func NewApp() (*App, error) {
 		DB:         database,
 		Logger:     logger,
 		TFTPServer: tftpServer,
-		Handlers:   appHandlers,
 		ctx:        ctx,
 		cancel:     cancel,
 	}
+
+	// Initialize handlers with dependencies
+	app.Handlers = handlers.NewHandlers(database, cfg, logger, app)
 
 	// Setup HTTP server and routes
 	if err := app.setupHTTPServer(); err != nil {
@@ -213,6 +212,11 @@ func (a *App) GetConfig() *config.Config {
 // GetDatabase returns the database interface
 func (a *App) GetDatabase() DatabaseStore {
 	return a.DB
+}
+
+// GetDhcpServer returns a DHCP handler for a given TFTP IP
+func (a *App) GetDhcpServer(tftpip string) (*dhcp.DHCPHandler, error) {
+	return dhcp.GetDHCPServer(tftpip)
 }
 
 // initDatabase initializes the database connection

@@ -9,9 +9,9 @@ import (
 	"strconv"
 
 	"ignite/dhcp"
-	"ignite/handlers"
 	"ignite/internal/errors"
 	"ignite/internal/validation"
+	"net"
 )
 
 // DHCPServer represents details of a DHCP server instance.
@@ -38,7 +38,7 @@ type DHCPPageData struct {
 
 // HandleDHCPPage renders the DHCP server management page using structured data.
 func (h *Handlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
-	templates := handlers.LoadTemplates()
+	templates := LoadTemplates()
 	data, err := h.getDHCPData()
 	if err != nil {
 		errors.HandleHTTPError(w, h.Logger, errors.NewDatabaseError("get_dhcp_data", err))
@@ -150,7 +150,7 @@ func (h *Handlers) OpenModalHandler(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	templates := handlers.LoadTemplates()
+	templates := LoadTemplates()
 	if t, ok := templates[template]; !ok {
 		h.Logger.Warn("Template not found", slog.String("template", template))
 		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("template_not_found",
@@ -242,7 +242,7 @@ func (h *Handlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) {
 		slog.String("start_ip", startIP.String()),
 		slog.Int("leases", numLeasesInt))
 
-	handlers.SetNoCacheHeaders(w)
+	SetNoCacheHeaders(w)
 	http.Redirect(w, r, "/dhcp", http.StatusSeeOther)
 }
 
@@ -272,7 +272,7 @@ func (h *Handlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 		h.Logger.Info("Started DHCP server", slog.String("ip", d.IP.String()))
 	}
 
-	handlers.SetNoCacheHeaders(w)
+	SetNoCacheHeaders(w)
 	http.Redirect(w, r, "/dhcp", http.StatusSeeOther)
 }
 
@@ -302,7 +302,7 @@ func (h *Handlers) StopDHCPServer(w http.ResponseWriter, r *http.Request) {
 		h.Logger.Info("Stopped DHCP server", slog.String("ip", d.IP.String()))
 	}
 
-	handlers.SetNoCacheHeaders(w)
+	SetNoCacheHeaders(w)
 	http.Redirect(w, r, "/dhcp", http.StatusSeeOther)
 }
 
@@ -325,7 +325,7 @@ func (h *Handlers) DeleteDHCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.Logger.Info("Deleted DHCP server", slog.String("network", network))
-	handlers.SetNoCacheHeaders(w)
+	SetNoCacheHeaders(w)
 	http.Redirect(w, r, "/dhcp", http.StatusSeeOther)
 }
 
@@ -434,4 +434,114 @@ func (h *Handlers) DeleteLease(w http.ResponseWriter, r *http.Request) {
 func (h *Handlers) CloseModalHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/html")
 	w.Write([]byte("<div id=\"modal-content\"></div>"))
+}
+
+func (h *Handlers) newDHCPModal() map[string]any {
+	return map[string]any{}
+}
+
+func (h *Handlers) newReserveModal(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
+	mac, err := getQueryParam(r, "mac")
+	if err != nil {
+		return nil, err
+	}
+
+	ip, err := getQueryParam(r, "ip")
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"MAC": mac,
+		"IP":  ip,
+	}, nil
+}
+
+func (h *Handlers) newBootModal(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
+	mac, err := getQueryParam(r, "mac")
+	if err != nil {
+		return nil, err
+	}
+
+	ip, err := getQueryParam(r, "ip")
+	if err != nil {
+		return nil, err
+	}
+
+	tftpip, err := getQueryParam(r, "tftpip")
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"MAC":    mac,
+		"IP":     ip,
+		"TFTP": tftpip,
+	}, nil
+}
+
+func (h *Handlers) newIPMIModal(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
+	mac, err := getQueryParam(r, "mac")
+	if err != nil {
+		return nil, err
+	}
+
+	ip, err := getQueryParam(r, "ip")
+	if err != nil {
+		return nil, err
+	}
+
+	tftpip, err := getQueryParam(r, "tftpip")
+	if err != nil {
+		return nil, err
+	}
+
+	return map[string]any{
+		"MAC":    mac,
+		"IP":     ip,
+		"TFTP": tftpip,
+	}, nil
+}
+
+func (h *Handlers) newUploadModal(w http.ResponseWriter, r *http.Request) map[string]any {
+	return map[string]any{}
+}
+
+func (h *Handlers) extractAndValidateIPData(r *http.Request) (net.IP, net.IP, net.IP, net.IP, net.IP, error) {
+	ipFields := map[string]string{
+		"network": r.Form.Get("network"),
+		"subnet":  r.Form.Get("subnet"),
+		"gateway": r.Form.Get("gateway"),
+		"dns":     r.Form.Get("dns"),
+		"startIP": r.Form.Get("startIP"),
+	}
+
+	parsedIPs := make(map[string]net.IP)
+	for key, val := range ipFields {
+		if err := validation.ValidateIP(val); err != nil {
+			return nil, nil, nil, nil, nil, fmt.Errorf("invalid IP address for %s: %w", key, err)
+		}
+		parsedIPs[key] = net.ParseIP(val)
+	}
+
+	return parsedIPs["network"], parsedIPs["subnet"], parsedIPs["gateway"], parsedIPs["dns"], parsedIPs["startIP"], nil
+}
+
+func (h *Handlers) getBoltDHCPServer(r *http.Request) (*dhcp.DHCPHandler, error) {
+	network, err := getQueryParam(r, "network")
+	if err != nil {
+		return nil, fmt.Errorf("could not get network from query params: %w", err)
+	}
+
+	dhcpData, err := h.DB.GetKV(h.GetDBBucket(), []byte(network))
+	if err != nil {
+		return nil, fmt.Errorf("failed to get DHCP handler from database: %w", err)
+	}
+
+	var dhcpServer dhcp.DHCPHandler
+	if err := json.Unmarshal(dhcpData, &dhcpServer); err != nil {
+		return nil, fmt.Errorf("failed to unmarshal DHCP server data: %w", err)
+	}
+
+	return &dhcpServer, nil
 }

@@ -4,7 +4,13 @@ import (
 	"log/slog"
 
 	"ignite/config"
+	"ignite/dhcp"
 )
+
+// AppService defines the interface for the application services that handlers can access.
+type AppService interface {
+	GetDhcpServer(tftpip string) (*dhcp.DHCPHandler, error)
+}
 
 // DatabaseStore interface for handlers to access database
 type DatabaseStore interface {
@@ -20,14 +26,16 @@ type Handlers struct {
 	DB     DatabaseStore
 	Config *config.Config
 	Logger *slog.Logger
+	App    AppService
 }
 
 // NewHandlers creates a new Handlers instance with dependencies
-func NewHandlers(db DatabaseStore, cfg *config.Config, logger *slog.Logger) *Handlers {
+func NewHandlers(db DatabaseStore, cfg *config.Config, logger *slog.Logger, app AppService) *Handlers {
 	return &Handlers{
 		DB:     db,
 		Config: cfg,
 		Logger: logger,
+		App:    app,
 	}
 }
 

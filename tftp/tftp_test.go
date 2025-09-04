@@ -25,25 +25,29 @@ func TestNewServer(t *testing.T) {
 func TestServerStart(t *testing.T) {
 	serveDir := "."
 	server := NewServer(serveDir, slog.Default())
+	server.Port = 0 // Use a dynamic port for testing
 
 	err := server.Start()
 	if err != nil {
 		t.Fatalf("Failed to start server: %v", err)
 	}
+	defer server.Stop()
 
 	// Check if the listener is now set
 	if server.listener == nil {
-		t.Error("Server listener should be set after Start")
+		t.Fatal("Server listener should be set after Start")
 	}
 
+	// Get the dynamic port from the listener
+	addr := server.listener.LocalAddr().(*net.UDPAddr)
+
 	// Attempt to connect to the server to verify it's listening
-	conn, err := net.DialUDP("udp", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: 69})
+	conn, err := net.DialUDP("udp", nil, addr)
 	if err != nil {
 		t.Errorf("Failed to connect to server: %v", err)
 	} else {
 		conn.Close()
 	}
-	server.Stop()
 }
 
 func TestReadHandler(t *testing.T) {

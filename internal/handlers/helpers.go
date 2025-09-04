@@ -68,3 +68,12 @@ func CheckEmpty(v interface{}) string {
 		return ""
 	}
 }
+
+// getQueryParam retrieves a required query parameter from the request.
+func getQueryParam(r *http.Request, key string) (string, error) {
+	value := r.URL.Query().Get(key)
+	if value == "" {
+		return "", fmt.Errorf("missing required query parameter: %s", key)
+	}
+	return value, nil
+}
