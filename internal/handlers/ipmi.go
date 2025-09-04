@@ -5,7 +5,6 @@ import (
 	"net"
 	"net/http"
 
-	"ignite/dhcp"
 	"ignite/internal/errors"
 	"ignite/internal/validation"
 
