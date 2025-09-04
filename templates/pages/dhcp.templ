@@ -56,10 +56,10 @@
                             </button>
                         </td>
                         <td class="text-center">
-                            <button hx-get="/open_modal?template=bootmodal&tftpip={{$tftpip}}&mac={{.MAC}}&ip={{.IP}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs {{if .Menu.Filename}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
+                            <button hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&tftpip={{$tftpip}}&mac={{.MAC}}&ip={{.IP}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs {{if .Menu.Filename}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
                         </td>
                         <td class="text-center">
-                            <button hx-get="/open_modal?template=ipmimodal&tftpip={{$tftpip}}&mac={{.MAC}}&ip={{.IP}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs {{if .IPMI.Username}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
+                            <button hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&tftpip={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs {{if .IPMI.Username}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
                         </td>
                     </tr>
                     {{end}}
