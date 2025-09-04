@@ -474,9 +474,9 @@ func (h *Handlers) newBootModal(w http.ResponseWriter, r *http.Request) (map[str
 	}
 
 	return map[string]any{
-		"MAC":    mac,
-		"IP":     ip,
-		"TFTP": tftpip,
+		"mac":    mac,
+		"ip":     ip,
+		"tftpip": tftpip,
 	}, nil
 }
 
@@ -497,9 +497,9 @@ func (h *Handlers) newIPMIModal(w http.ResponseWriter, r *http.Request) (map[str
 	}
 
 	return map[string]any{
-		"MAC":    mac,
-		"IP":     ip,
-		"TFTP": tftpip,
+		"mac":    mac,
+		"ip":     ip,
+		"tftpip": tftpip,
 	}, nil
 }
 
