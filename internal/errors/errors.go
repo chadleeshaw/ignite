@@ -23,10 +23,10 @@ const (
 // AppError represents application-specific errors with context
 type AppError struct {
 	Type    ErrorType
-	Op      string // Operation that failed
-	Err     error  // Original error
-	Message string // User-friendly message
-	Code    int    // HTTP status code
+	Op      string                 // Operation that failed
+	Err     error                  // Original error
+	Message string                 // User-friendly message
+	Code    int                    // HTTP status code
 	Context map[string]interface{} // Additional context
 }
 
@@ -76,7 +76,7 @@ func NewValidationError(op string, err error) *AppError {
 		Type:    ValidationError,
 		Op:      op,
 		Err:     err,
-		Message: "Invalid input provided",
+		Message: err.Error(),
 		Code:    http.StatusBadRequest,
 	}
 }
@@ -163,26 +163,26 @@ func LogError(logger *slog.Logger, err *AppError) {
 		slog.String("operation", err.Op),
 		slog.Int("code", err.Code),
 	}
-	
+
 	// Add context attributes if available
 	for k, v := range err.Context {
 		logArgs = append(logArgs, slog.Any(k, v))
 	}
-	
+
 	logger.Error(err.Message, logArgs...)
 }
 
 // HandleHTTPError sends appropriate HTTP error response and logs the error
 func HandleHTTPError(w http.ResponseWriter, logger *slog.Logger, err error) {
 	var appErr *AppError
-	
+
 	// Check if it's already an AppError
 	if IsAppError(err, &appErr) {
 		LogError(logger, appErr)
 		http.Error(w, appErr.Message, appErr.Code)
 		return
 	}
-	
+
 	// Handle unknown errors
 	logger.Error("Unhandled error", slog.String("error", err.Error()))
 	http.Error(w, "Internal server error", http.StatusInternalServerError)
@@ -202,7 +202,7 @@ func Wrap(err error, op string) error {
 	if err == nil {
 		return nil
 	}
-	
+
 	var appErr *AppError
 	if IsAppError(err, &appErr) {
 		return &AppError{
@@ -214,7 +214,7 @@ func Wrap(err error, op string) error {
 			Context: appErr.Context,
 		}
 	}
-	
+
 	// Wrap non-AppErrors as generic errors
 	return &AppError{
 		Type:    ValidationError,
