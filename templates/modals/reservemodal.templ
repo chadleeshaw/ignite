@@ -23,11 +23,11 @@
             <div class="modal-action mt-6 flex justify-between">
                 <div>
                     {{ if .static }}
-                    <button type="button" class="btn btn-warning" hx-post="/dhcp/remove_reserve?network={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Un-Reserve</button>
+                    <button type="button" class="btn btn-warning" hx-post="/dhcp/remove_reserve?tftpip={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Un-Reserve</button>
                     {{ else }}
-                    <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?network={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Reserve</button>
+                    <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?tftpip={{ .tftpip }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Reserve</button>
                     {{ end }}
-                    <button type="button" class="btn btn-error" hx-post="/dhcp/delete_lease?network={{ .tftpip }}&mac={{ urlquery .mac }}" hx-target="body" hx-swap="innerHTML">Delete Lease</button>
+                    <button type="button" class="btn btn-error" hx-post="/dhcp/delete_lease?tftpip={{ .tftpip }}&mac={{ urlquery .mac }}" hx-target="body" hx-swap="innerHTML">Delete Lease</button>
                 </div>
                 <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
             </div>

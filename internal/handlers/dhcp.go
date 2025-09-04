@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log/slog"
 	"net/http"
+	"net/url"
 	"sort"
 	"strconv"
 
@@ -45,6 +46,7 @@ func (h *Handlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	SetNoCacheHeaders(w)
 	w.Header().Set("Content-Type", "text/html")
 	if err := templates["dhcp"].Execute(w, data); err != nil {
 		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("execute_template", err))
@@ -237,7 +239,7 @@ func (h *Handlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	h.Logger.Info("New DHCP server created",
-		slog.String("network", network.String()),
+		slog.String("tftpip", network.String()),
 		slog.String("subnet", subnet.String()),
 		slog.String("start_ip", startIP.String()),
 		slog.Int("leases", numLeasesInt))
@@ -308,7 +310,7 @@ func (h *Handlers) StopDHCPServer(w http.ResponseWriter, r *http.Request) {
 
 // DeleteDHCPServer removes a DHCP server from the database.
 func (h *Handlers) DeleteDHCPServer(w http.ResponseWriter, r *http.Request) {
-	network, err := getQueryParam(r, "network")
+	network, err := getQueryParam(r, "tftpip")
 	if err != nil {
 		errors.HandleHTTPError(w, h.Logger, errors.NewValidationError("get_network_param", err))
 		return
@@ -324,7 +326,7 @@ func (h *Handlers) DeleteDHCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	h.Logger.Info("Deleted DHCP server", slog.String("network", network))
+	h.Logger.Info("Deleted DHCP server", slog.String("tftpip", network))
 	SetNoCacheHeaders(w)
 	http.Redirect(w, r, "/dhcp", http.StatusSeeOther)
 }
@@ -452,8 +454,8 @@ func (h *Handlers) newReserveModal(w http.ResponseWriter, r *http.Request) (map[
 	}
 
 	return map[string]any{
-		"MAC": mac,
-		"IP":  ip,
+		"mac": mac,
+		"ip":  ip,
 	}, nil
 }
 
@@ -481,40 +483,31 @@ func (h *Handlers) newBootModal(w http.ResponseWriter, r *http.Request) (map[str
 }
 
 func (h *Handlers) newIPMIModal(w http.ResponseWriter, r *http.Request) (map[string]any, error) {
-	mac, err := getQueryParam(r, "mac")
+	handler, err := h.getBoltDHCPServer(r)
 	if err != nil {
+		http.Error(w, fmt.Sprintf("Error getting DHCP server: %v", err), http.StatusInternalServerError)
+		return nil, fmt.Errorf("error getting dhcp server for reserve modal: %s", err)
+	}
+
+	mac := r.URL.Query().Get("mac")
+	decodedMac, err := url.QueryUnescape(mac)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
 		return nil, err
 	}
 
-	tftpip, err := getQueryParam(r, "tftpip")
-	if err != nil {
-		return nil, err
+	if lease, exists := handler.Leases[decodedMac]; exists {
+		return map[string]any{
+			"pxeboot":  CheckEmpty(lease.IPMI.Pxeboot),
+			"reboot":   CheckEmpty(lease.IPMI.Reboot),
+			"tftpip":   CheckEmpty(handler.IP),
+			"mac":      CheckEmpty(lease.MAC),
+			"ip":       CheckEmpty(lease.IPMI.IP),
+			"username": CheckEmpty(lease.IPMI.Username),
+		}, nil
 	}
 
-	// 'network' is also needed by getBoltDHCPServer, assume it's passed in the request
-	dhcpHandler, err := h.getBoltDHCPServer(r)
-	if err != nil {
-		return nil, fmt.Errorf("could not get dhcp server: %w", err)
-	}
-
-	lease, ok := dhcpHandler.Leases[mac]
-	if !ok {
-		return nil, fmt.Errorf("lease not found for MAC: %s", mac)
-	}
-
-	var ipmiIP string
-	if lease.IPMI.IP != nil {
-		ipmiIP = lease.IPMI.IP.String()
-	}
-
-	return map[string]any{
-		"mac":      mac,
-		"ip":       ipmiIP,
-		"tftpip":   tftpip,
-		"username": lease.IPMI.Username,
-		"pxeboot":  lease.IPMI.Pxeboot,
-		"reboot":   lease.IPMI.Reboot,
-	}, nil
+	return nil, fmt.Errorf("lease not found for MAC: %s", mac)
 }
 
 func (h *Handlers) newUploadModal(w http.ResponseWriter, r *http.Request) map[string]any {
@@ -523,7 +516,7 @@ func (h *Handlers) newUploadModal(w http.ResponseWriter, r *http.Request) map[st
 
 func (h *Handlers) extractAndValidateIPData(r *http.Request) (net.IP, net.IP, net.IP, net.IP, net.IP, error) {
 	ipFields := map[string]string{
-		"network": r.Form.Get("network"),
+		"tftpip":  r.Form.Get("tftpip"),
 		"subnet":  r.Form.Get("subnet"),
 		"gateway": r.Form.Get("gateway"),
 		"dns":     r.Form.Get("dns"),
@@ -538,11 +531,11 @@ func (h *Handlers) extractAndValidateIPData(r *http.Request) (net.IP, net.IP, ne
 		parsedIPs[key] = net.ParseIP(val)
 	}
 
-	return parsedIPs["network"], parsedIPs["subnet"], parsedIPs["gateway"], parsedIPs["dns"], parsedIPs["startIP"], nil
+	return parsedIPs["tftpip"], parsedIPs["subnet"], parsedIPs["gateway"], parsedIPs["dns"], parsedIPs["startIP"], nil
 }
 
 func (h *Handlers) getBoltDHCPServer(r *http.Request) (*dhcp.DHCPHandler, error) {
-	network, err := getQueryParam(r, "network")
+	network, err := getQueryParam(r, "tftpip")
 	if err != nil {
 		return nil, fmt.Errorf("could not get network from query params: %w", err)
 	}

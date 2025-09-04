@@ -87,7 +87,7 @@ func NewDatabaseError(op string, err error) *AppError {
 		Type:    DatabaseError,
 		Op:      op,
 		Err:     err,
-		Message: "Database operation failed",
+		Message: err.Error(),
 		Code:    http.StatusInternalServerError,
 	}
 }

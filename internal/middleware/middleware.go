@@ -85,7 +85,7 @@ func LoggingMiddleware(logger *slog.Logger) func(http.Handler) http.Handler {
 			wrapper := &responseWrapper{ResponseWriter: w, statusCode: http.StatusOK}
 
 			defer func() {
-				logger.Info("HTTP Request",
+				logger.Debug("HTTP Request",
 					slog.String("method", r.Method),
 					slog.String("path", r.URL.Path),
 					slog.String("remote_addr", r.RemoteAddr),

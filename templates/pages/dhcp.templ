@@ -23,9 +23,9 @@
                 <span class="badge {{ .Status }} badge-lg"></span>
             </div>
             <div class="flex items-center space-x-2">
-                <button class="btn btn-sm btn-success" hx-post="/dhcp/start?network={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-play"></i></button>
-                <button class="btn btn-sm btn-error" hx-post="/dhcp/stop?network={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-stop"></i></button>
-                <button class="btn btn-sm btn-warning" hx-post="/dhcp/delete?network={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-trash"></i></button>
+                <button class="btn btn-sm btn-success" hx-post="/dhcp/start?tftpip={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-play"></i></button>
+                <button class="btn btn-sm btn-error" hx-post="/dhcp/stop?tftpip={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-stop"></i></button>
+                <button class="btn btn-sm btn-warning" hx-post="/dhcp/delete?tftpip={{ .TFTPIP }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-trash"></i></button>
             </div>
         </div>
 
@@ -47,7 +47,7 @@
                         <td>{{ .MAC }}</td>
                         <td>{{ .IP }}</td>
                         <td class="text-center">
-                            <button id="reserveBtn-{{ .MAC }}" class="modal-opener" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">
+                            <button id="reserveBtn-{{ .MAC }}" class="modal-opener" hx-get="/open_modal?template=reservemodal&tftpip={{$tftpip}}&mac={{.MAC}}&ip={{.IP}}" hx-target="#modal-content" hx-swap="innerHTML">
                                 {{if .Static}}
                                     <i class="fas fa-check-circle text-success text-lg"></i>
                                 {{else}}
@@ -56,10 +56,10 @@
                             </button>
                         </td>
                         <td class="text-center">
-                            <button hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&tftpip={{$tftpip}}&mac={{.MAC}}&ip={{.IP}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs {{if .Menu.Filename}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
+                            <button hx-get="/open_modal?template=bootmodal&tftpip={{$tftpip}}&mac={{.MAC}}&ip={{.IP}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs {{if .Menu.Filename}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
                         </td>
                         <td class="text-center">
-                            <button hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&tftpip={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs {{if .IPMI.Username}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
+                            <button hx-get="/open_modal?template=ipmimodal&tftpip={{$tftpip}}&mac={{.MAC}}&ip={{.IP}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs {{if .IPMI.Username}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
                         </td>
                     </tr>
                     {{end}}
