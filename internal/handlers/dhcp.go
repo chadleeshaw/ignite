@@ -486,20 +486,34 @@ func (h *Handlers) newIPMIModal(w http.ResponseWriter, r *http.Request) (map[str
 		return nil, err
 	}
 
-	ip, err := getQueryParam(r, "ip")
-	if err != nil {
-		return nil, err
-	}
-
 	tftpip, err := getQueryParam(r, "tftpip")
 	if err != nil {
 		return nil, err
 	}
 
+	// 'network' is also needed by getBoltDHCPServer, assume it's passed in the request
+	dhcpHandler, err := h.getBoltDHCPServer(r)
+	if err != nil {
+		return nil, fmt.Errorf("could not get dhcp server: %w", err)
+	}
+
+	lease, ok := dhcpHandler.Leases[mac]
+	if !ok {
+		return nil, fmt.Errorf("lease not found for MAC: %s", mac)
+	}
+
+	var ipmiIP string
+	if lease.IPMI.IP != nil {
+		ipmiIP = lease.IPMI.IP.String()
+	}
+
 	return map[string]any{
-		"mac":    mac,
-		"ip":     ip,
-		"tftpip": tftpip,
+		"mac":      mac,
+		"ip":       ipmiIP,
+		"tftpip":   tftpip,
+		"username": lease.IPMI.Username,
+		"pxeboot":  lease.IPMI.Pxeboot,
+		"reboot":   lease.IPMI.Reboot,
 	}, nil
 }
 
