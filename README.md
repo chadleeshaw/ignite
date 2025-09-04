@@ -124,6 +124,14 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/prov/newtemplate`       | Creates a new provisioning template.          |
 | `/prov/save`              | Saves a provisioning file.                    |
 
+## To Do
+
+   * Better error handling
+   * IP validation
+   * TFTP path security
+   * Better inheritence
+   * Interfaces
+
 ## Contributing
 
 Contributions are welcome! Please feel free to submit a pull request, report an issue, or suggest a feature.
