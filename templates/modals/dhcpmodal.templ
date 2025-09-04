@@ -18,28 +18,28 @@
                 <label class="label">
                     <span class="label-text">Subnet Mask</span>
                 </label>
-                <input type="text" name="subnet" placeholder="e.g., 255.255.255.0" class="input input-bordered" id="subnet" required />
+                <input type="text" name="subnet" placeholder="255.255.255.0" class="input input-bordered" id="subnet" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid subnet mask (e.g., 255.255.255.0)" required />
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Gateway IP</span>
                 </label>
-                <input type="text" name="gateway" placeholder="e.g., 192.168.1.1" class="input input-bordered" id="gateway" required />
+                <input type="text" name="gateway" placeholder="192.168.1.1" class="input input-bordered" id="gateway" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.1)" required />
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">DNS IP</span>
                 </label>
-                <input type="text" name="dns" placeholder="e.g., 8.8.8.8" class="input input-bordered" id="dns" required />
+                <input type="text" name="dns" placeholder="8.8.8.8" class="input input-bordered" id="dns" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 8.8.8.8)" required />
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Start IP</span>
                 </label>
-                <input type="text" name="startIP" placeholder="e.g., 192.168.1.100" class="input input-bordered" id="startIP" required />
+                <input type="text" name="startIP" placeholder="192.168.1.100" class="input input-bordered" id="startIP" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.100)" required />
             </div>
 
             <div class="form-control mt-4">

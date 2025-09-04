@@ -53,22 +53,22 @@
 
                     <div class="form-control mt-4">
                         <label class="label"><span class="label-text">IP Address</span></label>
-                        <input type="text" name="ip" value="{{ .ip }}" class="input input-bordered" required/>
+                        <input type="text" name="ip" value="{{ .ip }}" placeholder="192.168.1.100" class="input input-bordered" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.100)" required/>
                     </div>
 
                     <div class="form-control mt-4">
                         <label class="label"><span class="label-text">Subnet Mask</span></label>
-                        <input type="text" name="subnet" value="{{ .subnet }}" class="input input-bordered" required/>
+                        <input type="text" name="subnet" value="{{ .subnet }}" placeholder="255.255.255.0" class="input input-bordered" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid subnet mask (e.g., 255.255.255.0)" required/>
                     </div>
 
                     <div class="form-control mt-4">
                         <label class="label"><span class="label-text">Gateway</span></label>
-                        <input type="text" name="gateway" value="{{ .gateway }}" class="input input-bordered" required/>
+                        <input type="text" name="gateway" value="{{ .gateway }}" placeholder="192.168.1.1" class="input input-bordered" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.1)" required/>
                     </div>
 
                     <div class="form-control mt-4">
                         <label class="label"><span class="label-text">DNS Server</span></label>
-                        <input type="text" name="dns" value="{{ .dns }}" class="input input-bordered" required/>
+                        <input type="text" name="dns" value="{{ .dns }}" placeholder="8.8.8.8" class="input input-bordered" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 8.8.8.8)" required/>
                     </div>
                 </div>
             </div>
