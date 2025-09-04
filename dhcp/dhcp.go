@@ -258,9 +258,8 @@ func (h *DHCPHandler) ServeDHCP(p d4.Packet, msgType d4.MessageType, options d4.
 
 // findPreviousLease searches for an existing lease by MAC address, returning IP if it's not expired.
 func (h *DHCPHandler) findPreviousLease(mac string) net.IP {
-	now := time.Now()
-	for _, lease := range h.Leases {
-		if lease.MAC == mac && now.Before(lease.Expiry) {
+	if lease, ok := h.Leases[mac]; ok {
+		if time.Now().Before(lease.Expiry) {
 			return lease.IP
 		}
 	}
@@ -315,13 +314,10 @@ func (h *DHCPHandler) createNakPacket(p d4.Packet) d4.Packet {
 
 // removeLeaseByMAC removes a lease from the handler by MAC address.
 func (h *DHCPHandler) removeLeaseByMAC(mac string) {
-	for macStr, lease := range h.Leases {
-		if lease.MAC == mac {
-			delete(h.Leases, macStr)
-			if err := h.UpdateDBState(); err != nil {
-				log.Printf("Failed to delete lease in persistence: %v", err)
-			}
-			return
+	if _, ok := h.Leases[mac]; ok {
+		delete(h.Leases, mac)
+		if err := h.UpdateDBState(); err != nil {
+			log.Printf("Failed to delete lease in persistence: %v", err)
 		}
 	}
 }
@@ -487,21 +483,16 @@ func (h *DHCPHandler) SetLeaseReservation(mac string, ip string, reserved bool) 
 		}
 	}
 
-	oldLease, err := h.getLeaseByMAC(mac)
-	if err != nil {
-		return fmt.Errorf("error getting old lease: %v", err)
+	lease, ok := h.Leases[macStr]
+	if !ok {
+		return fmt.Errorf("lease not found for MAC: %s", macStr)
 	}
 
-	h.removeLeaseByMAC(mac)
+	lease.IP = ipAddr
+	lease.Reserved = reserved
+	lease.Expiry = time.Now().Add(h.LeaseDuration)
 
-	h.Leases[mac] = Lease{
-		IP:       ipAddr,
-		MAC:      macStr,
-		Expiry:   time.Now().Add(h.LeaseDuration),
-		Reserved: reserved,
-		Menu:     oldLease.Menu,
-		IPMI:     oldLease.IPMI,
-	}
+	h.Leases[macStr] = lease
 
 	if err := h.UpdateDBState(); err != nil {
 		return fmt.Errorf("failed to persist lease reservation change: %v", err)

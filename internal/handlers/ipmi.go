@@ -45,12 +45,11 @@ func (h *Handlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 
 	// Update lease in DHCP handler
 	if lease, ok := dhcpHandler.Leases[mac]; ok {
-		lease.IPMI = dhcp.IPMI{
-			Pxeboot:  bootConfigChecked,
-			Reboot:   rebootChecked,
-			IP:       net.ParseIP(ip),
-			Username: username,
-		}
+		lease.IPMI.Pxeboot = bootConfigChecked
+		lease.IPMI.Reboot = rebootChecked
+		lease.IPMI.IP = net.ParseIP(ip)
+		lease.IPMI.Username = username
+
 		dhcpHandler.Leases[mac] = lease
 		if err := dhcpHandler.UpdateDBState(); err != nil {
 			errors.HandleHTTPError(w, h.Logger, errors.NewDatabaseError("update_lease", err))
