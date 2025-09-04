@@ -160,12 +160,13 @@ func updateDHCPLease(tftpip, mac string, menu dhcp.BootMenu) error {
 		return fmt.Errorf("unable to get DHCP server: %w", err)
 	}
 
-	for i, lease := range dhcpHandler.Leases {
-		if lease.MAC == mac {
-			lease.Menu = menu
-			dhcpHandler.Leases[i] = lease
-			return dhcpHandler.UpdateDBState()
-		}
+	lease, ok := dhcpHandler.Leases[mac]
+	if !ok {
+		return fmt.Errorf("lease not found for MAC %s", mac)
 	}
-	return fmt.Errorf("lease not found for MAC %s", mac)
+
+	lease.Menu = menu
+	dhcpHandler.Leases[mac] = lease
+
+	return dhcpHandler.UpdateDBState()
 }
