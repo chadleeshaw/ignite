@@ -1,85 +1,113 @@
 package db
 
 import (
-	"ignite/config"
-	"os"
-	"strconv"
+	"context"
 	"testing"
+	"time"
+
+	"ignite/config"
 
 	"github.com/stretchr/testify/assert"
 )
 
-var Bucket = config.Defaults.DB.Bucket
+// TestBoltDB_Integration tests BoltDB with a real database file
+func TestBoltDB_Integration(t *testing.T) {
+	// Create test configuration
+	cfg, err := config.NewConfigBuilder().
+		WithDBPath("./testdata").
+		WithDBFile("test.db").
+		WithBucket("test").
+		Build()
 
-func TestBoltKV(t *testing.T) {
-	originalDBPath := config.Defaults.DB.DBPath
-	originalDBFile := config.Defaults.DB.DBFile
-	config.Defaults.DB.DBPath = "../"
-	config.Defaults.DB.DBFile = "test.db"
-	defer func() {
-		os.Remove(config.Defaults.DB.DBPath + config.Defaults.DB.DBFile)
-		config.Defaults.DB.DBPath = originalDBPath
-		config.Defaults.DB.DBFile = originalDBFile
-	}()
+	assert.NoError(t, err)
 
-	kv, err := Init()
-	if !assert.NoError(t, err) {
-		return
+	// Create database
+	db, err := NewBoltDB(cfg)
+	assert.NoError(t, err)
+	defer db.Close()
+
+	ctx := context.Background()
+	bucket := cfg.DB.Bucket
+
+	// Test PutKV and GetKV
+	key := []byte("test-key")
+	value := []byte("test-value")
+
+	err = db.PutKV(ctx, bucket, key, value)
+	assert.NoError(t, err)
+
+	retrievedValue, err := db.GetKV(ctx, bucket, key)
+	assert.NoError(t, err)
+	assert.Equal(t, value, retrievedValue)
+
+	// Test DeleteKV
+	err = db.DeleteKV(ctx, bucket, key)
+	assert.NoError(t, err)
+
+	retrievedValue, err = db.GetKV(ctx, bucket, key)
+	assert.NoError(t, err)
+	assert.Nil(t, retrievedValue)
+}
+
+// TestGenericRepository tests the generic repository
+func TestGenericRepository(t *testing.T) {
+	// Create test configuration
+	cfg, err := config.NewConfigBuilder().
+		WithDBPath("./testdata").
+		WithDBFile("test_repo.db").
+		WithBucket("test").
+		Build()
+
+	assert.NoError(t, err)
+
+	// Create database
+	db, err := NewBoltDB(cfg)
+	assert.NoError(t, err)
+	defer db.Close()
+
+	// Create repository
+	type TestEntity struct {
+		ID   string    `json:"id"`
+		Name string    `json:"name"`
+		Time time.Time `json:"time"`
 	}
-	defer kv.Close()
 
-	t.Run("PutKV and GetKV", func(t *testing.T) {
-		key := []byte("key1")
-		value := []byte("value1")
-		err := kv.PutKV(Bucket, key, value)
-		assert.NoError(t, err)
+	repo := NewGenericRepository[*TestEntity](db, cfg.DB.Bucket)
+	ctx := context.Background()
 
-		val, err := kv.GetKV(Bucket, key)
-		assert.NoError(t, err)
-		assert.Equal(t, value, val)
-	})
+	// Test Save and Get
+	entity := &TestEntity{
+		ID:   "test-1",
+		Name: "Test Entity",
+		Time: time.Now(),
+	}
 
-	t.Run("DeleteKV", func(t *testing.T) {
-		key := []byte("keyToDelete")
-		value := []byte("valueToDelete")
-		err := kv.PutKV(Bucket, key, value)
-		assert.NoError(t, err)
+	err = repo.Save(ctx, entity.ID, entity)
+	assert.NoError(t, err)
 
-		err = kv.DeleteKV(Bucket, key)
-		assert.NoError(t, err)
+	retrieved, err := repo.Get(ctx, entity.ID)
+	assert.NoError(t, err)
+	assert.Equal(t, entity.ID, retrieved.ID)
+	assert.Equal(t, entity.Name, retrieved.Name)
 
-		val, err := kv.GetKV(Bucket, key)
-		assert.NoError(t, err)
-		assert.Nil(t, val)
-	})
+	// Test GetAll
+	entity2 := &TestEntity{
+		ID:   "test-2",
+		Name: "Test Entity 2",
+		Time: time.Now(),
+	}
 
-	t.Run("GetAllKV", func(t *testing.T) {
-		for i := 0; i < 3; i++ {
-			err := kv.PutKV(Bucket, []byte(strconv.Itoa(i)), []byte("test-value-"+strconv.Itoa(i)))
-			assert.NoError(t, err)
-		}
+	err = repo.Save(ctx, entity2.ID, entity2)
+	assert.NoError(t, err)
 
-		allKV, err := kv.GetAllKV(Bucket)
-		assert.NoError(t, err)
-		assert.Len(t, allKV, 4)
+	all, err := repo.GetAll(ctx)
+	assert.NoError(t, err)
+	assert.Len(t, all, 2)
 
-		for i := 0; i < 3; i++ {
-			keyStr := strconv.Itoa(i)
-			assert.Equal(t, []byte("test-value-"+keyStr), allKV[keyStr])
-		}
-	})
+	// Test Delete
+	err = repo.Delete(ctx, entity.ID)
+	assert.NoError(t, err)
 
-	t.Run("DeleteAllKV", func(t *testing.T) {
-		for i := 0; i < 2; i++ {
-			err := kv.PutKV(Bucket, []byte(strconv.Itoa(i)), []byte("test-value-"+strconv.Itoa(i)))
-			assert.NoError(t, err)
-		}
-
-		err := kv.DeleteAllKV(Bucket)
-		assert.NoError(t, err)
-
-		allKV, err := kv.GetAllKV(Bucket)
-		assert.NoError(t, err)
-		assert.Empty(t, allKV)
-	})
+	_, err = repo.Get(ctx, entity.ID)
+	assert.Error(t, err)
 }

@@ -1,81 +1,83 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"ignite/config"
-	"log"
 	"path/filepath"
 
 	bolt "go.etcd.io/bbolt"
 )
 
-var KV *BoltKV
-
-// BoltKV wraps bolt.DB to provide key-value operations with buckets.
-type BoltKV struct {
+// BoltDB implements the Database interface
+type BoltDB struct {
 	*bolt.DB
+	bucket string
 }
 
-// Init initializes and returns a BoltDB instance, setting up the global KV pointer.
-func Init() (*BoltKV, error) {
-	conf := config.Defaults.DB
-	path := filepath.Join(conf.DBPath, conf.DBFile)
+// NewBoltDB creates a new BoltDB instance
+func NewBoltDB(cfg *config.Config) (*BoltDB, error) {
+	path := filepath.Join(cfg.DB.DBPath, cfg.DB.DBFile)
 	db, err := bolt.Open(path, 0744, nil)
 	if err != nil {
-		log.Fatalf("Fatal error opening database: %v", err)
+		return nil, fmt.Errorf("failed to open database: %w", err)
 	}
 
-	KV = &BoltKV{db}
-	_, err = KV.GetOrCreateBucket(conf.Bucket)
-	if err != nil {
-		return nil, fmt.Errorf("error with bucket: %v", err)
+	boltDB := &BoltDB{
+		DB:     db,
+		bucket: cfg.DB.Bucket,
 	}
-	return KV, nil
+
+	// Ensure bucket exists
+	if err := boltDB.GetOrCreateBucket(context.Background(), cfg.DB.Bucket); err != nil {
+		db.Close()
+		return nil, fmt.Errorf("failed to create bucket: %w", err)
+	}
+
+	return boltDB, nil
 }
 
-// GetOrCreateBucket either creates a new bucket if it doesn't exist or returns the existing one.
-func (b *BoltKV) GetOrCreateBucket(name string) (*bolt.Bucket, error) {
-	var bucket *bolt.Bucket
-	err := b.Update(func(tx *bolt.Tx) error {
-		var err error
-		bucket, err = tx.CreateBucketIfNotExists([]byte(name))
+// GetOrCreateBucket creates a bucket if it doesn't exist
+func (b *BoltDB) GetOrCreateBucket(ctx context.Context, name string) error {
+	return b.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucketIfNotExists([]byte(name))
 		return err
 	})
-
-	if err != nil {
-		return nil, fmt.Errorf("failed to get or create bucket %s: %v", name, err)
-	}
-
-	return bucket, nil
 }
 
-// GetKV retrieves the value associated with a key from a specified bucket.
-func (b *BoltKV) GetKV(bucket string, key []byte) ([]byte, error) {
+// GetKV retrieves a value by key from the specified bucket
+func (b *BoltDB) GetKV(ctx context.Context, bucket string, key []byte) ([]byte, error) {
 	var value []byte
 	err := b.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket([]byte(bucket))
 		if bkt == nil {
 			return fmt.Errorf("bucket %q not found", bucket)
 		}
-		value = bkt.Get(key)
+
+		data := bkt.Get(key)
+		if data != nil {
+			// Copy the data since it's only valid during the transaction
+			value = make([]byte, len(data))
+			copy(value, data)
+		}
 		return nil
 	})
 	return value, err
 }
 
-// PutKV stores a key-value pair in a specified bucket.
-func (b *BoltKV) PutKV(bucket string, key, value []byte) error {
+// PutKV stores a key-value pair in the specified bucket
+func (b *BoltDB) PutKV(ctx context.Context, bucket string, key, value []byte) error {
 	return b.Update(func(tx *bolt.Tx) error {
 		bkt, err := tx.CreateBucketIfNotExists([]byte(bucket))
 		if err != nil {
-			return fmt.Errorf("create bucket: %s", err)
+			return fmt.Errorf("create bucket: %w", err)
 		}
 		return bkt.Put(key, value)
 	})
 }
 
-// DeleteKV removes a key-value pair from a specified bucket.
-func (b *BoltKV) DeleteKV(bucket string, key []byte) error {
+// DeleteKV removes a key-value pair from the specified bucket
+func (b *BoltDB) DeleteKV(ctx context.Context, bucket string, key []byte) error {
 	return b.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket([]byte(bucket))
 		if bkt == nil {
@@ -85,8 +87,8 @@ func (b *BoltKV) DeleteKV(bucket string, key []byte) error {
 	})
 }
 
-// GetAllKV retrieves all key-value pairs in a specified bucket.
-func (b *BoltKV) GetAllKV(bucket string) (map[string][]byte, error) {
+// GetAllKV retrieves all key-value pairs in the specified bucket
+func (b *BoltDB) GetAllKV(ctx context.Context, bucket string) (map[string][]byte, error) {
 	result := make(map[string][]byte)
 	err := b.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket([]byte(bucket))
@@ -96,15 +98,17 @@ func (b *BoltKV) GetAllKV(bucket string) (map[string][]byte, error) {
 
 		return bkt.ForEach(func(k, v []byte) error {
 			key := string(k)
-			result[key] = append([]byte{}, v...)
+			value := make([]byte, len(v))
+			copy(value, v)
+			result[key] = value
 			return nil
 		})
 	})
 	return result, err
 }
 
-// DeleteAllKV removes all key-value pairs from a specified bucket.
-func (b *BoltKV) DeleteAllKV(bucket string) error {
+// DeleteAllKV removes all key-value pairs from the specified bucket
+func (b *BoltDB) DeleteAllKV(ctx context.Context, bucket string) error {
 	return b.Update(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket([]byte(bucket))
 		if bkt == nil {
