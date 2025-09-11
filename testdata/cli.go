@@ -52,5 +52,6 @@ func HandleDataOperations(config *Config, application *app.Application) bool {
 	}
 
 	// If only data operations were requested (no additional args), exit
-	return config.MockData && flag.NArg() > 0
+	// Return false to exit if data operations performed and no additional args
+	return flag.NArg() > 0
 }
