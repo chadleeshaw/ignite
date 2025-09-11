@@ -1,0 +1,244 @@
+<div id="new-file-modal" class="modal modal-open">
+    <div class="modal-box">
+        <h3 class="font-bold text-lg mb-4">Create New File</h3>
+        
+        <form id="new-file-form">
+            <div class="form-control w-full mb-4">
+                <label class="label">
+                    <span class="label-text">File Name</span>
+                </label>
+                <input type="text" id="new-filename" placeholder="my-config.yml" class="input input-bordered w-full" required>
+                <label class="label">
+                    <span class="label-text-alt">Include file extension (.yml, .ks, .cfg)</span>
+                </label>
+            </div>
+
+            <div class="form-control w-full mb-4">
+                <label class="label">
+                    <span class="label-text">Type</span>
+                </label>
+                <select id="new-file-type" class="select select-bordered w-full">
+                    <option value="templates">Template</option>
+                    <option value="configs">Configuration</option>
+                </select>
+            </div>
+
+            <div class="form-control w-full mb-4">
+                <label class="label">
+                    <span class="label-text">Category</span>
+                </label>
+                <select id="new-file-category" class="select select-bordered w-full">
+                    <option value="cloud-init">Cloud-Init (Ubuntu/Debian)</option>
+                    <option value="kickstart">Kickstart (RHEL/CentOS)</option>
+                    <option value="bootmenu">Boot Menu (PXE)</option>
+                </select>
+            </div>
+
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">Start with template</span>
+                </label>
+                <div class="flex space-x-2">
+                    <label class="label cursor-pointer">
+                        <input type="radio" name="start-option" value="blank" class="radio radio-primary" checked>
+                        <span class="label-text ml-2">Blank file</span>
+                    </label>
+                    <label class="label cursor-pointer">
+                        <input type="radio" name="start-option" value="basic" class="radio radio-primary">
+                        <span class="label-text ml-2">Basic template</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="modal-action">
+                <button type="submit" class="btn btn-primary">
+                    <i class="fas fa-plus mr-2"></i>Create File
+                </button>
+                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+            </div>
+        </form>
+    </div>
+</div>
+
+<script>
+document.getElementById('new-file-form').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const filename = document.getElementById('new-filename').value;
+    const fileType = document.getElementById('new-file-type').value;
+    const category = document.getElementById('new-file-category').value;
+    const startOption = document.querySelector('input[name="start-option"]:checked').value;
+    
+    if (!filename) {
+        alert('Please enter a filename');
+        return;
+    }
+    
+    // Validate filename
+    if (!/\.[a-z]+$/.test(filename)) {
+        alert('Please include a file extension (e.g., .yml, .ks, .cfg)');
+        return;
+    }
+    
+    // Detect language from extension
+    const language = detectLanguageFromFilename(filename);
+    
+    // Create new file path
+    const filePath = `/tmp/provision/${fileType}/${category}/${filename}`;
+    
+    // Get basic template content if requested
+    let content = '';
+    if (startOption === 'basic') {
+        content = getBasicTemplate(category, language);
+    }
+    
+    // Create the file in the editor
+    if (window.parent.createNewFile) {
+        window.parent.createNewFile(filePath, filename, language, content);
+    } else {
+        // Fallback: post message to parent
+        window.parent.postMessage({
+            type: 'createNewFile',
+            file: { path: filePath, name: filename, language: language, content: content }
+        }, '*');
+    }
+    
+    // Close modal
+    document.querySelector('[hx-get="/close_modal"]').click();
+});
+
+function detectLanguageFromFilename(filename) {
+    const ext = filename.split('.').pop().toLowerCase();
+    switch(ext) {
+        case 'yml':
+        case 'yaml': return 'yaml';
+        case 'ks': return 'kickstart';
+        case 'cfg':
+        case 'conf': return 'ini';
+        default: return 'text';
+    }
+}
+
+function getBasicTemplate(category, language) {
+    switch(category) {
+        case 'cloud-init':
+            return `#cloud-config
+hostname: new-host
+manage_etc_hosts: true
+
+users:
+  - name: admin
+    groups: [adm, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+
+packages:
+  - curl
+  - vim
+
+package_update: true
+
+final_message: "Configuration complete!"`;
+
+        case 'kickstart':
+            return `#version=DEVEL
+# Basic Kickstart Configuration
+
+# System authorization information
+auth --enableshadow --passalgo=sha512
+
+# Use network installation
+url --url="http://mirror.centos.org/centos/8/BaseOS/x86_64/os/"
+
+# Use graphical install
+graphical
+
+# Run the Setup Agent on first boot
+firstboot --enable
+
+# Keyboard layouts
+keyboard --vckeymap=us --xlayouts='us'
+
+# System language
+lang en_US.UTF-8
+
+# Network information
+network  --bootproto=dhcp --device=link --onboot=off --ipv6=auto
+
+# Root password (change this!)
+rootpw --iscrypted $6$SALT$...
+
+# System timezone
+timezone America/New_York --isUtc
+
+%packages
+@^minimal
+@core
+
+%end`;
+
+        case 'bootmenu':
+            return `DEFAULT menu.c32
+PROMPT 0
+TIMEOUT 300
+ONTIMEOUT local
+
+MENU TITLE Boot Menu
+MENU BACKGROUND splash.png
+
+LABEL local
+    MENU LABEL Boot from local disk
+    MENU DEFAULT
+    LOCALBOOT 0
+
+LABEL install
+    MENU LABEL Install OS
+    KERNEL vmlinuz
+    APPEND initrd=initrd.img
+
+MENU SEPARATOR
+
+LABEL reboot
+    MENU LABEL Reboot
+    COM32 reboot.c32`;
+
+        default:
+            return '';
+    }
+}
+
+// Listen for messages from parent window
+window.addEventListener('message', function(event) {
+    if (event.data.type === 'createNewFile') {
+        const file = event.data.file;
+        
+        // Set up new file in editor
+        window.currentFile = {
+            path: file.path,
+            name: file.name,
+            language: file.language
+        };
+        
+        // Update UI
+        document.getElementById('current-filename').textContent = file.name;
+        document.getElementById('current-language').textContent = file.language;
+        document.getElementById('current-language').className = `badge badge-outline badge-${getLanguageColor(file.language)}`;
+        document.getElementById('save-btn').disabled = false;
+        
+        // Load content
+        document.getElementById('editor-textarea').value = file.content;
+        window.isModified = file.content.length > 0;
+        window.updateFileStatus();
+        window.updateEditorInfo();
+    }
+});
+
+function getLanguageColor(language) {
+    switch(language) {
+        case 'yaml': return 'success';
+        case 'kickstart': return 'error';
+        case 'ini': return 'info';
+        default: return 'neutral';
+    }
+}
+</script>

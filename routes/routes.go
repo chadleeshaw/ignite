@@ -1,58 +1,126 @@
 package routes
 
 import (
-	"github.com/gorilla/mux"
+	"ignite/handlers"
+	"net/http"
 
-	h "ignite/handlers"
+	"github.com/gorilla/mux"
 )
 
-// Setup configures and returns a new router with all defined routes for the application.
-func Setup() *mux.Router {
+// SetupWithContainerAndStatic configures routes with dependency injection and static files
+func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *handlers.StaticHandlers) *mux.Router {
 	router := mux.NewRouter().StrictSlash(true)
 
-	// GET routes for serving pages and retrieving data.
-	setupGetRoutes(router)
+	// Setup static file serving
+	setupStaticRoutes(router, staticHandler)
 
-	// POST routes for handling form submissions and server control actions.
-	setupPostRoutes(router)
+	// Create handler instances with dependencies
+	dhcpHandlers := handlers.NewDHCPHandlers(container)
+	tftpHandlers := handlers.NewTFTPHandlers(container)
+	provisionHandlers := handlers.NewProvisionHandlers(container)
+	bootMenuHandlers := handlers.NewBootMenuHandlers(container)
+	ipmiHandlers := handlers.NewIPMIHandlers(container)
+	statusHandlers := handlers.NewStatusHandlers(container)
+	modalHandlers := handlers.NewModalHandlers(container)
+	indexHandlers := handlers.NewIndexHandlers(container)
+
+	// Setup all routes
+	setupIndexRoutes(router, indexHandlers)
+	setupModalRoutes(router, modalHandlers)
+	setupDHCPRoutes(router, dhcpHandlers)
+	setupTFTPRoutes(router, tftpHandlers)
+	setupProvisionRoutes(router, provisionHandlers)
+	setupBootMenuRoutes(router, bootMenuHandlers)
+	setupIPMIRoutes(router, ipmiHandlers)
+	setupStatusRoutes(router, statusHandlers)
 
 	return router
 }
 
-// setupGetRoutes defines all routes that handle GET requests.
-func setupGetRoutes(router *mux.Router) {
-	router.HandleFunc("/", h.Index).Methods("GET").Name("Index")
-	router.HandleFunc("/open_modal", h.OpenModalHandler).Methods("GET").Name("OpenModal")
-	router.HandleFunc("/close_modal", h.CloseModalHandler).Methods("GET").Name("CloseModal")
-	router.HandleFunc("/dhcp", h.HandleDHCPPage).Methods("GET").Name("DHCPPage")
-	router.HandleFunc("/dhcp/servers", h.GetDHCPServers).Methods("GET").Name("DHCPServers")
-	router.HandleFunc("/status", h.HandleStatusPage).Methods("GET").Name("Status")
-	router.HandleFunc("/provision", h.HomeHandler).Methods("GET").Name("Provision")
-	router.HandleFunc("/tftp", h.HandleTFTPPage).Methods("GET").Name("TFTPPage")
-	router.HandleFunc("/tftp/open", h.HandleTFTPPage).Methods("GET").Name("OpenTFTP")
-	router.HandleFunc("/tftp/download", h.HandleDownload).Methods("GET").Name("DownloadFile")
-	router.HandleFunc("/tftp/view", h.ViewFile).Methods("GET").Name("ViewFile")
-	router.HandleFunc("/tftp/serve", h.ServeFile).Methods("GET").Name("ServeFile")
-	router.HandleFunc("/prov/gettemplates", h.HandleFileOptions).Methods("GET").Name("GetTemplateOptions")
-	router.HandleFunc("/prov/loadtemplate", h.LoadTemplate).Methods("GET").Name("LoadTemplate")
-	router.HandleFunc("/prov/getconfigs", h.HandleConfigOptions).Methods("GET").Name("GetConfigOptions")
-	router.HandleFunc("/prov/loadconfig", h.LoadConfig).Methods("GET").Name("LoadConfig")
-	router.HandleFunc("/prov/getfilename", h.UpdateFilename).Methods("GET").Name("GetFilename")
+func setupStaticRoutes(router *mux.Router, staticHandler *handlers.StaticHandlers) {
+	// Serve static files from /public/http/ path using built-in FileServer
+	// Use Go's built-in FileServer with the embedded filesystem
+	fileServer := http.FileServer(http.FS(staticHandler.GetFS()))
+	// Strip the /public/http prefix and serve from the embedded filesystem root
+	router.PathPrefix("/public/http/").Handler(http.StripPrefix("/", fileServer)).Methods("GET")
 }
 
-// setupPostRoutes defines all routes that handle POST requests.
-func setupPostRoutes(router *mux.Router) {
-	router.HandleFunc("/dhcp/start", h.StartDHCPServer).Methods("POST").Name("StartDHCP")
-	router.HandleFunc("/dhcp/stop", h.StopDHCPServer).Methods("POST").Name("StopDHCP")
-	router.HandleFunc("/dhcp/delete", h.DeleteDHCPServer).Methods("POST").Name("DeleteDHCP")
-	router.HandleFunc("/dhcp/submit_dhcp", h.SubmitDHCPServer).Methods("POST").Name("SubmitDHCP")
-	router.HandleFunc("/dhcp/submit_reserve", h.ReserveLease).Methods("POST").Name("ReserveLease")
-	router.HandleFunc("/dhcp/remove_reserve", h.UnreserveLease).Methods("POST").Name("UnreserveLease")
-	router.HandleFunc("/dhcp/delete_lease", h.DeleteLease).Methods("POST").Name("DeleteLease")
-	router.HandleFunc("/tftp/delete_file", h.HandleDelete).Methods("POST").Name("DeleteFile")
-	router.HandleFunc("/tftp/upload_file", h.HandleUpload).Methods("POST").Name("UploadFile")
-	router.HandleFunc("/pxe/submit_menu", h.SubmitBootMenu).Methods("POST").Name("SubmitBootMenu")
-	router.HandleFunc("/pxe/submit_ipmi", h.SubmitIPMI).Methods("POST").Name("SubmitIPMI")
-	router.HandleFunc("/prov/newtemplate", h.HandleNewTemplate).Methods("POST").Name("NewTemplate")
-	router.HandleFunc("/prov/save", h.HandleSave).Methods("POST").Name("SaveFile")
+// setupIndexRoutes configures the main index page route
+func setupIndexRoutes(router *mux.Router, handlers *handlers.IndexHandlers) {
+	router.HandleFunc("/", handlers.Index).Methods("GET").Name("Index")
+}
+
+// setupModalRoutes configures modal-related routes
+func setupModalRoutes(router *mux.Router, handlers *handlers.ModalHandlers) {
+	router.HandleFunc("/open_modal", handlers.OpenModalHandler).Methods("GET").Name("OpenModal")
+	router.HandleFunc("/close_modal", handlers.CloseModalHandler).Methods("GET").Name("CloseModal")
+}
+
+// setupDHCPRoutes configures DHCP-related routes
+func setupDHCPRoutes(router *mux.Router, handlers *handlers.DHCPHandlers) {
+	// GET routes
+	router.HandleFunc("/dhcp", handlers.HandleDHCPPage).Methods("GET").Name("DHCPPage")
+	router.HandleFunc("/dhcp/servers", handlers.GetDHCPServers).Methods("GET").Name("DHCPServers")
+
+	// POST routes
+	router.HandleFunc("/dhcp/start", handlers.StartDHCPServer).Methods("POST").Name("StartDHCP")
+	router.HandleFunc("/dhcp/stop", handlers.StopDHCPServer).Methods("POST").Name("StopDHCP")
+	router.HandleFunc("/dhcp/delete", handlers.DeleteDHCPServer).Methods("POST").Name("DeleteDHCP")
+	router.HandleFunc("/dhcp/submit_dhcp", handlers.SubmitDHCPServer).Methods("POST").Name("SubmitDHCP")
+	router.HandleFunc("/dhcp/submit_reserve", handlers.ReserveLease).Methods("POST").Name("ReserveLease")
+	router.HandleFunc("/dhcp/remove_reserve", handlers.UnreserveLease).Methods("POST").Name("UnreserveLease")
+	router.HandleFunc("/dhcp/delete_lease", handlers.DeleteLease).Methods("POST").Name("DeleteLease")
+}
+
+// setupTFTPRoutes configures TFTP file management routes
+func setupTFTPRoutes(router *mux.Router, handlers *handlers.TFTPHandlers) {
+	// GET routes
+	router.HandleFunc("/tftp", handlers.HandleTFTPPage).Methods("GET").Name("TFTPPage")
+	router.HandleFunc("/tftp/open", handlers.HandleTFTPPage).Methods("GET").Name("OpenTFTP")
+	router.HandleFunc("/tftp/download", handlers.HandleDownload).Methods("GET").Name("DownloadFile")
+	router.HandleFunc("/tftp/view", handlers.ViewFile).Methods("GET").Name("ViewFile")
+	router.HandleFunc("/tftp/serve", handlers.ServeFile).Methods("GET").Name("ServeFile")
+
+	// POST routes
+	router.HandleFunc("/tftp/delete_file", handlers.HandleDelete).Methods("POST").Name("DeleteFile")
+	router.HandleFunc("/tftp/upload_file", handlers.HandleUpload).Methods("POST").Name("UploadFile")
+}
+
+// setupProvisionRoutes configures provisioning template management routes
+func setupProvisionRoutes(router *mux.Router, handlers *handlers.ProvisionHandlers) {
+	// GET routes
+	router.HandleFunc("/provision", handlers.HomeHandler).Methods("GET").Name("Provision")
+	router.HandleFunc("/prov/gettemplates", handlers.HandleFileOptions).Methods("GET").Name("GetTemplateOptions")
+	router.HandleFunc("/prov/loadtemplate", handlers.LoadTemplate).Methods("GET").Name("LoadTemplate")
+	router.HandleFunc("/prov/getconfigs", handlers.HandleConfigOptions).Methods("GET").Name("GetConfigOptions")
+	router.HandleFunc("/prov/loadconfig", handlers.LoadConfig).Methods("GET").Name("LoadConfig")
+	router.HandleFunc("/prov/getfilename", handlers.UpdateFilename).Methods("GET").Name("GetFilename")
+
+	// New API endpoints for modern interface
+	router.HandleFunc("/provision/load-file", handlers.LoadFileContent).Methods("GET").Name("LoadFileContent")
+	router.HandleFunc("/provision/gallery", handlers.GetTemplateGallery).Methods("GET").Name("TemplateGallery")
+
+	// POST routes
+	router.HandleFunc("/prov/newtemplate", handlers.HandleNewTemplate).Methods("POST").Name("NewTemplate")
+	router.HandleFunc("/prov/save", handlers.HandleSave).Methods("POST").Name("SaveFile")
+	router.HandleFunc("/provision/save-file", handlers.SaveFileContent).Methods("POST").Name("SaveFileContent")
+}
+
+// setupBootMenuRoutes configures PXE boot menu routes
+func setupBootMenuRoutes(router *mux.Router, handlers *handlers.BootMenuHandlers) {
+	// POST routes
+	router.HandleFunc("/pxe/submit_menu", handlers.SubmitBootMenu).Methods("POST").Name("SubmitBootMenu")
+}
+
+// setupIPMIRoutes configures IPMI management routes
+func setupIPMIRoutes(router *mux.Router, handlers *handlers.IPMIHandlers) {
+	// POST routes
+	router.HandleFunc("/pxe/submit_ipmi", handlers.SubmitIPMI).Methods("POST").Name("SubmitIPMI")
+}
+
+// setupStatusRoutes configures status monitoring routes
+func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
+	// GET routes
+	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET").Name("Status")
+	router.HandleFunc("/status/content", handlers.HandleStatusContent).Methods("GET").Name("StatusContent")
 }

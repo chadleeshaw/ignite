@@ -1,22 +1,60 @@
-.PHONY: all build run clean css
+.PHONY: all build run dev test clean css help
 
-all: clean build test run
+# Default target
+all: test build
 
-test: # Run unit tests
+# Build the application
+build: css
+	@echo "Building application..."
+	@go build -o bin/ignite main.go
+
+# Run the application (builds first)
+run: build
+	@./bin/ignite
+
+# Development mode (no build, just run)
+dev:
+	@echo "Starting development server..."
+	@go run main.go
+
+# Run tests
+test:
+	@echo "Running tests..."
 	@go test ./...
 
-build: css # Build the Go application
-	@GOOS=darwin GOARCH=arm64 go build -o bin/app main.go
+# Build CSS assets
+css:
+	@echo "Building CSS..."
+	@npm install --prefix ./public --silent
+	@./public/node_modules/.bin/tailwindcss -i ./public/http/css/includes.css -o ./public/http/css/tailwind.css --minify
 
-run: build # Run the compiled Go application
-	@./bin/app
+# Clean build artifacts
+clean:
+	@echo "Cleaning up..."
+	@rm -rf bin/ public/http/css/tailwind.css ignite.db
 
-clean: # Clean up the build artifacts
-	@rm -rf bin public/http/css/tailwind.css ignite.db
+# Database operations
+db-mock:
+	@echo "Adding mock data..."
+	@go run main.go -mock-data
 
-css: # Compile CSS theme and Tailwind CSS
-	@npm install --prefix ./public
-	@./public/node_modules/.bin/tailwindcss -i ./public/http/css/includes.css -o ./public/http/css/tailwind.css
+db-clear:
+	@echo "Clearing database..."
+	@go run main.go -clear-data
 
-help: ## Display this help screen
-	@grep -h -E '^[a-zA-Z_-]+:.*?## .*$$' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*?## "}; {printf "\033[36m%-30s\033[0m %s\n", $$1, $$2}'
+db-reset: db-clear db-mock
+	@echo "Database reset complete"
+
+# Help
+help:
+	@echo "Available targets:"
+	@echo "  build    - Build the application"
+	@echo "  run      - Build and run the application"  
+	@echo "  dev      - Run in development mode"
+	@echo "  test     - Run tests"
+	@echo "  css      - Build CSS assets"
+	@echo "  clean    - Clean build artifacts"
+	@echo "  db-mock  - Add mock data to database"
+	@echo "  db-clear - Clear database"
+	@echo "  db-reset - Reset database with mock data"
+	@echo "  help     - Show this help"

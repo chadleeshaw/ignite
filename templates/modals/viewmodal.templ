@@ -1,0 +1,14 @@
+<div id="view-modal" class="modal modal-open">
+    <div class="modal-box max-w-4xl">
+        <h3 class="font-bold text-lg">View File: {{.FileName}}</h3>
+        <div class="py-4">
+            <div class="bg-base-300 p-4 rounded-lg overflow-auto max-h-96">
+                <pre class="text-sm whitespace-pre-wrap">{{.FileContent}}</pre>
+            </div>
+        </div>
+        <div class="modal-action">
+            <button class="btn btn-primary" onclick="window.location.href='/tftp/download?file={{.FileName}}'">Download</button>
+            <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Close</button>
+        </div>
+    </div>
+</div>

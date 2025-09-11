@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"ignite/dhcp"
 	"net"
@@ -10,8 +11,18 @@ import (
 	"github.com/stmcginnis/gofish/redfish"
 )
 
-// SubmitIPMI handles the configuration of IPMI settings for a system, including PXE boot setup and potential reboot.
-func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
+// IPMIHandlers handles IPMI-related requests
+type IPMIHandlers struct {
+	container *Container
+}
+
+// NewIPMIHandlers creates a new IPMIHandlers instance
+func NewIPMIHandlers(container *Container) *IPMIHandlers {
+	return &IPMIHandlers{container: container}
+}
+
+// SubmitIPMI handles IPMI submission
+func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
 		return
@@ -31,32 +42,12 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	bootConfigChecked := r.Form.Get("setBootOrder") == "on"
 	rebootChecked := r.Form.Get("reboot") == "on"
 
-	// Retrieve DHCP handler
-	dhcpHandler, err := dhcp.GetDHCPServer(tftpip)
-	if err != nil {
-		fmt.Printf("Unable to get DHCP server: %v\n", err)
-		http.Error(w, "Unable to retrieve DHCP server", http.StatusInternalServerError)
-		return
-	}
+	ctx := r.Context()
 
-	// Update lease in DHCP handler
-	for i, lease := range dhcpHandler.Leases {
-		if lease.MAC == mac {
-			updatedLease := lease
-			updatedLease.IPMI = dhcp.IPMI{
-				Pxeboot:  bootConfigChecked,
-				Reboot:   rebootChecked,
-				IP:       net.ParseIP(ip),
-				Username: username,
-			}
-			dhcpHandler.Leases[i] = updatedLease
-			if err := dhcpHandler.UpdateDBState(); err != nil {
-				fmt.Printf("Failed to update DB state: %v\n", err)
-				http.Error(w, "Failed to update DHCP lease", http.StatusInternalServerError)
-				return
-			}
-			break
-		}
+	// Update DHCP lease with IPMI configuration
+	if err := h.updateDHCPLeaseWithIPMI(ctx, tftpip, mac, ip, username, bootConfigChecked, rebootChecked); err != nil {
+		fmt.Printf("Failed to update DHCP lease: %v\n", err)
+		// Continue with IPMI operations even if lease update fails
 	}
 
 	// Configure Redfish client for IPMI operations
@@ -104,6 +95,54 @@ func SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.WriteHeader(http.StatusOK)
-	fmt.Fprintf(w, "Actions processed for IP: %s", ip)
+	// Redirect to DHCP page after successful execution
+	http.Redirect(w, r, "/dhcp", http.StatusSeeOther)
+}
+
+// updateDHCPLeaseWithIPMI updates the DHCP lease with IPMI configuration
+func (h *IPMIHandlers) updateDHCPLeaseWithIPMI(ctx context.Context, tftpip, mac, ip, username string, pxeboot, reboot bool) error {
+	// Find server by IP to get server ID
+	networkIP := net.ParseIP(tftpip)
+	if networkIP == nil {
+		return fmt.Errorf("invalid network IP: %s", tftpip)
+	}
+
+	servers, err := h.container.ServerService.GetAllServers(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get servers: %w", err)
+	}
+
+	var serverID string
+	for _, server := range servers {
+		if server.IP.Equal(networkIP) {
+			serverID = server.ID
+			break
+		}
+	}
+
+	if serverID == "" {
+		return fmt.Errorf("server not found for IP: %s", tftpip)
+	}
+
+	// Get lease by MAC
+	lease, err := h.container.LeaseService.GetLeaseByMAC(ctx, mac)
+	if err != nil || lease == nil {
+		return fmt.Errorf("lease not found for MAC %s: %w", mac, err)
+	}
+
+	// Update lease with IPMI configuration
+	lease.IPMI = dhcp.IPMI{
+		PXEBoot:  pxeboot,
+		Reboot:   reboot,
+		IP:       net.ParseIP(ip),
+		Username: username,
+		// Password is not stored for security reasons
+	}
+
+	// Save the updated lease
+	if err := h.container.LeaseService.UpdateLease(ctx, lease); err != nil {
+		return fmt.Errorf("failed to save lease with IPMI config: %w", err)
+	}
+
+	return nil
 }

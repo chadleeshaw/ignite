@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"ignite/dhcp"
@@ -9,7 +10,19 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"ignite/config"
 )
+
+// BootMenuHandlers handles boot menu-related requests
+type BootMenuHandlers struct {
+	container *Container
+}
+
+// NewBootMenuHandlers creates a new BootMenuHandlers instance
+func NewBootMenuHandlers(container *Container) *BootMenuHandlers {
+	return &BootMenuHandlers{container: container}
+}
 
 // BootMenuData holds the data used for generating a PXE boot menu configuration.
 type BootMenuData struct {
@@ -19,8 +32,8 @@ type BootMenuData struct {
 	Options string
 }
 
-// SubmitBootMenu handles the submission of PXE boot menu configurations.
-func SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
+// SubmitBootMenu handles boot menu submission
+func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
 		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
 		return
@@ -46,60 +59,86 @@ func SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	buildpxe := fmt.Sprintf("pxelinux.cfg/01-%s", strings.ReplaceAll(formData["mac"], ":", "-"))
-	pxefile := filepath.Join(TFTPDir, buildpxe)
-	pxetempl := fmt.Sprintf("%s/templates/bootmenu/default.templ", ProvDir)
-
-	bootMenu := dhcp.BootMenu{
-		Filename:      pxefile,
-		OS:            formData["os"],
-		Template_Type: formData["typeSelect"],
-		Template_Name: formData["template_name"],
-		Hostname:      formData["hostname"],
-		IP:            net.ParseIP(formData["ip"]),
-		Subnet:        net.ParseIP(formData["subnet"]),
-		Gateway:       net.ParseIP(formData["gateway"]),
-		DNS:           net.ParseIP(formData["dns"]),
+	// Load configuration to get provision directory
+	cfg, err := config.LoadDefault()
+	if err != nil {
+		http.Error(w, "Failed to load configuration", http.StatusInternalServerError)
+		return
 	}
 
+	// Build PXE file paths
+	buildpxe := fmt.Sprintf("pxelinux.cfg/01-%s", strings.ReplaceAll(formData["mac"], ":", "-"))
+	pxefile := filepath.Join(TFTPDir, buildpxe)
+	pxetempl := filepath.Join(cfg.Provision.Dir, "templates/bootmenu/default.templ")
+
+	// Create BootMenu struct
+	bootMenu := dhcp.BootMenu{
+		Filename:     pxefile,
+		OS:           formData["os"],
+		TemplateType: formData["typeSelect"],
+		TemplateName: formData["template_name"],
+		Hostname:     formData["hostname"],
+		IP:           net.ParseIP(formData["ip"]),
+		Subnet:       net.ParseIP(formData["subnet"]),
+		Gateway:      net.ParseIP(formData["gateway"]),
+		DNS:          net.ParseIP(formData["dns"]),
+	}
+
+	// Build config file paths
 	buildconfig := fmt.Sprintf("configs/%s/%s", formData["typeSelect"], strings.ReplaceAll(formData["mac"], ":", "-"))
-	configFile := filepath.Join(ProvDir, buildconfig)
+	configFile := filepath.Join(cfg.Provision.Dir, buildconfig)
 	templBuild := fmt.Sprintf("templates/%s/%s", formData["typeSelect"], formData["template_name"])
-	configTempl := filepath.Join(ProvDir, templBuild)
+	configTempl := filepath.Join(cfg.Provision.Dir, templBuild)
 
-	pxedata := generateBootData(formData, configFile)
+	// Generate boot data
+	pxedata := h.generateBootData(formData, configFile)
 
-	if err := WriteTemplateToDisk(pxetempl, pxefile, pxedata); err != nil {
+	// Ensure directories exist
+	if err := os.MkdirAll(filepath.Dir(pxefile), 0755); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create PXE directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	if err := os.MkdirAll(filepath.Dir(configFile), 0755); err != nil {
+		http.Error(w, fmt.Sprintf("Failed to create config directory: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Write PXE template to disk
+	if err := h.writeTemplateToDisk(pxetempl, pxefile, pxedata); err != nil {
 		http.Error(w, fmt.Sprintf("Error writing PXE menu: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	if err := WriteTemplateToDisk(configTempl, configFile, formData); err != nil {
+	// Write config template to disk
+	if err := h.writeTemplateToDisk(configTempl, configFile, formData); err != nil {
 		http.Error(w, fmt.Sprintf("Error writing config file: %v", err), http.StatusInternalServerError)
 		return
 	}
 
-	if err := updateDHCPLease(formData["tftpip"], formData["mac"], bootMenu); err != nil {
+	// Update DHCP lease
+	if err := h.updateDHCPLease(formData["tftpip"], formData["mac"], bootMenu); err != nil {
 		fmt.Printf("Failed to update DHCP lease: %v\n", err)
 	}
 
+	// Redirect to DHCP page
 	http.Redirect(w, r, "/dhcp", http.StatusSeeOther)
 }
 
 // generateBootData constructs the boot configuration data based on provided OS and network details.
-func generateBootData(formData map[string]string, configFile string) BootMenuData {
-	options := getBootOptions(formData["os"], formData["dns"], formData["tftpip"], configFile)
+func (h *BootMenuHandlers) generateBootData(formData map[string]string, configFile string) BootMenuData {
+	options := h.getBootOptions(formData["os"], formData["dns"], formData["tftpip"], configFile)
 
 	return BootMenuData{
-		Name:    osToName(formData["os"]),
-		Kernel:  osToKernel(formData["os"]),
-		Initrd:  osToInitrd(formData["os"]),
+		Name:    h.osToName(formData["os"]),
+		Kernel:  h.osToKernel(formData["os"]),
+		Initrd:  h.osToInitrd(formData["os"]),
 		Options: options,
 	}
 }
 
 // getBootOptions returns the appropriate boot options string based on the operating system.
-func getBootOptions(os, dns, tftpip, configFile string) string {
+func (h *BootMenuHandlers) getBootOptions(os, dns, tftpip, configFile string) string {
 	switch os {
 	case "Ubuntu", "NixOS":
 		return fmt.Sprintf(`url=http://%s/%s autoinstall ds=nocloud-net;s=http://%s/ nameserver=%s`,
@@ -112,7 +151,7 @@ func getBootOptions(os, dns, tftpip, configFile string) string {
 }
 
 // osToName maps the OS name to a standardized name used in file paths.
-func osToName(os string) string {
+func (h *BootMenuHandlers) osToName(os string) string {
 	switch os {
 	case "Ubuntu":
 		return "ubuntu"
@@ -125,17 +164,17 @@ func osToName(os string) string {
 }
 
 // osToKernel constructs the kernel file path for the given OS.
-func osToKernel(os string) string {
-	return fmt.Sprintf("%s/vmlinuz", osToName(os))
+func (h *BootMenuHandlers) osToKernel(os string) string {
+	return fmt.Sprintf("%s/vmlinuz", h.osToName(os))
 }
 
 // osToInitrd constructs the initrd file path for the given OS.
-func osToInitrd(os string) string {
-	return fmt.Sprintf("%s/initrd.img", osToName(os))
+func (h *BootMenuHandlers) osToInitrd(os string) string {
+	return fmt.Sprintf("%s/initrd.img", h.osToName(os))
 }
 
-// WriteTemplateToDisk writes the template to disk.
-func WriteTemplateToDisk(templpath string, filepath string, data interface{}) error {
+// writeTemplateToDisk writes the template to disk.
+func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, filepath string, data interface{}) error {
 	templates := map[string]*template.Template{
 		"templ": template.Must(template.ParseFiles(templpath)),
 	}
@@ -154,18 +193,45 @@ func WriteTemplateToDisk(templpath string, filepath string, data interface{}) er
 }
 
 // updateDHCPLease updates the DHCP lease with new boot menu data.
-func updateDHCPLease(tftpip, mac string, menu dhcp.BootMenu) error {
-	dhcpHandler, err := dhcp.GetDHCPServer(tftpip)
-	if err != nil {
-		return fmt.Errorf("unable to get DHCP server: %w", err)
+func (h *BootMenuHandlers) updateDHCPLease(tftpip, mac string, menu dhcp.BootMenu) error {
+	ctx := context.Background()
+
+	// Find server by IP to get server ID
+	networkIP := net.ParseIP(tftpip)
+	if networkIP == nil {
+		return fmt.Errorf("invalid network IP: %s", tftpip)
 	}
 
-	for i, lease := range dhcpHandler.Leases {
-		if lease.MAC == mac {
-			lease.Menu = menu
-			dhcpHandler.Leases[i] = lease
-			return dhcpHandler.UpdateDBState()
+	servers, err := h.container.ServerService.GetAllServers(ctx)
+	if err != nil {
+		return fmt.Errorf("failed to get servers: %w", err)
+	}
+
+	var serverID string
+	for _, server := range servers {
+		if server.IP.Equal(networkIP) {
+			serverID = server.ID
+			break
 		}
 	}
-	return fmt.Errorf("lease not found for MAC %s", mac)
+
+	if serverID == "" {
+		return fmt.Errorf("server not found for IP: %s", tftpip)
+	}
+
+	// Get lease by MAC
+	lease, err := h.container.LeaseService.GetLeaseByMAC(ctx, mac)
+	if err != nil || lease == nil {
+		return fmt.Errorf("lease not found for MAC %s: %w", mac, err)
+	}
+
+	// Update lease with boot menu
+	lease.Menu = menu
+
+	// Save the updated lease using the lease service
+	if err := h.container.LeaseService.UpdateLease(ctx, lease); err != nil {
+		return fmt.Errorf("failed to save lease with boot menu: %w", err)
+	}
+
+	return nil
 }
