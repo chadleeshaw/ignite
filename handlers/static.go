@@ -22,17 +22,23 @@ func NewStaticHandlers(staticFS embed.FS, httpDir string) *StaticHandlers {
 	}
 }
 
+// GetFS returns the embedded filesystem
+func (h *StaticHandlers) GetFS() embed.FS {
+	return h.staticFS
+}
+
 // ServeStatic serves static files from embedded filesystem
 func (h *StaticHandlers) ServeStatic(w http.ResponseWriter, r *http.Request) {
 	// Clean the path to prevent directory traversal
 	cleanPath := path.Clean(r.URL.Path)
 
-	// Remove leading slash and add the http directory prefix
-	relativePath := strings.TrimPrefix(cleanPath, "/")
-	fullPath := path.Join(h.httpDir, relativePath)
+	// The URL path is "/public/http/css/style.css"
+	// We need to map this directly to the embedded file path "public/http/css/style.css"
+	// Strip the leading slash to get the embedded file path
+	embeddedPath := strings.TrimPrefix(cleanPath, "/")
 
 	// Try to open the file from embedded filesystem
-	file, err := h.staticFS.Open(fullPath)
+	file, err := h.staticFS.Open(embeddedPath)
 	if err != nil {
 		http.NotFound(w, r)
 		return
@@ -53,7 +59,7 @@ func (h *StaticHandlers) ServeStatic(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set appropriate content type based on file extension
-	contentType := getContentType(fullPath)
+	contentType := getContentType(embeddedPath)
 	if contentType != "" {
 		w.Header().Set("Content-Type", contentType)
 	}

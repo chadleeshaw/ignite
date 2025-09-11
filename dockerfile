@@ -13,4 +13,4 @@ RUN wget -O ./app https://github.com/chadleeshaw/ignite/releases/download/v2.0/a
     chmod +x ./app
 COPY ./public /app/public
 EXPOSE 8080
-CMD ["./app"]
+CMD ["./ignite"]

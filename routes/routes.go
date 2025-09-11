@@ -2,6 +2,7 @@ package routes
 
 import (
 	"ignite/handlers"
+	"net/http"
 
 	"github.com/gorilla/mux"
 )
@@ -37,8 +38,11 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 }
 
 func setupStaticRoutes(router *mux.Router, staticHandler *handlers.StaticHandlers) {
-	// Serve static files from /public/http/ path
-	router.PathPrefix("/public/http/").HandlerFunc(staticHandler.ServeStatic).Methods("GET")
+	// Serve static files from /public/http/ path using built-in FileServer
+	// Use Go's built-in FileServer with the embedded filesystem
+	fileServer := http.FileServer(http.FS(staticHandler.GetFS()))
+	// Strip the /public/http prefix and serve from the embedded filesystem root
+	router.PathPrefix("/public/http/").Handler(http.StripPrefix("/", fileServer)).Methods("GET")
 }
 
 // setupIndexRoutes configures the main index page route
@@ -92,9 +96,14 @@ func setupProvisionRoutes(router *mux.Router, handlers *handlers.ProvisionHandle
 	router.HandleFunc("/prov/loadconfig", handlers.LoadConfig).Methods("GET").Name("LoadConfig")
 	router.HandleFunc("/prov/getfilename", handlers.UpdateFilename).Methods("GET").Name("GetFilename")
 
+	// New API endpoints for modern interface
+	router.HandleFunc("/provision/load-file", handlers.LoadFileContent).Methods("GET").Name("LoadFileContent")
+	router.HandleFunc("/provision/gallery", handlers.GetTemplateGallery).Methods("GET").Name("TemplateGallery")
+
 	// POST routes
 	router.HandleFunc("/prov/newtemplate", handlers.HandleNewTemplate).Methods("POST").Name("NewTemplate")
 	router.HandleFunc("/prov/save", handlers.HandleSave).Methods("POST").Name("SaveFile")
+	router.HandleFunc("/provision/save-file", handlers.SaveFileContent).Methods("POST").Name("SaveFileContent")
 }
 
 // setupBootMenuRoutes configures PXE boot menu routes
@@ -113,4 +122,5 @@ func setupIPMIRoutes(router *mux.Router, handlers *handlers.IPMIHandlers) {
 func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
 	// GET routes
 	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET").Name("Status")
+	router.HandleFunc("/status/content", handlers.HandleStatusContent).Methods("GET").Name("StatusContent")
 }

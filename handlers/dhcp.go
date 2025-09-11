@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"time"
 
@@ -24,6 +25,51 @@ func NewDHCPHandlers(container *Container) *DHCPHandlers {
 		serverService: container.ServerService,
 		leaseService:  container.LeaseService,
 		config:        container.Config,
+	}
+}
+
+// HandleDHCPPage serves the DHCP management page
+func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	servers, err := h.serverService.GetAllServers(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get servers: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	// Convert to view models for template rendering
+	serverViews := make([]DHCPServerView, 0, len(servers))
+	for _, server := range servers {
+		leases, err := h.leaseService.GetLeasesByServer(ctx, server.ID)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to get leases: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		serverView := DHCPServerView{
+			ID:     server.ID,
+			TFTPIP: server.IP.String(),
+			Status: h.getServerStatusBadge(server.Started),
+			Leases: h.convertLeasesToViews(leases),
+		}
+		serverViews = append(serverViews, serverView)
+	}
+
+	// Sort servers by IP address for consistent ordering
+	h.sortServerViewsByIP(serverViews)
+
+	data := struct {
+		Title   string
+		Servers []DHCPServerView
+	}{
+		Title:   "DHCP Management",
+		Servers: serverViews,
+	}
+
+	templates := LoadTemplates()
+	if err := templates["dhcp"].Execute(w, data); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -55,6 +101,9 @@ func (h *DHCPHandlers) GetDHCPServers(w http.ResponseWriter, r *http.Request) {
 		serverViews = append(serverViews, serverView)
 	}
 
+	// Sort servers by IP address for consistent ordering
+	h.sortServerViewsByIP(serverViews)
+
 	data := struct {
 		Title   string
 		Servers []DHCPServerView
@@ -81,6 +130,8 @@ func (h *DHCPHandlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect back to DHCP page to show the updated server list
+	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("DHCP server started successfully"))
 }
@@ -100,6 +151,8 @@ func (h *DHCPHandlers) StopDHCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect back to DHCP page to show the updated server list
+	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("DHCP server stopped successfully"))
 }
@@ -119,6 +172,8 @@ func (h *DHCPHandlers) DeleteDHCPServer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Redirect back to DHCP page to show the updated server list
+	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("DHCP server deleted successfully"))
 }
@@ -195,6 +250,8 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Redirect back to DHCP page to show the updated server list
+	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusCreated)
 	w.Write([]byte(fmt.Sprintf("DHCP server created with ID: %s", server.ID)))
 }
@@ -223,6 +280,8 @@ func (h *DHCPHandlers) ReserveLease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect back to DHCP page to show updated lease status
+	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Lease reserved successfully"))
 }
@@ -242,6 +301,8 @@ func (h *DHCPHandlers) UnreserveLease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect back to DHCP page to show updated lease status
+	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Lease unreserved successfully"))
 }
@@ -261,6 +322,8 @@ func (h *DHCPHandlers) DeleteLease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Redirect back to DHCP page to show updated lease list
+	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Lease deleted successfully"))
 }
@@ -271,6 +334,32 @@ func (h *DHCPHandlers) getServerStatusBadge(started bool) string {
 		return "badge-success"
 	}
 	return "badge-error"
+}
+
+// sortServerViewsByIP sorts server views by IP address for consistent ordering
+func (h *DHCPHandlers) sortServerViewsByIP(serverViews []DHCPServerView) {
+	sort.Slice(serverViews, func(i, j int) bool {
+		ipA := net.ParseIP(serverViews[i].TFTPIP)
+		ipB := net.ParseIP(serverViews[j].TFTPIP)
+
+		// Convert IPs to 4-byte representation for comparison
+		if ipA.To4() != nil {
+			ipA = ipA.To4()
+		}
+		if ipB.To4() != nil {
+			ipB = ipB.To4()
+		}
+
+		// Compare byte by byte
+		for k := 0; k < len(ipA) && k < len(ipB); k++ {
+			if ipA[k] != ipB[k] {
+				return ipA[k] < ipB[k]
+			}
+		}
+
+		// If all compared bytes are equal, shorter IP comes first
+		return len(ipA) < len(ipB)
+	})
 }
 
 func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
@@ -284,6 +373,31 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 			IPMI:   lease.IPMI,
 		})
 	}
+
+	// Sort leases by IP address for consistent ordering
+	sort.Slice(views, func(i, j int) bool {
+		ipA := net.ParseIP(views[i].IP)
+		ipB := net.ParseIP(views[j].IP)
+
+		// Convert IPs to 4-byte representation for comparison
+		if ipA.To4() != nil {
+			ipA = ipA.To4()
+		}
+		if ipB.To4() != nil {
+			ipB = ipB.To4()
+		}
+
+		// Compare byte by byte
+		for k := 0; k < len(ipA) && k < len(ipB); k++ {
+			if ipA[k] != ipB[k] {
+				return ipA[k] < ipB[k]
+			}
+		}
+
+		// If all compared bytes are equal, shorter IP comes first
+		return len(ipA) < len(ipB)
+	})
+
 	return views
 }
 

@@ -1,47 +1,547 @@
 {{ define "content" }}
-<link href="https://cdnjs.cloudflare.com/ajax/libs/prism/1.20.0/themes/prism.min.css" rel="stylesheet" />
-<link href="/public/http/css/provision.css" rel="stylesheet" />
-
-<!-- Placeholder for modal -->
-<div id="modal-content" class="w-full flex justify-center"></div>
-
-<div class="flex flex-col items-center justify-center h-full">
-    <h1 class="mt-4 text-2xl mb-6">Provisioning Scripts</h1>
-    <div class="bg-base-200 p-4 rounded-lg shadow-lg mb-6 flex items-center justify-between w-full max-w-5xl">
-        <div>
-            <p id="currentFilename" class="text-left">Filename: untitled</p>
-        </div>
-        <div>
-            <p id="currentLanguage" class="text-right">Language: yaml</p>
-        </div>
-    </div>
-    <div id="editor" class="w-full">
-        <textarea id="editableTextarea" spellcheck="false"></textarea>
-        <div id="highlightedCode">
-            <pre><code id="codeblock" name="codeblock" class="language-yaml"></code></pre>
+<main role="main" class="container mx-auto px-4 py-6">
+    <!-- Header -->
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">{{.Title}}</h1>
+        <div class="flex space-x-2">
+            <button class="btn btn-primary" hx-get="/open_modal?template=provision-new-file" hx-target="#modal-content" hx-swap="innerHTML">
+                <i class="fas fa-plus mr-2"></i>New File
+            </button>
         </div>
     </div>
 
-    <!-- Hidden input to hold codeblock content -->
-    <input type="hidden" id="codeContent" name="codeContent">
+    <!-- Modal placeholder -->
+    <div id="modal-content"></div>
 
-    <div class="flex mt-4">
-        <button id="saveBtn" class="ml-2" 
-            hx-post="/prov/save" 
-            hx-include="#codeContent" 
-            hx-trigger="click"
-            hx-target="this" 
-            hx-swap="none"
-            hx-on::after-request="if (event.detail.successful) { eval(event.detail.xhr.responseText); }"
-            >
-            Save
-        </button>
-        <button id="clearCacheBtn" class="ml-2" onclick="clearSpecificLocalStorage()">Clear Cache</button>
-        <button id="loadConfigBtn" class="ml-2" hx-get="/open_modal?template=provconfigmodal" hx-target="#modal-content" hx-swap="innerHTML">Load Config</button>
-        <button id="newTemplateBtn" class="ml-2" hx-get="/open_modal?template=provsaveasmodal" hx-target="#modal-content" hx-swap="innerHTML">New Template</button> 
-        <button id="loadTemplateBtn" class="ml-2" hx-get="/open_modal?template=provtempmodal" hx-target="#modal-content" hx-swap="innerHTML">Load Template</button>
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- File Browser -->
+        <div class="lg:col-span-1">
+            <div class="bg-base-200 rounded-lg shadow-lg p-4">
+                <div class="flex justify-between items-center mb-4">
+                    <h2 class="text-lg font-semibold">File Browser</h2>
+                </div>
+                
+                <!-- Filter controls -->
+                <div class="mb-4 space-y-2">
+                    <input type="text" id="file-search" placeholder="Search files..." class="input input-bordered input-sm w-full">
+                    <div class="flex space-x-2">
+                        <select id="type-filter" class="select select-bordered select-sm flex-1">
+                            <option value="">All Types</option>
+                            <option value="template">Templates</option>
+                            <option value="config">Configs</option>
+                        </select>
+                        <select id="category-filter" class="select select-bordered select-sm flex-1">
+                            <option value="">All Categories</option>
+                            {{range .Categories}}
+                            <option value="{{.}}">{{.}}</option>
+                            {{end}}
+                        </select>
+                    </div>
+                </div>
+
+                <!-- File list -->
+                <div id="file-browser" class="max-h-96 overflow-y-auto">
+                    {{range .Files}}
+                    <div class="file-item flex items-center justify-between p-2 hover:bg-base-300 rounded cursor-pointer" 
+                         data-type="{{.Type}}" 
+                         data-category="{{.Category}}"
+                         data-name="{{.Name}}"
+                         onclick="loadFile('{{.Path}}', '{{.Name}}', '{{.Language}}')">
+                        <div class="flex items-center space-x-3">
+                            <div class="flex-shrink-0">
+                                {{if .IsDir}}
+                                    <i class="fas fa-folder text-yellow-500"></i>
+                                {{else}}
+                                    {{if eq .Language "yaml"}}
+                                        <i class="fas fa-file-code text-green-500"></i>
+                                    {{else if eq .Language "kickstart"}}
+                                        <i class="fas fa-cog text-red-500"></i>
+                                    {{else if eq .Language "ini"}}
+                                        <i class="fas fa-file-alt text-blue-500"></i>
+                                    {{else}}
+                                        <i class="fas fa-file text-gray-500"></i>
+                                    {{end}}
+                                {{end}}
+                            </div>
+                            <div class="min-w-0 flex-1">
+                                <p class="text-sm font-medium text-base-content truncate">{{.Name}}</p>
+                                <p class="text-xs text-base-content/70">{{.Category}} • {{.Type}}</p>
+                            </div>
+                        </div>
+                        <div class="flex items-center space-x-1">
+                            {{if not .IsDir}}
+                            <span class="badge badge-xs badge-outline">{{.Language}}</span>
+                            {{end}}
+                        </div>
+                    </div>
+                    {{end}}
+                </div>
+            </div>
+        </div>
+
+        <!-- Editor -->
+        <div class="lg:col-span-2">
+            <div class="bg-base-200 rounded-lg shadow-lg p-4">
+                <!-- Editor header -->
+                <div class="flex justify-between items-center mb-4">
+                    <div class="flex items-center space-x-4">
+                        <h2 class="text-lg font-semibold">
+                            <span id="current-filename">No file selected</span>
+                        </h2>
+                        <span id="current-language" class="badge badge-outline">text</span>
+                        <span id="file-status" class="text-sm text-base-content/70"></span>
+                    </div>
+                    <div class="flex space-x-2">
+                        <button id="save-btn" class="btn btn-success btn-sm" onclick="saveFile()" disabled>
+                            <i class="fas fa-save mr-2"></i>Save
+                        </button>
+                        <button class="btn btn-outline btn-sm" onclick="previewFile()">
+                            <i class="fas fa-eye mr-2"></i>Preview
+                        </button>
+                        <button class="btn btn-ghost btn-sm" onclick="clearEditor()">
+                            <i class="fas fa-times mr-2"></i>Clear
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Simple editor -->
+                <div class="relative">
+                    <textarea id="editor-textarea" 
+                              class="textarea textarea-bordered w-full h-96 font-mono text-sm"
+                              placeholder="Select a file to edit or create a new one..."
+                              spellcheck="false"
+                              oninput="onEditorInput()"
+                              onselect="updateCursorPosition()"
+                              onkeyup="updateCursorPosition()"></textarea>
+                    
+                    <!-- Editor status bar -->
+                    <div class="flex justify-between items-center mt-2 text-xs text-base-content/50">
+                        <span id="editor-info">Ready</span>
+                        <span id="cursor-position">Line 1, Col 1</span>
+                    </div>
+                </div>
+
+                <!-- Quick actions -->
+                <div class="flex flex-wrap gap-2 mt-4">
+                    <button class="btn btn-outline btn-xs" onclick="insertTemplate('cloud-init-user')">
+                        <i class="fas fa-user mr-1"></i>Add User
+                    </button>
+                    <button class="btn btn-outline btn-xs" onclick="insertTemplate('cloud-init-package')">
+                        <i class="fas fa-box mr-1"></i>Install Packages
+                    </button>
+                    <button class="btn btn-outline btn-xs" onclick="insertTemplate('kickstart-partition')">
+                        <i class="fas fa-hdd mr-1"></i>Partition
+                    </button>
+                    <button class="btn btn-outline btn-xs" onclick="insertTemplate('network-config')">
+                        <i class="fas fa-network-wired mr-1"></i>Network
+                    </button>
+                    <button class="btn btn-outline btn-xs" onclick="validateSyntax()">
+                        <i class="fas fa-check mr-1"></i>Validate
+                    </button>
+                </div>
+            </div>
+        </div>
     </div>
-</div>
 
-<script type="module" src="/public/http/js/provision.js"></script>
+    <!-- Help panel -->
+    <div class="mt-6 bg-base-200 rounded-lg shadow-lg p-4">
+        <div class="flex justify-between items-center mb-2">
+            <h3 class="text-lg font-semibold">Quick Help</h3>
+            <button class="btn btn-ghost btn-xs" onclick="toggleHelp()">
+                <i id="help-toggle" class="fas fa-chevron-up"></i>
+            </button>
+        </div>
+        <div id="help-content" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+            <div>
+                <h4 class="font-semibold mb-2">Cloud-Init</h4>
+                <ul class="space-y-1 text-base-content/70">
+                    <li>• YAML format for Ubuntu/Debian</li>
+                    <li>• Configure users, packages, services</li>
+                    <li>• Network configuration</li>
+                    <li>• SSH keys and security</li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-2">Kickstart</h4>
+                <ul class="space-y-1 text-base-content/70">
+                    <li>• Script format for RHEL/CentOS</li>
+                    <li>• Automated installation</li>
+                    <li>• Partitioning and packages</li>
+                    <li>• Post-install scripts</li>
+                </ul>
+            </div>
+            <div>
+                <h4 class="font-semibold mb-2">Boot Menu</h4>
+                <ul class="space-y-1 text-base-content/70">
+                    <li>• PXE boot configuration</li>
+                    <li>• Kernel parameters</li>
+                    <li>• Menu entries and defaults</li>
+                    <li>• Timeouts and labels</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</main>
+
+<script>
+// Global state
+let currentFile = null;
+let isModified = false;
+
+// File operations
+function loadFile(path, name, language) {
+    currentFile = { path, name, language };
+    
+    // Update UI
+    document.getElementById('current-filename').textContent = name;
+    document.getElementById('current-language').textContent = language;
+    document.getElementById('current-language').className = `badge badge-outline badge-${getLanguageColor(language)}`;
+    document.getElementById('save-btn').disabled = false;
+    
+    // Load file content
+    fetch(`/provision/load-file?path=${encodeURIComponent(path)}`)
+        .then(response => response.text())
+        .then(content => {
+            document.getElementById('editor-textarea').value = content;
+            isModified = false;
+            updateFileStatus();
+            updateEditorInfo();
+        })
+        .catch(error => {
+            console.error('Error loading file:', error);
+            alert('Error loading file: ' + error.message);
+        });
+}
+
+function saveFile() {
+    if (!currentFile) {
+        alert('No file selected');
+        return;
+    }
+    
+    const content = document.getElementById('editor-textarea').value;
+    const formData = new FormData();
+    formData.append('path', currentFile.path);
+    formData.append('content', content);
+    
+    fetch('/provision/save-file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            isModified = false;
+            updateFileStatus();
+            alert('File saved successfully!');
+        } else {
+            alert('Error saving file: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error saving file:', error);
+        alert('Error saving file: ' + error.message);
+    });
+}
+
+function clearEditor() {
+    document.getElementById('editor-textarea').value = '';
+    currentFile = null;
+    isModified = false;
+    document.getElementById('current-filename').textContent = 'No file selected';
+    document.getElementById('current-language').textContent = 'text';
+    document.getElementById('save-btn').disabled = true;
+    updateFileStatus();
+}
+
+function onEditorInput() {
+    isModified = true;
+    updateFileStatus();
+    updateEditorInfo();
+}
+
+function updateCursorPosition() {
+    const textarea = document.getElementById('editor-textarea');
+    const lines = textarea.value.substr(0, textarea.selectionStart).split('\n');
+    const currentLine = lines.length;
+    const currentCol = lines[lines.length - 1].length + 1;
+    document.getElementById('cursor-position').textContent = `Line ${currentLine}, Col ${currentCol}`;
+}
+
+function previewFile() {
+    if (!currentFile) {
+        alert('No file selected');
+        return;
+    }
+    
+    const content = document.getElementById('editor-textarea').value;
+    const filename = currentFile.name || 'Untitled';
+    const language = currentFile.language || 'text';
+    
+    // Create preview modal HTML directly
+    const previewHtml = `
+        <div id="preview-modal" class="modal modal-open">
+            <div class="modal-box max-w-4xl">
+                <div class="flex justify-between items-center mb-4">
+                    <h3 class="font-bold text-lg">Preview: ${filename}</h3>
+                    <div class="flex items-center space-x-2">
+                        <span class="badge badge-outline badge-${getLanguageColor(language)}">${language}</span>
+                    </div>
+                </div>
+                
+                <div class="bg-base-300 p-4 rounded-lg">
+                    <pre id="preview-content" class="text-sm overflow-x-auto max-h-96 whitespace-pre-wrap syntax-highlight">${highlightContent(content, language)}</pre>
+                </div>
+
+                <div class="modal-action">
+                    <button type="button" class="btn" onclick="closePreviewModal()">Close</button>
+                </div>
+            </div>
+        </div>
+        
+        <style>
+        .syntax-comment { color: #6b7280; }
+        .syntax-string { color: #10b981; }
+        .syntax-keyword { color: #3b82f6; font-weight: bold; }
+        .syntax-property { color: #8b5cf6; }
+        .syntax-value { color: #f59e0b; }
+        .syntax-section { color: #ef4444; font-weight: bold; }
+        .syntax-directive { color: #06b6d4; }
+        </style>
+    `;
+    
+    document.getElementById('modal-content').innerHTML = previewHtml;
+}
+
+function closePreviewModal() {
+    document.getElementById('modal-content').innerHTML = '';
+}
+
+
+function highlightContent(content, language) {
+    let highlighted = '';
+    
+    switch (language) {
+        case 'yaml':
+            highlighted = highlightYAML(content);
+            break;
+        case 'kickstart':
+            highlighted = highlightKickstart(content);
+            break;
+        case 'ini':
+            highlighted = highlightINI(content);
+            break;
+        default:
+            highlighted = escapeHtml(content);
+    }
+    
+    return highlighted;
+}
+
+function highlightYAML(content) {
+    return content
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/^(\s*#.*$)/gm, '<span class="syntax-comment">$1</span>')
+        .replace(/^(\s*)([a-zA-Z_][a-zA-Z0-9_-]*)\s*:/gm, '$1<span class="syntax-property">$2</span>:')
+        .replace(/:\s*(['"])(.*?)\1/g, ': <span class="syntax-string">$1$2$1</span>')
+        .replace(/:\s*([^'"\s][^\n]*)/g, ': <span class="syntax-value">$1</span>')
+        .replace(/\b(true|false|null|yes|no)\b/g, '<span class="syntax-keyword">$1</span>');
+}
+
+function highlightKickstart(content) {
+    // Split into lines to avoid regex conflicts
+    return content
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .split('\n')
+        .map(line => {
+            // Skip empty lines
+            if (!line.trim()) return line;
+            
+            // Comment lines (highest priority)
+            if (/^\s*#/.test(line)) {
+                return `<span class="syntax-comment">${line}</span>`;
+            }
+            
+            // Section lines (%packages, %post, etc.)
+            if (/^\s*%\w+/.test(line)) {
+                return `<span class="syntax-section">${line}</span>`;
+            }
+            
+            // Process other lines
+            let processedLine = line;
+            
+            // Highlight strings first
+            processedLine = processedLine.replace(/(['"])(.*?)\1/g, '<span class="syntax-string">$1$2$1</span>');
+            
+            // Highlight directives (--options)
+            processedLine = processedLine.replace(/--([\w-]+)/g, '<span class="syntax-directive">--$1</span>');
+            
+            // Highlight keywords at the beginning of lines
+            processedLine = processedLine.replace(/^(\s*)(auth|url|graphical|firstboot|keyboard|lang|network|rootpw|timezone|clearpart|part|volgroup|logvol|bootloader|autopart|install|text|reboot|poweroff)(\s|$)/g, '$1<span class="syntax-keyword">$2</span>$3');
+            
+            return processedLine;
+        })
+        .join('\n');
+}
+
+function highlightINI(content) {
+    return content
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/^(\s*[#;].*$)/gm, '<span class="syntax-comment">$1</span>')
+        .replace(/^\s*\[([^\]]+)\]/gm, '<span class="syntax-section">[$1]</span>')
+        .replace(/^(\s*)([^=\s]+)\s*=/gm, '$1<span class="syntax-property">$2</span>=')
+        .replace(/=\s*(['"])(.*?)\1/g, '=<span class="syntax-string">$1$2$1</span>')
+        .replace(/=\s*([^'"\s][^\n]*)/g, '=<span class="syntax-value">$1</span>');
+}
+
+function escapeHtml(text) {
+    return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+function updateFileStatus() {
+    const statusEl = document.getElementById('file-status');
+    statusEl.textContent = isModified ? '• Modified' : '• Saved';
+    statusEl.className = isModified ? 'text-warning' : 'text-success';
+}
+
+function updateEditorInfo() {
+    const textarea = document.getElementById('editor-textarea');
+    const lines = textarea.value.split('\n').length;
+    const chars = textarea.value.length;
+    document.getElementById('editor-info').textContent = `${lines} lines, ${chars} characters`;
+}
+
+function getLanguageColor(language) {
+    switch(language) {
+        case 'yaml': return 'success';
+        case 'kickstart': return 'error';
+        case 'ini': return 'info';
+        default: return 'neutral';
+    }
+}
+
+function toggleHelp() {
+    const content = document.getElementById('help-content');
+    const icon = document.getElementById('help-toggle');
+    
+    if (content.style.display === 'none') {
+        content.style.display = 'grid';
+        icon.className = 'fas fa-chevron-up';
+    } else {
+        content.style.display = 'none';
+        icon.className = 'fas fa-chevron-down';
+    }
+}
+
+// File browser filtering
+document.getElementById('file-search').addEventListener('input', filterFiles);
+document.getElementById('type-filter').addEventListener('change', filterFiles);
+document.getElementById('category-filter').addEventListener('change', filterFiles);
+
+function filterFiles() {
+    const search = document.getElementById('file-search').value.toLowerCase();
+    const typeFilter = document.getElementById('type-filter').value;
+    const categoryFilter = document.getElementById('category-filter').value;
+    
+    document.querySelectorAll('.file-item').forEach(item => {
+        const name = item.dataset.name.toLowerCase();
+        const type = item.dataset.type;
+        const category = item.dataset.category;
+        
+        const matchesSearch = name.includes(search);
+        const matchesType = !typeFilter || type === typeFilter;
+        const matchesCategory = !categoryFilter || category === categoryFilter;
+        
+        item.style.display = (matchesSearch && matchesType && matchesCategory) ? 'flex' : 'none';
+    });
+}
+
+// Template insertion helpers
+function insertTemplate(templateType) {
+    const templates = {
+        'cloud-init-user': `users:
+  - name: admin
+    groups: [adm, sudo]
+    shell: /bin/bash
+    sudo: ALL=(ALL) NOPASSWD:ALL
+    ssh_authorized_keys:
+      - ssh-rsa AAAAB3N... your-key-here`,
+        'cloud-init-package': `packages:
+  - nginx
+  - git
+  - curl
+  - vim
+
+package_update: true
+package_upgrade: true`,
+        'kickstart-partition': `clearpart --all --initlabel
+part /boot --fstype=ext4 --size=512
+part pv.01 --size=1 --grow
+volgroup vg_root pv.01
+logvol / --fstype=ext4 --name=lv_root --vgname=vg_root --size=8192`,
+        'network-config': `network:
+  version: 2
+  ethernets:
+    eth0:
+      dhcp4: true
+      dhcp6: false`
+    };
+    
+    const template = templates[templateType];
+    if (template) {
+        const textarea = document.getElementById('editor-textarea');
+        const start = textarea.selectionStart;
+        const end = textarea.selectionEnd;
+        const text = textarea.value;
+        
+        textarea.value = text.substring(0, start) + template + text.substring(end);
+        textarea.focus();
+        textarea.selectionStart = textarea.selectionEnd = start + template.length;
+        
+        isModified = true;
+        updateFileStatus();
+        updateEditorInfo();
+    }
+}
+
+
+// Create new file handler
+function createNewFile(filePath, filename, language, content) {
+    // Set up the current file
+    currentFile = {
+        path: filePath,
+        name: filename,
+        language: language
+    };
+    
+    // Update UI
+    document.getElementById('current-filename').textContent = filename;
+    document.getElementById('current-language').textContent = language;
+    document.getElementById('current-language').className = `badge badge-outline badge-${getLanguageColor(language)}`;
+    document.getElementById('save-btn').disabled = false;
+    
+    // Load content into editor
+    document.getElementById('editor-textarea').value = content;
+    isModified = content.length > 0;
+    updateFileStatus();
+    updateEditorInfo();
+}
+
+// Listen for messages from modal
+window.addEventListener('message', function(event) {
+    if (event.data.type === 'createNewFile') {
+        const file = event.data.file;
+        createNewFile(file.path, file.name, file.language, file.content);
+    }
+});
+
+
+// Initialize
+document.addEventListener('DOMContentLoaded', function() {
+    updateEditorInfo();
+});
+</script>
 {{ end }}

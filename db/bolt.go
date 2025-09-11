@@ -28,10 +28,18 @@ func NewBoltDB(cfg *config.Config) (*BoltDB, error) {
 		bucket: cfg.DB.Bucket,
 	}
 
-	// Ensure bucket exists
-	if err := boltDB.GetOrCreateBucket(context.Background(), cfg.DB.Bucket); err != nil {
-		db.Close()
-		return nil, fmt.Errorf("failed to create bucket: %w", err)
+	// Ensure all required buckets exist
+	requiredBuckets := []string{
+		cfg.DB.Bucket,              // Base bucket
+		cfg.DB.Bucket + "_servers", // DHCP servers bucket
+		cfg.DB.Bucket + "_leases",  // DHCP leases bucket
+	}
+
+	for _, bucketName := range requiredBuckets {
+		if err := boltDB.GetOrCreateBucket(context.Background(), bucketName); err != nil {
+			db.Close()
+			return nil, fmt.Errorf("failed to create bucket %s: %w", bucketName, err)
+		}
 	}
 
 	return boltDB, nil

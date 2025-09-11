@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"os"
 	"testing"
 	"time"
 
@@ -12,9 +13,16 @@ import (
 
 // TestBoltDB_Integration tests BoltDB with a real database file
 func TestBoltDB_Integration(t *testing.T) {
+	// Create test directory
+	testDir := "./testdata"
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+
 	// Create test configuration
 	cfg, err := config.NewConfigBuilder().
-		WithDBPath("./testdata").
+		WithDBPath(testDir).
 		WithDBFile("test.db").
 		WithBucket("test").
 		Build()
@@ -22,9 +30,12 @@ func TestBoltDB_Integration(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create database
-	db, err := NewBoltDB(cfg)
+	database, err := NewBoltDB(cfg)
 	assert.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		database.Close()
+		os.RemoveAll("./testdata") // Clean up test data
+	}()
 
 	ctx := context.Background()
 	bucket := cfg.DB.Bucket
@@ -33,27 +44,34 @@ func TestBoltDB_Integration(t *testing.T) {
 	key := []byte("test-key")
 	value := []byte("test-value")
 
-	err = db.PutKV(ctx, bucket, key, value)
+	err = database.PutKV(ctx, bucket, key, value)
 	assert.NoError(t, err)
 
-	retrievedValue, err := db.GetKV(ctx, bucket, key)
+	retrievedValue, err := database.GetKV(ctx, bucket, key)
 	assert.NoError(t, err)
 	assert.Equal(t, value, retrievedValue)
 
 	// Test DeleteKV
-	err = db.DeleteKV(ctx, bucket, key)
+	err = database.DeleteKV(ctx, bucket, key)
 	assert.NoError(t, err)
 
-	retrievedValue, err = db.GetKV(ctx, bucket, key)
+	retrievedValue, err = database.GetKV(ctx, bucket, key)
 	assert.NoError(t, err)
 	assert.Nil(t, retrievedValue)
 }
 
 // TestGenericRepository tests the generic repository
 func TestGenericRepository(t *testing.T) {
+	// Create test directory
+	testDir := "./testdata"
+	if err := os.MkdirAll(testDir, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	defer os.RemoveAll(testDir)
+
 	// Create test configuration
 	cfg, err := config.NewConfigBuilder().
-		WithDBPath("./testdata").
+		WithDBPath(testDir).
 		WithDBFile("test_repo.db").
 		WithBucket("test").
 		Build()
@@ -61,9 +79,12 @@ func TestGenericRepository(t *testing.T) {
 	assert.NoError(t, err)
 
 	// Create database
-	db, err := NewBoltDB(cfg)
+	database, err := NewBoltDB(cfg)
 	assert.NoError(t, err)
-	defer db.Close()
+	defer func() {
+		database.Close()
+		os.RemoveAll("./testdata") // Clean up test data
+	}()
 
 	// Create repository
 	type TestEntity struct {
@@ -72,7 +93,7 @@ func TestGenericRepository(t *testing.T) {
 		Time time.Time `json:"time"`
 	}
 
-	repo := NewGenericRepository[*TestEntity](db, cfg.DB.Bucket)
+	repo := NewGenericRepository[*TestEntity](database, cfg.DB.Bucket)
 	ctx := context.Background()
 
 	// Test Save and Get

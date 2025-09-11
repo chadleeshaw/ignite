@@ -60,6 +60,7 @@ func (a *Application) Start() error {
 
 	// Create HTTP router with injected dependencies and static file handling
 	router := routes.SetupWithContainerAndStatic(handlerContainer, a.staticHandler)
+	log.Printf("Embedded HTTP server configured")
 
 	// Create HTTP server
 	a.httpServer = &http.Server{
@@ -69,7 +70,7 @@ func (a *Application) Start() error {
 
 	// Start HTTP server
 	go func() {
-		log.Printf("HTTP server starting on port %s", a.container.Config.HTTP.Port)
+		log.Printf("HTTP API server started on port %s", a.container.Config.HTTP.Port)
 		if err := a.httpServer.ListenAndServe(); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("HTTP server failed: %v", err)
 		}
@@ -118,4 +119,13 @@ func (a *Application) Run() error {
 
 	log.Println("Application stopped")
 	return nil
+}
+
+// GetContainer returns the application's container for access to services
+func (a *Application) GetContainer() *handlers.Container {
+	return &handlers.Container{
+		ServerService: a.container.ServerService,
+		LeaseService:  a.container.LeaseService,
+		Config:        a.container.Config,
+	}
 }

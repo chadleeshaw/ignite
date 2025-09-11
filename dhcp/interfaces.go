@@ -49,6 +49,7 @@ type LeaseService interface {
 	GetLeaseByMAC(ctx context.Context, mac string) (*Lease, error)
 	GetLeasesByServer(ctx context.Context, serverID string) ([]*Lease, error)
 	CleanupExpiredLeases(ctx context.Context) error
+	UpdateLease(ctx context.Context, lease *Lease) error
 }
 
 // DHCPHandler defines the interface for handling DHCP packets

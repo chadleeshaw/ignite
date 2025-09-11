@@ -7,6 +7,7 @@ require (
 	github.com/gorilla/mux v1.8.1
 	github.com/krolaw/dhcp4 v0.0.0-20190909130307-a50d88189771
 	github.com/pin/tftp/v3 v3.1.0
+	github.com/stmcginnis/gofish v0.20.0
 	github.com/stretchr/testify v1.11.1
 	go.etcd.io/bbolt v1.3.11
 )

@@ -1,0 +1,71 @@
+<div class="flex justify-between items-center mb-6">
+    <h1 class="text-2xl font-bold">{{.Title}}</h1>
+    <div class="flex items-center space-x-4">
+        <span class="badge badge-{{if eq .OverallStatus "healthy"}}success{{else if eq .OverallStatus "partial"}}warning{{else}}error{{end}} badge-lg">
+            {{if eq .OverallStatus "healthy"}}System Healthy{{else if eq .OverallStatus "partial"}}Partial Service{{else}}System Down{{end}}
+        </span>
+        <span class="text-sm text-base-content/70">Last Updated: {{.LastUpdated.Format "15:04:05"}}</span>
+    </div>
+</div>
+
+<!-- Core Services -->
+<div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3 mb-8">
+    <!-- HTTP/API Server -->
+    <div class="bg-base-200 p-4 rounded-lg shadow-lg">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold">{{.HTTPServer.Name}}</h3>
+            <span class="badge badge-{{if eq .HTTPServer.Status "running"}}success{{else}}error{{end}}">{{.HTTPServer.Status}}</span>
+        </div>
+        <p class="text-sm text-base-content/80 mb-2">{{.HTTPServer.Description}}</p>
+        <div class="text-xs text-base-content/60">
+            <p>{{.HTTPServer.Details}}</p>
+            <p>Last Check: {{.HTTPServer.LastCheck.Format "15:04:05"}}</p>
+        </div>
+    </div>
+
+    <!-- TFTP Server -->
+    <div class="bg-base-200 p-4 rounded-lg shadow-lg">
+        <div class="flex items-center justify-between mb-2">
+            <h3 class="font-semibold">{{.TFTPServer.Name}}</h3>
+            <span class="badge badge-{{if eq .TFTPServer.Status "running"}}success{{else}}error{{end}}">{{.TFTPServer.Status}}</span>
+        </div>
+        <p class="text-sm text-base-content/80 mb-2">{{.TFTPServer.Description}}</p>
+        <div class="text-xs text-base-content/60">
+            <p>{{.TFTPServer.Details}}</p>
+            <p>Last Check: {{.TFTPServer.LastCheck.Format "15:04:05"}}</p>
+        </div>
+    </div>
+</div>
+
+<!-- DHCP Servers -->
+<div class="mb-4">
+    <h2 class="text-xl font-bold mb-4">DHCP Servers</h2>
+    {{if .DHCPServers}}
+        <div class="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+            {{range .DHCPServers}}
+            <div class="bg-base-200 p-4 rounded-lg shadow-lg">
+                <div class="flex items-center justify-between mb-2">
+                    <h3 class="font-semibold">Server {{.IP}}</h3>
+                    <span class="badge badge-{{if eq .Status "running"}}success{{else if eq .Status "configured"}}warning{{else}}error{{end}}">{{.Status}}</span>
+                </div>
+                <p class="text-sm text-base-content/80 mb-2">{{.Description}}</p>
+                <div class="text-xs text-base-content/60">
+                    <p>Active Leases: {{.LeaseCount}}</p>
+                    <p>Server ID: {{.ID}}</p>
+                    <p>Last Check: {{.LastCheck.Format "15:04:05"}}</p>
+                </div>
+            </div>
+            {{end}}
+        </div>
+    {{else}}
+        <div class="bg-base-200 p-4 rounded-lg shadow-lg text-center">
+            <p class="text-base-content/70">No DHCP servers configured</p>
+            <a href="/dhcp" class="btn btn-primary btn-sm mt-2">Configure DHCP Server</a>
+        </div>
+    {{end}}
+</div>
+
+<!-- Auto-refresh indicator -->
+<div class="text-center text-xs text-base-content/50 mt-6">
+    <p>Status automatically refreshes every 10 seconds</p>
+</div>

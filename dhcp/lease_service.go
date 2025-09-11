@@ -141,6 +141,11 @@ func (s *DHCPLeaseService) CleanupExpiredLeases(ctx context.Context) error {
 	return s.leaseRepo.CleanupExpired(ctx)
 }
 
+// UpdateLease updates an existing lease
+func (s *DHCPLeaseService) UpdateLease(ctx context.Context, lease *Lease) error {
+	return s.leaseRepo.Save(ctx, lease)
+}
+
 // isIPAvailable checks if an IP is available for assignment
 func (s *DHCPLeaseService) isIPAvailable(ctx context.Context, serverID string, ip net.IP, excludeMAC string) bool {
 	leases, err := s.leaseRepo.GetByServerID(ctx, serverID)
