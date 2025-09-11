@@ -42,6 +42,7 @@ type Lease struct {
 type BootMenu struct {
 	Filename     string `json:"filename"`
 	OS           string `json:"os"`
+	Version      string `json:"version"`
 	TemplateType string `json:"template_type"`
 	TemplateName string `json:"template_name"`
 	Hostname     string `json:"hostname"`

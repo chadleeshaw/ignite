@@ -23,6 +23,7 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	statusHandlers := handlers.NewStatusHandlers(container)
 	modalHandlers := handlers.NewModalHandlers(container)
 	indexHandlers := handlers.NewIndexHandlers(container)
+	osImageHandlers := handlers.NewOSImageHandlers(container)
 
 	// Setup all routes
 	setupIndexRoutes(router, indexHandlers)
@@ -32,6 +33,7 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	setupProvisionRoutes(router, provisionHandlers)
 	setupBootMenuRoutes(router, bootMenuHandlers)
 	setupIPMIRoutes(router, ipmiHandlers)
+	setupOSImageRoutes(router, osImageHandlers)
 	setupStatusRoutes(router, statusHandlers)
 
 	return router
@@ -123,4 +125,23 @@ func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
 	// GET routes
 	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET").Name("Status")
 	router.HandleFunc("/status/content", handlers.HandleStatusContent).Methods("GET").Name("StatusContent")
+}
+
+// setupOSImageRoutes configures OS image management routes
+func setupOSImageRoutes(router *mux.Router, handlers *handlers.OSImageHandlers) {
+	// GET routes
+	router.HandleFunc("/osimages", handlers.OSImagesPage).Methods("GET").Name("OSImagesPage")
+	router.HandleFunc("/osimages/list", handlers.ListOSImages).Methods("GET").Name("ListOSImages")
+	router.HandleFunc("/osimages/download/status/{id}", handlers.GetDownloadStatus).Methods("GET").Name("GetDownloadStatus")
+	router.HandleFunc("/osimages/info/{id}", handlers.GetOSImageInfo).Methods("GET").Name("GetOSImageInfo")
+	router.HandleFunc("/osimages/versions", handlers.GetAvailableVersions).Methods("GET").Name("GetAvailableVersions")
+	router.HandleFunc("/osimages/by-os", handlers.GetOSImagesByOS).Methods("GET").Name("GetOSImagesByOS")
+	
+	// POST routes
+	router.HandleFunc("/osimages/download", handlers.DownloadOSImage).Methods("POST").Name("DownloadOSImage")
+	router.HandleFunc("/osimages/set-default/{id}", handlers.SetDefaultVersion).Methods("POST").Name("SetDefaultVersion")
+	router.HandleFunc("/osimages/cancel/{id}", handlers.CancelDownload).Methods("POST").Name("CancelDownload")
+	
+	// DELETE routes
+	router.HandleFunc("/osimages/delete/{id}", handlers.DeleteOSImage).Methods("DELETE").Name("DeleteOSImage")
 }

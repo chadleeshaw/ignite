@@ -101,7 +101,8 @@ func (b *BoltDB) GetAllKV(ctx context.Context, bucket string) (map[string][]byte
 	err := b.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket([]byte(bucket))
 		if bkt == nil {
-			return fmt.Errorf("bucket %q not found", bucket)
+			// Return empty map if bucket doesn't exist
+			return nil
 		}
 
 		return bkt.ForEach(func(k, v []byte) error {

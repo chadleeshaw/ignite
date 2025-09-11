@@ -25,6 +25,7 @@
             <div class="flex items-center space-x-2">
                 <button class="btn btn-sm btn-success" hx-post="/dhcp/start?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-play"></i></button>
                 <button class="btn btn-sm btn-error" hx-post="/dhcp/stop?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-stop"></i></button>
+                <button class="btn btn-sm btn-info" hx-get="/open_modal?template=dhcpmodal&server_id={{ .ID }}" hx-target="#modal-content" hx-swap="innerHTML"><i class="fas fa-edit"></i></button>
                 <button class="btn btn-sm btn-warning" hx-post="/dhcp/delete?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-trash"></i></button>
             </div>
         </div>

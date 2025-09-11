@@ -29,6 +29,8 @@ func init() {
 // LoadTemplates initializes and returns a map of templates for different pages.
 func LoadTemplates() map[string]*template.Template {
 	const baseTemplate = "templates/base.templ"
+	
+	
 	return map[string]*template.Template{
 		"index":              template.Must(template.ParseFiles(baseTemplate, "templates/pages/index.templ")),
 		"dhcp":               template.Must(template.ParseFiles(baseTemplate, "templates/pages/dhcp.templ")),
@@ -36,6 +38,7 @@ func LoadTemplates() map[string]*template.Template {
 		"status":             template.Must(template.ParseFiles(baseTemplate, "templates/pages/status.templ")),
 		"status-content":     template.Must(template.ParseFiles("templates/partials/status-content.templ")),
 		"provision":          template.Must(template.ParseFiles(baseTemplate, "templates/pages/provision.templ")),
+		"osimages":           template.Must(template.ParseFiles(baseTemplate, "templates/pages/osimages.templ")),
 		"dhcpmodal":          template.Must(template.ParseFiles("templates/modals/dhcpmodal.templ")),
 		"reservemodal":       template.Must(template.ParseFiles("templates/modals/reservemodal.templ")),
 		"bootmodal":          template.Must(template.ParseFiles("templates/modals/bootmodal.templ")),
@@ -101,7 +104,12 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 
 		switch template {
 		case "dhcpmodal":
-			data = NewDHCPModal()
+			data, err = NewDHCPModal(w, r, h.container)
+			if err != nil {
+				log.Printf("Error creating DHCP modal data: %v", err)
+				http.Error(w, "Failed to prepare DHCP data: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 		case "reservemodal":
 			data, err = NewReserveModal(w, r, h.container)
 			if err != nil {
@@ -152,12 +160,56 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 }
 
 // NewDHCPModal creates data for DHCP modal
-func NewDHCPModal() map[string]any {
+func NewDHCPModal(w http.ResponseWriter, r *http.Request, container *Container) (map[string]any, error) {
 	networks := getLocalIPAddresses()
-	return map[string]any{
-		"title":    "DHCP Configuration",
-		"Networks": networks,
+	
+	// Initialize data with defaults for new server
+	data := map[string]any{
+		"title":       "DHCP Configuration",
+		"Networks":    networks,
+		"tftpip":      "",
+		"startip":     "",
+		"endip":       "",
+		"gateway":     "",
+		"dns":         "",
+		"subnet":      "",
+		"lease_time":  "",
+		"domain":      "",
+		"bootfile":    "boot-bios/pxelinux.0", // Default boot file
+		"IsEdit":      false,
 	}
+	
+	// Check if we're editing an existing server
+	serverID := r.URL.Query().Get("server_id")
+	if serverID != "" && container != nil {
+		ctx := r.Context()
+		server, err := container.ServerService.GetServer(ctx, serverID)
+		if err != nil {
+			return nil, fmt.Errorf("failed to get server: %w", err)
+		}
+		
+		// Populate with existing server data
+		data["tftpip"] = server.IP.String()
+		data["startip"] = server.IPStart.String()  
+		
+		// Calculate end IP from start IP and lease range
+		startInt := ipToInt(server.IPStart)
+		endInt := startInt + uint32(server.LeaseRange) - 1
+		endIP := net.IPv4(byte(endInt>>24), byte(endInt>>16), byte(endInt>>8), byte(endInt))
+		data["endip"] = endIP.String()
+		
+		data["gateway"] = server.Options.Gateway.String()
+		data["dns"] = server.Options.DNS.String()
+		data["subnet"] = server.Options.SubnetMask.String()
+		data["lease_time"] = fmt.Sprintf("%.0f", server.LeaseDuration.Hours())
+		data["domain"] = ""  // Not stored in current model
+		data["bootfile"] = "boot-bios/pxelinux.0"  // Default value
+		data["IsEdit"] = true
+		data["server_id"] = serverID
+		data["title"] = "Edit DHCP Server"
+	}
+	
+	return data, nil
 }
 
 // getLocalIPAddresses returns a list of local machine IP addresses
@@ -270,12 +322,31 @@ func NewBootModal(w http.ResponseWriter, r *http.Request, container *Container) 
 
 	ctx := r.Context()
 
+	// Get available OS images grouped by OS
+	var osImages map[string][]map[string]interface{}
+	if container.OSImageService != nil {
+		allImages, err := container.OSImageService.GetAllOSImages(ctx)
+		if err == nil {
+			osImages = make(map[string][]map[string]interface{})
+			for _, image := range allImages {
+				if osImages[image.OS] == nil {
+					osImages[image.OS] = []map[string]interface{}{}
+				}
+				osImages[image.OS] = append(osImages[image.OS], map[string]interface{}{
+					"version": image.Version,
+					"active":  image.Active,
+				})
+			}
+		}
+	}
+
 	// Initialize data with basic required fields
 	data := map[string]any{
 		"title":         "Boot Menu",
 		"tftpip":        network,
 		"mac":           mac,
 		"os":            "",
+		"version":       "",
 		"typeSelect":    "",
 		"template_name": "",
 		"hostname":      "",
@@ -283,6 +354,7 @@ func NewBootModal(w http.ResponseWriter, r *http.Request, container *Container) 
 		"subnet":        "",
 		"gateway":       "",
 		"dns":           "",
+		"osImages":      osImages,
 	}
 
 	// Try to load existing boot menu data from the lease
@@ -292,6 +364,9 @@ func NewBootModal(w http.ResponseWriter, r *http.Request, container *Container) 
 			// Populate form with existing boot menu data
 			if lease.Menu.OS != "" {
 				data["os"] = lease.Menu.OS
+			}
+			if lease.Menu.Version != "" {
+				data["version"] = lease.Menu.Version
 			}
 			if lease.Menu.TemplateType != "" {
 				data["typeSelect"] = lease.Menu.TemplateType
@@ -395,4 +470,26 @@ func NewProvisionNewFileModal() map[string]any {
 	return map[string]any{
 		"title": "Create New File",
 	}
+}
+
+// formatFileSize formats file size in bytes to human readable format
+func formatFileSize(bytes int64) string {
+	const unit = 1024
+	if bytes < unit {
+		return fmt.Sprintf("%d B", bytes)
+	}
+	div, exp := int64(unit), 0
+	for n := bytes / unit; n >= unit; n /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
+}
+
+// ipToInt converts IP to uint32 (helper function for IP calculations)
+func ipToInt(ip net.IP) uint32 {
+	if len(ip) == 16 {
+		ip = ip[12:16] // Convert IPv6 to IPv4 if needed
+	}
+	return uint32(ip[0])<<24 + uint32(ip[1])<<16 + uint32(ip[2])<<8 + uint32(ip[3])
 }

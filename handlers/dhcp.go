@@ -187,13 +187,50 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Check if this is an edit or create operation
+	serverID := r.FormValue("server_id")
+	isEdit := serverID != ""
+
 	// Parse form data
 	networkStr := r.FormValue("network")
 	subnetStr := r.FormValue("subnet")
 	gatewayStr := r.FormValue("gateway")
 	dnsStr := r.FormValue("dns")
 	startIPStr := r.FormValue("startIP")
-	numLeasesStr := r.FormValue("numLeases")
+	
+	// Handle either numLeases (create) or endIP (edit)
+	var numLeases int
+	if isEdit {
+		endIPStr := r.FormValue("endIP")
+		endIP := net.ParseIP(endIPStr)
+		if endIP == nil {
+			http.Error(w, "Invalid end IP", http.StatusBadRequest)
+			return
+		}
+		
+		startIP := net.ParseIP(startIPStr)
+		if startIP == nil {
+			http.Error(w, "Invalid start IP", http.StatusBadRequest)
+			return
+		}
+		
+		// Calculate numLeases from start and end IP
+		startInt := ipToInt(startIP)
+		endInt := ipToInt(endIP)
+		if endInt < startInt {
+			http.Error(w, "End IP must be greater than start IP", http.StatusBadRequest)
+			return
+		}
+		numLeases = int(endInt - startInt + 1)
+	} else {
+		numLeasesStr := r.FormValue("numLeases")
+		var err error
+		numLeases, err = strconv.Atoi(numLeasesStr)
+		if err != nil || numLeases <= 0 {
+			http.Error(w, "Invalid number of leases", http.StatusBadRequest)
+			return
+		}
+	}
 
 	// Validate and parse inputs
 	network := net.ParseIP(networkStr)
@@ -226,12 +263,6 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	numLeases, err := strconv.Atoi(numLeasesStr)
-	if err != nil || numLeases <= 0 {
-		http.Error(w, "Invalid number of leases", http.StatusBadRequest)
-		return
-	}
-
 	// Create server configuration
 	config := dhcp.ServerConfig{
 		IP:            network,
@@ -243,17 +274,31 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		LeaseDuration: 2 * time.Hour, // Default lease duration
 	}
 
-	// Create server
-	server, err := h.serverService.CreateServer(ctx, config)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create server: %v", err), http.StatusInternalServerError)
-		return
-	}
+	if isEdit {
+		// Update existing server
+		err := h.serverService.UpdateServer(ctx, serverID, config)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to update server: %v", err), http.StatusInternalServerError)
+			return
+		}
+		
+		// Redirect back to DHCP page to show the updated server list
+		w.Header().Set("HX-Redirect", "/dhcp")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("DHCP server updated successfully"))
+	} else {
+		// Create new server
+		server, err := h.serverService.CreateServer(ctx, config)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create server: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	// Redirect back to DHCP page to show the updated server list
-	w.Header().Set("HX-Redirect", "/dhcp")
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fmt.Sprintf("DHCP server created with ID: %s", server.ID)))
+		// Redirect back to DHCP page to show the updated server list
+		w.Header().Set("HX-Redirect", "/dhcp")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(fmt.Sprintf("DHCP server created with ID: %s", server.ID)))
+	}
 }
 
 // ReserveLease handles POST /dhcp/submit_reserve

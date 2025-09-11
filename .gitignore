@@ -6,6 +6,8 @@
 .grok
 ignite.db
 ignite
+initrd.img
+vmlinuz
 bin
 public/node_modules
 public/http/css/tailwind.css

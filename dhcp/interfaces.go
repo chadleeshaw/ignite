@@ -33,6 +33,7 @@ type LeaseRepository interface {
 // ServerService defines the interface for DHCP server management
 type ServerService interface {
 	CreateServer(ctx context.Context, config ServerConfig) (*Server, error)
+	UpdateServer(ctx context.Context, serverID string, config ServerConfig) error
 	StartServer(ctx context.Context, serverID string) error
 	StopServer(ctx context.Context, serverID string) error
 	DeleteServer(ctx context.Context, serverID string) error
