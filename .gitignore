@@ -10,6 +10,7 @@ ignite
 initrd.img
 vmlinuz
 bin
+public/tftp/*
 public/node_modules
 public/http/css/tailwind.css
 public/tftp/pxelinux.cfg/*
