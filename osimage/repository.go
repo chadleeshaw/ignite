@@ -26,13 +26,13 @@ func (r *OSImageRepositoryImpl) Save(ctx context.Context, image *OSImage) error 
 	if image.ID == "" {
 		image.ID = uuid.New().String()
 	}
-	
+
 	now := time.Now()
 	if image.CreatedAt.IsZero() {
 		image.CreatedAt = now
 	}
 	image.UpdatedAt = now
-	
+
 	return r.GenericRepository.Save(ctx, image.ID, *image)
 }
 
@@ -51,13 +51,13 @@ func (r *OSImageRepositoryImpl) GetAll(ctx context.Context) ([]*OSImage, error) 
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var images []*OSImage
 	for _, image := range imagesMap {
 		imageCopy := image
 		images = append(images, &imageCopy)
 	}
-	
+
 	return images, nil
 }
 
@@ -67,14 +67,14 @@ func (r *OSImageRepositoryImpl) GetByOS(ctx context.Context, os string) ([]*OSIm
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var filtered []*OSImage
 	for _, image := range allImages {
 		if image.OS == os {
 			filtered = append(filtered, image)
 		}
 	}
-	
+
 	return filtered, nil
 }
 
@@ -84,13 +84,13 @@ func (r *OSImageRepositoryImpl) GetByOSAndVersion(ctx context.Context, os, versi
 	if err != nil {
 		return nil, err
 	}
-	
+
 	for _, image := range allImages {
 		if image.OS == os && image.Version == version {
 			return image, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("OS image not found: %s %s", os, version)
 }
 
@@ -100,13 +100,13 @@ func (r *OSImageRepositoryImpl) GetDefaultVersion(ctx context.Context, os string
 	if err != nil {
 		return nil, err
 	}
-	
+
 	for _, image := range allImages {
 		if image.Active {
 			return image, nil
 		}
 	}
-	
+
 	return nil, fmt.Errorf("no default version found for OS: %s", os)
 }
 
@@ -122,13 +122,13 @@ func (r *OSImageRepositoryImpl) SetDefault(ctx context.Context, id string) error
 	if err != nil {
 		return err
 	}
-	
+
 	// First, unset all other images for this OS as default
 	allImages, err := r.GetByOS(ctx, image.OS)
 	if err != nil {
 		return err
 	}
-	
+
 	for _, img := range allImages {
 		if img.Active {
 			img.Active = false
@@ -137,7 +137,7 @@ func (r *OSImageRepositoryImpl) SetDefault(ctx context.Context, id string) error
 			}
 		}
 	}
-	
+
 	// Set the target image as default
 	image.Active = true
 	return r.Save(ctx, image)
@@ -160,11 +160,11 @@ func (r *DownloadStatusRepositoryImpl) Save(ctx context.Context, status *Downloa
 	if status.ID == "" {
 		status.ID = uuid.New().String()
 	}
-	
+
 	if status.StartedAt.IsZero() {
 		status.StartedAt = time.Now()
 	}
-	
+
 	return r.GenericRepository.Save(ctx, status.ID, *status)
 }
 
@@ -183,7 +183,7 @@ func (r *DownloadStatusRepositoryImpl) GetActive(ctx context.Context) ([]*Downlo
 	if err != nil {
 		return nil, err
 	}
-	
+
 	var active []*DownloadStatus
 	for _, status := range allStatusMap {
 		if status.Status == "downloading" || status.Status == "queued" {
@@ -191,7 +191,7 @@ func (r *DownloadStatusRepositoryImpl) GetActive(ctx context.Context) ([]*Downlo
 			active = append(active, &statusCopy)
 		}
 	}
-	
+
 	return active, nil
 }
 

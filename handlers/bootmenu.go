@@ -169,7 +169,7 @@ func (h *BootMenuHandlers) osToName(os string) string {
 // If a specific version is provided, it tries to find that version, otherwise uses the default version.
 func (h *BootMenuHandlers) osToKernel(os, version string) string {
 	ctx := context.Background()
-	
+
 	if h.container.OSImageService != nil {
 		// If a specific version is requested, try to find that exact version
 		if version != "" {
@@ -181,13 +181,13 @@ func (h *BootMenuHandlers) osToKernel(os, version string) string {
 				}
 			}
 		}
-		
+
 		// Fallback to default version
 		if image, err := h.container.OSImageService.GetDefaultVersion(ctx, os); err == nil {
 			return image.KernelPath
 		}
 	}
-	
+
 	// Final fallback to legacy path structure
 	return fmt.Sprintf("%s/vmlinuz", h.osToName(os))
 }
@@ -196,7 +196,7 @@ func (h *BootMenuHandlers) osToKernel(os, version string) string {
 // If a specific version is provided, it tries to find that version, otherwise uses the default version.
 func (h *BootMenuHandlers) osToInitrd(os, version string) string {
 	ctx := context.Background()
-	
+
 	if h.container.OSImageService != nil {
 		// If a specific version is requested, try to find that exact version
 		if version != "" {
@@ -208,13 +208,13 @@ func (h *BootMenuHandlers) osToInitrd(os, version string) string {
 				}
 			}
 		}
-		
+
 		// Fallback to default version
 		if image, err := h.container.OSImageService.GetDefaultVersion(ctx, os); err == nil {
 			return image.InitrdPath
 		}
 	}
-	
+
 	// Final fallback to legacy path structure
 	return fmt.Sprintf("%s/initrd.img", h.osToName(os))
 }

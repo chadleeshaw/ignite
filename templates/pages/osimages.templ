@@ -121,8 +121,9 @@
                                     {{if not .Active}}
                                     <button class="btn btn-xs btn-error" 
                                             hx-delete="/osimages/delete/{{.ID}}"
-                                            hx-target="#main-content"
-                                            hx-swap="outerHTML"
+                                            hx-trigger="click"
+                                            hx-swap="none"
+                                            hx-on::after-request="window.location.reload()"
                                             hx-confirm="Are you sure you want to delete this OS image?">
                                         Delete
                                     </button>
@@ -183,8 +184,9 @@
                     <span class="label-text">Architecture</span>
                 </label>
                 <select name="architecture" class="select select-bordered w-full">
-                    <option value="x86_64">x86_64</option>
-                    <option value="arm64">ARM64</option>
+                    {{range .Architectures}}
+                    <option value="{{.}}">{{.}}</option>
+                    {{end}}
                 </select>
             </div>
             
@@ -252,6 +254,7 @@ function showOSImageInfo(imageId) {
                     <div><strong>Initrd Path:</strong> ${data.initrd_path}</div>
                     <div><strong>Kernel Size:</strong> ${formatBytes(data.kernel_size)}</div>
                     <div><strong>Initrd Size:</strong> ${formatBytes(data.initrd_size)}</div>
+                    <div><strong>Download URL:</strong> <a href="${data.download_url || '#'}" target="_blank" class="link link-primary text-xs break-all">${data.download_url || 'N/A'}</a></div>
                     <div><strong>Checksum:</strong> <code class="text-xs">${data.checksum}</code></div>
                     <div><strong>Created:</strong> ${new Date(data.created_at).toLocaleString()}</div>
                     <div><strong>Updated:</strong> ${new Date(data.updated_at).toLocaleString()}</div>

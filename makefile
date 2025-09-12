@@ -15,7 +15,7 @@ run: build
 # Development mode (no build, just run)
 dev:
 	@echo "Starting development server..."
-	@go run main.go
+	@go run cmd/main.go
 
 # Run tests
 test:

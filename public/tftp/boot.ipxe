@@ -2,8 +2,8 @@
 
 # iPXE Boot Script for Ignite (Auto-generated)
 dhcp
-set server-ip 172.20.0.1
-set base-url http://172.20.0.1:8080
+set server-ip 192.168.1.29
+set base-url http://192.168.1.29:8080
 
 # Show network info
 echo Network configuration:
@@ -17,6 +17,7 @@ menu Ignite PXE Boot Menu
 item --gap -- Operating Systems:
 item centos CentOS Stream 9
 item ubuntu Ubuntu 24.04
+item nixos NixOS 24.05
 item --gap -- Tools:
 item memtest Memory Test
 item local Boot from local disk
@@ -29,15 +30,22 @@ goto ${selected}
 
 :centos
 echo Booting CentOS Stream 9...
-kernel ${base-url}/centos/9/vmlinuz initrd=centos/9/initrd.img inst.repo=http://172.20.0.1:8080/centos/ quiet
+kernel ${base-url}/centos/9/vmlinuz initrd=centos/9/initrd.img inst.repo=http://192.168.1.29:8080/centos/ quiet
 initrd ${base-url}/centos/9/initrd.img
 boot
 
 
 :ubuntu
 echo Booting Ubuntu 24.04...
-kernel ${base-url}/ubuntu/24.04/vmlinuz initrd=ubuntu/24.04/initrd boot=casper netboot=url fetch=http://172.20.0.1:8080/ubuntu/ quiet splash
+kernel ${base-url}/ubuntu/24.04/vmlinuz initrd=ubuntu/24.04/initrd boot=casper netboot=url fetch=http://192.168.1.29:8080/ubuntu/ quiet splash
 initrd ${base-url}/ubuntu/24.04/initrd
+boot
+
+
+:nixos
+echo Booting NixOS 24.05...
+kernel ${base-url}/nixos/24.05/bzImage-x86_64-linux initrd=nixos/24.05/initrd-x86_64-linux init=/nix/store/.../init boot.shell_on_fail console=ttyS0
+initrd ${base-url}/nixos/24.05/initrd-x86_64-linux
 boot
 
 

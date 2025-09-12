@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
@@ -196,7 +197,7 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 	gatewayStr := r.FormValue("gateway")
 	dnsStr := r.FormValue("dns")
 	startIPStr := r.FormValue("startIP")
-	
+
 	// Always use endIP approach now
 	endIPStr := r.FormValue("endIP")
 	endIP := net.ParseIP(endIPStr)
@@ -204,13 +205,13 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, "Invalid end IP", http.StatusBadRequest)
 		return
 	}
-	
+
 	startIP := net.ParseIP(startIPStr)
 	if startIP == nil {
 		http.Error(w, "Invalid start IP", http.StatusBadRequest)
 		return
 	}
-	
+
 	// Calculate numLeases from start and end IP
 	startInt := ipToInt(startIP)
 	endInt := ipToInt(endIP)
@@ -263,7 +264,7 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 			http.Error(w, fmt.Sprintf("Failed to update server: %v", err), http.StatusInternalServerError)
 			return
 		}
-		
+
 		// Redirect back to DHCP page to show the updated server list
 		w.Header().Set("HX-Redirect", "/dhcp")
 		w.WriteHeader(http.StatusOK)
@@ -398,7 +399,7 @@ func (h *DHCPHandlers) AddManualLease(w http.ResponseWriter, r *http.Request) {
 
 	// Check if it should be a static reservation
 	isStatic := staticStr == "true"
-	
+
 	if isStatic {
 		// Create a reserved lease
 		err = h.leaseService.ReserveLease(ctx, serverID, macStr, ip)
@@ -424,26 +425,26 @@ func (h *DHCPHandlers) AddManualLease(w http.ResponseWriter, r *http.Request) {
 // UpdateLeaseState handles POST /dhcp/lease/{mac}/state
 func (h *DHCPHandlers) UpdateLeaseState(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	mac := r.URL.Query().Get("mac")
 	newState := r.FormValue("state")
 	source := r.FormValue("source")
-	
+
 	if mac == "" || newState == "" {
 		http.Error(w, "MAC address and state are required", http.StatusBadRequest)
 		return
 	}
-	
+
 	if source == "" {
 		source = "manual"
 	}
-	
+
 	err := h.leaseService.UpdateLeaseState(ctx, mac, newState, source)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to update lease state: %v", err), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status": "success", "message": "Lease state updated successfully"}`))
@@ -452,19 +453,19 @@ func (h *DHCPHandlers) UpdateLeaseState(w http.ResponseWriter, r *http.Request) 
 // RecordHeartbeat handles POST /dhcp/lease/{mac}/heartbeat
 func (h *DHCPHandlers) RecordHeartbeat(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	mac := r.URL.Query().Get("mac")
 	if mac == "" {
 		http.Error(w, "MAC address is required", http.StatusBadRequest)
 		return
 	}
-	
+
 	err := h.leaseService.RecordHeartbeat(ctx, mac)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to record heartbeat: %v", err), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte(`{"status": "success", "message": "Heartbeat recorded"}`))
@@ -473,24 +474,28 @@ func (h *DHCPHandlers) RecordHeartbeat(w http.ResponseWriter, r *http.Request) {
 // GetLeaseStateHistory handles GET /dhcp/lease/{mac}/history
 func (h *DHCPHandlers) GetLeaseStateHistory(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
-	
+
 	mac := r.URL.Query().Get("mac")
 	if mac == "" {
 		http.Error(w, "MAC address is required", http.StatusBadRequest)
 		return
 	}
-	
+
 	history, err := h.leaseService.GetLeaseStateHistory(ctx, mac)
 	if err != nil {
 		http.Error(w, fmt.Sprintf("Failed to get lease history: %v", err), http.StatusInternalServerError)
 		return
 	}
-	
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	
-	// Simple JSON response - in a real app you'd use json.Marshal
-	fmt.Fprintf(w, `{"mac": "%s", "history": %d}`, mac, len(history))
+
+	// Return proper JSON with history data
+	response := map[string]interface{}{
+		"mac":     mac,
+		"history": history,
+	}
+	json.NewEncoder(w).Encode(response)
 }
 
 // Helper methods

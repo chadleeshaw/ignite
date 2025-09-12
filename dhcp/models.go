@@ -28,18 +28,18 @@ type DHCPOptions struct {
 
 // Lease represents an IP lease assignment
 type Lease struct {
-	ID             string             `json:"id"`
-	IP             net.IP             `json:"ip"`
-	MAC            string             `json:"mac"`
-	Expiry         time.Time          `json:"expiry"`
-	Reserved       bool               `json:"reserved"`
-	ServerID       string             `json:"server_id"`
-	Menu           BootMenu           `json:"menu"`
-	IPMI           IPMI               `json:"ipmi"`
-	State          string             `json:"state"`
-	StateUpdatedAt time.Time          `json:"state_updated_at"`
-	LastSeen       time.Time          `json:"last_seen"`
-	StateHistory   []StateTransition  `json:"state_history"`
+	ID             string            `json:"id"`
+	IP             net.IP            `json:"ip"`
+	MAC            string            `json:"mac"`
+	Expiry         time.Time         `json:"expiry"`
+	Reserved       bool              `json:"reserved"`
+	ServerID       string            `json:"server_id"`
+	Menu           BootMenu          `json:"menu"`
+	IPMI           IPMI              `json:"ipmi"`
+	State          string            `json:"state"`
+	StateUpdatedAt time.Time         `json:"state_updated_at"`
+	LastSeen       time.Time         `json:"last_seen"`
+	StateHistory   []StateTransition `json:"state_history"`
 }
 
 // StateTransition represents a state change event
@@ -57,7 +57,7 @@ const (
 	StateBooting      = "booting"       // PXE config delivered, machine is booting
 	StateImaging      = "imaging"       // OS installation/imaging in progress
 	StateImaged       = "imaged"        // OS imaging completed successfully
-	StateConfiguring  = "configuring"  // Post-install configuration running
+	StateConfiguring  = "configuring"   // Post-install configuration running
 	StateComplete     = "complete"      // Machine fully provisioned and operational
 	StateFailed       = "failed"        // Error occurred in any stage
 	StateOffline      = "offline"       // Machine hasn't checked in recently
@@ -124,7 +124,7 @@ func (l *Lease) UpdateState(newState, source string) {
 			Timestamp: time.Now(),
 			Source:    source,
 		}
-		
+
 		l.StateHistory = append(l.StateHistory, transition)
 		l.State = newState
 		l.StateUpdatedAt = time.Now()

@@ -16,6 +16,7 @@ type OSImage struct {
 	InitrdSize   int64     `json:"initrd_size"`  // Size in bytes
 	Checksum     string    `json:"checksum"`     // SHA256 verification
 	Active       bool      `json:"active"`       // Default version for OS
+	DownloadURL  string    `json:"download_url"` // Original download URL
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }
@@ -39,4 +40,3 @@ type DownloadStatus struct {
 	StartedAt    time.Time  `json:"started_at"`
 	CompletedAt  *time.Time `json:"completed_at,omitempty"`
 }
-

@@ -77,10 +77,9 @@ func setupDHCPRoutes(router *mux.Router, handlers *handlers.DHCPHandlers) {
 	router.HandleFunc("/dhcp/remove_reserve", handlers.UnreserveLease).Methods("POST").Name("UnreserveLease")
 	router.HandleFunc("/dhcp/delete_lease", handlers.DeleteLease).Methods("POST").Name("DeleteLease")
 	router.HandleFunc("/dhcp/add_manual_lease", handlers.AddManualLease).Methods("POST").Name("AddManualLease")
-	
+
 	// State management API routes
 	router.HandleFunc("/dhcp/lease/state", handlers.UpdateLeaseState).Methods("POST").Name("UpdateLeaseState")
-	router.HandleFunc("/dhcp/lease/heartbeat", handlers.RecordHeartbeat).Methods("POST").Name("RecordHeartbeat")
 	router.HandleFunc("/dhcp/lease/history", handlers.GetLeaseStateHistory).Methods("GET").Name("GetLeaseStateHistory")
 }
 
@@ -141,17 +140,15 @@ func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
 func setupOSImageRoutes(router *mux.Router, handlers *handlers.OSImageHandlers) {
 	// GET routes
 	router.HandleFunc("/osimages", handlers.OSImagesPage).Methods("GET").Name("OSImagesPage")
-	router.HandleFunc("/osimages/list", handlers.ListOSImages).Methods("GET").Name("ListOSImages")
 	router.HandleFunc("/osimages/download/status/{id}", handlers.GetDownloadStatus).Methods("GET").Name("GetDownloadStatus")
 	router.HandleFunc("/osimages/info/{id}", handlers.GetOSImageInfo).Methods("GET").Name("GetOSImageInfo")
 	router.HandleFunc("/osimages/available-versions", handlers.GetAvailableVersions).Methods("GET").Name("GetAvailableVersions")
-	router.HandleFunc("/osimages/by-os", handlers.GetOSImagesByOS).Methods("GET").Name("GetOSImagesByOS")
-	
+
 	// POST routes
 	router.HandleFunc("/osimages/download", handlers.DownloadOSImage).Methods("POST").Name("DownloadOSImage")
 	router.HandleFunc("/osimages/set-default/{id}", handlers.SetDefaultVersion).Methods("POST").Name("SetDefaultVersion")
 	router.HandleFunc("/osimages/cancel/{id}", handlers.CancelDownload).Methods("POST").Name("CancelDownload")
-	
+
 	// DELETE routes
 	router.HandleFunc("/osimages/delete/{id}", handlers.DeleteOSImage).Methods("DELETE").Name("DeleteOSImage")
 }
@@ -165,7 +162,7 @@ func setupSyslinuxRoutes(router *mux.Router, handlers *handlers.SyslinuxHandler)
 func setupIPXERoutes(router *mux.Router, handlers *handlers.IPXEHandlers) {
 	// GET routes - for viewing/generating config
 	router.HandleFunc("/ipxe/config", handlers.GenerateConfig).Methods("GET").Name("GetIPXEConfig")
-	
+
 	// POST routes - for updating config file
 	router.HandleFunc("/ipxe/update", handlers.UpdateConfigFile).Methods("POST").Name("UpdateIPXEConfig")
 }

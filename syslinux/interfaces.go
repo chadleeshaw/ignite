@@ -36,23 +36,26 @@ type Service interface {
 	ScanMirror(ctx context.Context) ([]*SyslinuxMirror, error)
 	RefreshAvailableVersions(ctx context.Context) error
 	GetAvailableVersions(ctx context.Context) ([]*SyslinuxVersion, error)
-	
+
 	// Download and installation
 	DownloadVersion(ctx context.Context, version string) (*DownloadStatus, error)
 	GetDownloadStatus(ctx context.Context, id string) (*DownloadStatus, error)
 	CancelDownload(ctx context.Context, id string) error
-	
+
+	// Version activation/deactivation
+	DeactivateVersion(ctx context.Context, version string) error
+
 	// Boot file management
 	ExtractBootFiles(ctx context.Context, version string) error
 	InstallBootFiles(ctx context.Context, version, bootType string) error
 	ListInstalledBootFiles(ctx context.Context, bootType string) ([]*SyslinuxBootFile, error)
 	RemoveBootFiles(ctx context.Context, version, bootType string) error
-	
+
 	// Configuration and status
 	GetConfig() SyslinuxConfig
 	UpdateConfig(ctx context.Context, config SyslinuxConfig) error
 	GetSystemStatus(ctx context.Context) (*SystemStatus, error)
-	
+
 	// Validation and health checks
 	ValidateInstallation(ctx context.Context, bootType string) (*ValidationResult, error)
 	CheckDiskSpace(ctx context.Context) (*DiskSpaceInfo, error)
@@ -116,11 +119,11 @@ type ValidationResult struct {
 
 // DiskSpaceInfo provides disk space information
 type DiskSpaceInfo struct {
-	TotalSpace     int64 `json:"total_space"`
-	AvailableSpace int64 `json:"available_space"`
-	UsedSpace      int64 `json:"used_space"`
+	TotalSpace     int64   `json:"total_space"`
+	AvailableSpace int64   `json:"available_space"`
+	UsedSpace      int64   `json:"used_space"`
 	UsagePercent   float64 `json:"usage_percent"`
-	Sufficient     bool  `json:"sufficient"` // Whether space is sufficient for operations
+	Sufficient     bool    `json:"sufficient"` // Whether space is sufficient for operations
 }
 
 // FileInfo contains information about a file from mirror

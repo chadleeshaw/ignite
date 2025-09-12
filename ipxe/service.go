@@ -29,20 +29,20 @@ func NewService(cfg *config.Config, osImageService osimage.OSImageService) *Serv
 
 // iPXEConfig represents the data for iPXE template
 type iPXEConfig struct {
-	ServerIP  string
-	HTTPPort  string
-	BaseURL   string
-	OSImages  []OSImageEntry
+	ServerIP string
+	HTTPPort string
+	BaseURL  string
+	OSImages []OSImageEntry
 }
 
 // OSImageEntry represents an OS image for iPXE menu
 type OSImageEntry struct {
-	ID           string
-	Name         string
-	DisplayName  string
-	KernelPath   string
-	InitrdPath   string
-	KernelArgs   string
+	ID          string
+	Name        string
+	DisplayName string
+	KernelPath  string
+	InitrdPath  string
+	KernelArgs  string
 }
 
 // GenerateConfig creates iPXE configuration based on available OS images
@@ -234,10 +234,10 @@ func (s *Service) WriteConfigToFile(ctx context.Context) error {
 	}
 
 	filePath := filepath.Join(s.config.TFTP.Dir, "boot.ipxe")
-	
+
 	if err := os.WriteFile(filePath, []byte(config), 0644); err != nil {
 		return fmt.Errorf("failed to write iPXE config to %s: %w", filePath, err)
 	}
-	
+
 	return nil
 }

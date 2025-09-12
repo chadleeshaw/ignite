@@ -51,7 +51,7 @@ type LeaseService interface {
 	GetLeasesByServer(ctx context.Context, serverID string) ([]*Lease, error)
 	CleanupExpiredLeases(ctx context.Context) error
 	UpdateLease(ctx context.Context, lease *Lease) error
-	
+
 	// State management methods
 	UpdateLeaseState(ctx context.Context, mac string, newState string, source string) error
 	RecordHeartbeat(ctx context.Context, mac string) error

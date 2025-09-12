@@ -6,17 +6,17 @@ import (
 
 // SyslinuxVersion represents a Syslinux version available for download
 type SyslinuxVersion struct {
-	ID           string    `json:"id"`
-	Version      string    `json:"version"`      // 6.03, 6.04-pre1, etc.
-	BootType     string    `json:"boot_type"`    // bios, efi, ipxe
-	DownloadURL  string    `json:"download_url"` // Full URL to tar.gz
-	FileName     string    `json:"file_name"`    // syslinux-6.03.tar.gz
-	Size         int64     `json:"size"`         // Size in bytes
-	Checksum     string    `json:"checksum"`     // SHA256 hash if available
-	Downloaded   bool      `json:"downloaded"`   // Whether it's been downloaded
-	Active       bool      `json:"active"`       // Currently active version
-	CreatedAt    time.Time `json:"created_at"`
-	UpdatedAt    time.Time `json:"updated_at"`
+	ID           string     `json:"id"`
+	Version      string     `json:"version"`      // 6.03, 6.04-pre1, etc.
+	BootType     string     `json:"boot_type"`    // bios, efi, ipxe
+	DownloadURL  string     `json:"download_url"` // Full URL to tar.gz
+	FileName     string     `json:"file_name"`    // syslinux-6.03.tar.gz
+	Size         int64      `json:"size"`         // Size in bytes
+	Checksum     string     `json:"checksum"`     // SHA256 hash if available
+	Downloaded   bool       `json:"downloaded"`   // Whether it's been downloaded
+	Active       bool       `json:"active"`       // Currently active version
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 	DownloadedAt *time.Time `json:"downloaded_at,omitempty"`
 }
 
@@ -37,14 +37,14 @@ type SyslinuxBootFile struct {
 
 // SyslinuxConfig holds configuration for Syslinux downloads
 type SyslinuxConfig struct {
-	BaseURL        string `json:"base_url"`         // https://mirrors.kernel.org/pub/linux/utils/boot/syslinux/
-	TFTPDir        string `json:"tftp_dir"`         // ./public/tftp
-	BiosDir        string `json:"bios_dir"`         // boot-bios
-	EfiDir         string `json:"efi_dir"`          // boot-efi
-	TempDir        string `json:"temp_dir"`         // /tmp/syslinux-downloads
-	AutoExtract    bool   `json:"auto_extract"`     // Automatically extract after download
-	KeepArchive    bool   `json:"keep_archive"`     // Keep downloaded tar.gz files
-	VerifyChecksum bool   `json:"verify_checksum"`  // Verify downloads with checksums
+	BaseURL        string `json:"base_url"`        // https://mirrors.kernel.org/pub/linux/utils/boot/syslinux/
+	TFTPDir        string `json:"tftp_dir"`        // ./public/tftp
+	BiosDir        string `json:"bios_dir"`        // boot-bios
+	EfiDir         string `json:"efi_dir"`         // boot-efi
+	TempDir        string `json:"temp_dir"`        // /tmp/syslinux-downloads
+	AutoExtract    bool   `json:"auto_extract"`    // Automatically extract after download
+	KeepArchive    bool   `json:"keep_archive"`    // Keep downloaded tar.gz files
+	VerifyChecksum bool   `json:"verify_checksum"` // Verify downloads with checksums
 }
 
 // DownloadStatus represents the status of a Syslinux download
@@ -60,10 +60,10 @@ type DownloadStatus struct {
 
 // SyslinuxMirror represents available versions scraped from kernel.org
 type SyslinuxMirror struct {
-	Version     string `json:"version"`
-	FileName    string `json:"file_name"`
-	DownloadURL string `json:"download_url"`
-	Size        int64  `json:"size"`
+	Version     string    `json:"version"`
+	FileName    string    `json:"file_name"`
+	DownloadURL string    `json:"download_url"`
+	Size        int64     `json:"size"`
 	ModifiedAt  time.Time `json:"modified_at"`
 }
 
@@ -84,30 +84,30 @@ func GetDefaultConfig() SyslinuxConfig {
 // GetRequiredBiosFiles returns the list of required BIOS boot files
 func GetRequiredBiosFiles() map[string]string {
 	return map[string]string{
-		"pxelinux.0":    "PXE boot loader for BIOS systems",
-		"ldlinux.c32":   "Core library for PXELINUX",
-		"libcom32.c32":  "Common library for COM32 modules",
-		"libutil.c32":   "Utility library for COM32 modules",
-		"vesamenu.c32":  "VESA graphical menu system",
-		"menu.c32":      "Simple text menu system",
-		"chain.c32":     "Chainloading module",
-		"reboot.c32":    "System reboot module",
-		"poweroff.c32":  "System power off module",
+		"pxelinux.0":   "PXE boot loader for BIOS systems",
+		"ldlinux.c32":  "Core library for PXELINUX",
+		"libcom32.c32": "Common library for COM32 modules",
+		"libutil.c32":  "Utility library for COM32 modules",
+		"vesamenu.c32": "VESA graphical menu system",
+		"menu.c32":     "Simple text menu system",
+		"chain.c32":    "Chainloading module",
+		"reboot.c32":   "System reboot module",
+		"poweroff.c32": "System power off module",
 	}
 }
 
 // GetRequiredEfiFiles returns the list of required EFI boot files
 func GetRequiredEfiFiles() map[string]string {
 	return map[string]string{
-		"syslinux.efi":  "EFI boot loader for UEFI systems",
-		"ldlinux.e64":   "Core library for EFI SYSLINUX",
-		"libcom32.c32":  "Common library for COM32 modules",
-		"libutil.c32":   "Utility library for COM32 modules",
-		"vesamenu.c32":  "VESA graphical menu system",
-		"menu.c32":      "Simple text menu system",
-		"chain.c32":     "Chainloading module",
-		"reboot.c32":    "System reboot module",
-		"poweroff.c32":  "System power off module",
+		"syslinux.efi": "EFI boot loader for UEFI systems",
+		"ldlinux.e64":  "Core library for EFI SYSLINUX",
+		"libcom32.c32": "Common library for COM32 modules",
+		"libutil.c32":  "Utility library for COM32 modules",
+		"vesamenu.c32": "VESA graphical menu system",
+		"menu.c32":     "Simple text menu system",
+		"chain.c32":    "Chainloading module",
+		"reboot.c32":   "System reboot module",
+		"poweroff.c32": "System power off module",
 	}
 }
 

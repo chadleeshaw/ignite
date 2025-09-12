@@ -151,7 +151,49 @@ func (h *TFTPHandlers) HandleDelete(w http.ResponseWriter, r *http.Request) {
 
 // HandleUpload handles file uploads
 func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
-	http.Error(w, "Upload not implemented", http.StatusNotImplemented)
+	// Parse multipart form with 32MB max memory
+	err := r.ParseMultipartForm(32 << 20)
+	if err != nil {
+		http.Error(w, "Failed to parse upload form", http.StatusBadRequest)
+		return
+	}
+
+	file, handler, err := r.FormFile("file")
+	if err != nil {
+		http.Error(w, "Failed to get uploaded file", http.StatusBadRequest)
+		return
+	}
+	defer file.Close()
+
+	// Create the uploads directory if it doesn't exist
+	tftpDir := h.container.Config.TFTP.Dir
+	if tftpDir == "" {
+		tftpDir = "./public/tftp"
+	}
+	
+	if err := os.MkdirAll(tftpDir, 0755); err != nil {
+		http.Error(w, "Failed to create upload directory", http.StatusInternalServerError)
+		return
+	}
+
+	// Create the destination file
+	dst, err := os.Create(filepath.Join(tftpDir, handler.Filename))
+	if err != nil {
+		http.Error(w, "Failed to create destination file", http.StatusInternalServerError)
+		return
+	}
+	defer dst.Close()
+
+	// Copy the uploaded file to the destination
+	_, err = io.Copy(dst, file)
+	if err != nil {
+		http.Error(w, "Failed to save uploaded file", http.StatusInternalServerError)
+		return
+	}
+
+	// Return success response
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("File uploaded successfully"))
 }
 
 // FileInfo represents file metadata for display

@@ -72,7 +72,7 @@ func (s *DHCPLeaseService) AssignLease(ctx context.Context, serverID string, mac
 		LastSeen:       time.Now(),
 		StateHistory:   []StateTransition{},
 	}
-	
+
 	// Record initial state
 	lease.UpdateState(StateAssigned, "dhcp")
 
@@ -118,7 +118,7 @@ func (s *DHCPLeaseService) ReserveLease(ctx context.Context, serverID string, ma
 		LastSeen:       time.Now(),
 		StateHistory:   []StateTransition{},
 	}
-	
+
 	// Record initial state for reserved lease
 	lease.UpdateState(StateAssigned, "manual")
 
@@ -239,11 +239,11 @@ func (s *DHCPLeaseService) UpdateLeaseState(ctx context.Context, mac string, new
 	}
 
 	lease.UpdateState(newState, source)
-	
+
 	if err := s.leaseRepo.Save(ctx, lease); err != nil {
 		return fmt.Errorf("failed to save lease state update: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -258,11 +258,11 @@ func (s *DHCPLeaseService) RecordHeartbeat(ctx context.Context, mac string) erro
 	}
 
 	lease.LastSeen = time.Now()
-	
+
 	if err := s.leaseRepo.Save(ctx, lease); err != nil {
 		return fmt.Errorf("failed to save heartbeat: %w", err)
 	}
-	
+
 	return nil
 }
 
@@ -275,7 +275,7 @@ func (s *DHCPLeaseService) GetLeaseStateHistory(ctx context.Context, mac string)
 	if lease == nil {
 		return nil, fmt.Errorf("lease not found for MAC %s", mac)
 	}
-	
+
 	return lease.StateHistory, nil
 }
 
@@ -287,21 +287,21 @@ func (s *DHCPLeaseService) GetLeasesByState(ctx context.Context, state string) (
 	if err != nil {
 		return nil, fmt.Errorf("failed to get servers: %w", err)
 	}
-	
+
 	var filteredLeases []*Lease
 	for _, server := range servers {
 		leases, err := s.leaseRepo.GetByServerID(ctx, server.ID)
 		if err != nil {
 			continue // Skip servers that can't be queried
 		}
-		
+
 		for _, lease := range leases {
 			if lease.State == state {
 				filteredLeases = append(filteredLeases, lease)
 			}
 		}
 	}
-	
+
 	return filteredLeases, nil
 }
 
@@ -311,15 +311,15 @@ func (s *DHCPLeaseService) MarkOfflineLeases(ctx context.Context, offlineThresho
 	if err != nil {
 		return fmt.Errorf("failed to get servers: %w", err)
 	}
-	
+
 	cutoffTime := time.Now().Add(-offlineThreshold)
-	
+
 	for _, server := range servers {
 		leases, err := s.leaseRepo.GetByServerID(ctx, server.ID)
 		if err != nil {
 			continue // Skip servers that can't be queried
 		}
-		
+
 		for _, lease := range leases {
 			if lease.IsActive() && lease.LastSeen.Before(cutoffTime) {
 				lease.UpdateState(StateOffline, "heartbeat")
@@ -327,6 +327,6 @@ func (s *DHCPLeaseService) MarkOfflineLeases(ctx context.Context, offlineThresho
 			}
 		}
 	}
-	
+
 	return nil
 }

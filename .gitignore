@@ -8,6 +8,7 @@
 ignite.db
 ignite
 initrd.img
+vmtest-disk.img
 vmlinuz
 bin
 public/tftp/*
