@@ -12,6 +12,7 @@ type Config struct {
 	TFTP      TFTPConfig
 	HTTP      HTTPConfig
 	Provision ProvisionConfig
+	OSImages  OSImageConfig
 }
 
 type DBConfig struct {
@@ -36,6 +37,23 @@ type HTTPConfig struct {
 
 type ProvisionConfig struct {
 	Dir string
+}
+
+type OSImageConfig struct {
+	Sources map[string]OSDefinition `json:"sources"`
+}
+
+type OSDefinition struct {
+	DisplayName string               `json:"display_name"`
+	KernelFile  string               `json:"kernel_file"`
+	InitrdFile  string               `json:"initrd_file"`
+	Versions    map[string]OSVersion `json:"versions"`
+}
+
+type OSVersion struct {
+	DisplayName   string   `json:"display_name"`
+	BaseURL       string   `json:"base_url"`
+	Architectures []string `json:"architectures"`
 }
 
 // ConfigBuilder provides a builder pattern for configuration
@@ -66,6 +84,7 @@ func NewConfigBuilder() *ConfigBuilder {
 			Provision: ProvisionConfig{
 				Dir: getEnv("PROV_DIR", "./public/provision"),
 			},
+			OSImages: getDefaultOSImageConfig(),
 		},
 	}
 }
@@ -124,4 +143,73 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// getDefaultOSImageConfig returns the default OS image configuration
+func getDefaultOSImageConfig() OSImageConfig {
+	return OSImageConfig{
+		Sources: map[string]OSDefinition{
+			"ubuntu": {
+				DisplayName: "Ubuntu",
+				KernelFile:  "vmlinuz",
+				InitrdFile:  "initrd",
+				Versions: map[string]OSVersion{
+					"20.04": {
+						DisplayName:   "20.04 LTS",
+						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/20.04.6-c92baa25/",
+						Architectures: []string{"x86_64"},
+					},
+					"22.04": {
+						DisplayName:   "22.04 LTS",
+						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-b0159fca/",
+						Architectures: []string{"x86_64"},
+					},
+					"24.04": {
+						DisplayName:   "24.04 LTS",
+						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.3-8efa196d/",
+						Architectures: []string{"x86_64"},
+					},
+				},
+			},
+			"centos": {
+				DisplayName: "CentOS",
+				KernelFile:  "vmlinuz",
+				InitrdFile:  "initrd.img",
+				Versions: map[string]OSVersion{
+					"9": {
+						DisplayName:   "9 Stream",
+						BaseURL:       "http://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/images/pxeboot/",
+						Architectures: []string{"x86_64"},
+					},
+					"10": {
+						DisplayName:   "10 Stream",
+						BaseURL:       "http://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/images/pxeboot/",
+						Architectures: []string{"x86_64"},
+					},
+				},
+			},
+			"nixos": {
+				DisplayName: "NixOS",
+				KernelFile:  "bzImage-x86_64-linux",
+				InitrdFile:  "initrd-x86_64-linux",
+				Versions: map[string]OSVersion{
+					"23.05": {
+						DisplayName:   "23.05",
+						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-23.05/",
+						Architectures: []string{"x86_64"},
+					},
+					"23.11": {
+						DisplayName:   "23.11",
+						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-23.11/",
+						Architectures: []string{"x86_64"},
+					},
+					"24.05": {
+						DisplayName:   "24.05",
+						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-24.05/",
+						Architectures: []string{"x86_64"},
+					},
+				},
+			},
+		},
+	}
 }

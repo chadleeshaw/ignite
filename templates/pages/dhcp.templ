@@ -16,7 +16,7 @@
 
 {{range .Servers}}
 <div class="card bg-neutral shadow-xl mb-8">
-    <div class="card-body">
+    <div class="card-body overflow-visible">
         <div class="flex items-center justify-between mb-4">
             <div class="flex items-center space-x-3">
                 <span class="ip-address text-2xl font-bold text-primary">{{ .TFTPIP }}</span>
@@ -30,15 +30,17 @@
             </div>
         </div>
 
-        <div class="overflow-x-auto">
+        <div style="overflow: visible;">
             <table class="table w-full">
                 <thead>
                     <tr>
                         <th>MAC Address</th>
                         <th>IP Address</th>
+                        <th class="text-center">State</th>
                         <th class="text-center">Reserved</th>
                         <th class="text-center">BootMenu</th>
                         <th class="text-center">IPMI</th>
+                        <th class="text-center">Actions</th>
                     </tr>
                 </thead>
                 <tbody>
@@ -47,6 +49,9 @@
                     <tr>
                         <td>{{ .MAC }}</td>
                         <td>{{ .IP }}</td>
+                        <td class="text-center">
+                            <div class="badge {{.StateBadgeClass}} badge-sm">{{.StateDisplayName}}</div>
+                        </td>
                         <td class="text-center">
                             <button id="reserveBtn-{{ .MAC }}" class="modal-opener" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">
                                 {{if .Static}}
@@ -62,12 +67,69 @@
                         <td class="text-center">
                             <button hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs {{if .IPMI.Username}}btn-accent{{else}}btn-ghost{{end}}">Configure</button>
                         </td>
+                        <td class="text-center">
+                            <div class="flex space-x-1">
+                                <div class="dropdown dropdown-end dropdown-top">
+                                    <button class="btn btn-xs btn-info" tabindex="0">
+                                        <i class="fas fa-flag"></i>
+                                    </button>
+                                    <ul tabindex="0" class="dropdown-content z-[9999] menu p-2 shadow bg-base-100 rounded-box w-52">
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'assigned')">🔵 Assigned</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'pxe_requested')">⚠️ PXE Requested</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'booting')">🚀 Booting</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaging')">💿 Imaging</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaged')">✅ Imaged</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'configuring')">⚙️ Configuring</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'complete')">🎉 Complete</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'failed')">❌ Failed</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'offline')">👻 Offline</a></li>
+                                    </ul>
+                                </div>
+                                <button class="btn btn-xs btn-error" hx-post="/dhcp/delete_lease?mac={{.MAC}}" hx-target="body" hx-swap="innerHTML" hx-confirm="Are you sure you want to delete this lease?">
+                                    <i class="fas fa-trash"></i>
+                                </button>
+                            </div>
+                        </td>
                     </tr>
                     {{end}}
                 </tbody>
             </table>
+            <div class="mt-4 flex justify-center">
+                <button class="btn btn-sm btn-primary" hx-get="/open_modal?template=manualleasemodal&network={{ .TFTPIP }}" hx-target="#modal-content" hx-swap="innerHTML">
+                    <i class="fas fa-plus mr-2"></i>
+                    Add Manual Entry
+                </button>
+            </div>
         </div>
     </div>
 </div>
 {{end}}
+
+<script>
+function updateLeaseState(mac, newState) {
+    if (!newState) return;
+    
+    const formData = new FormData();
+    formData.append('state', newState);
+    formData.append('source', 'manual');
+    
+    fetch('/dhcp/lease/state?mac=' + encodeURIComponent(mac), {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.status === 'success') {
+            // Refresh the page to show updated state
+            window.location.reload();
+        } else {
+            alert('Failed to update lease state: ' + (data.message || 'Unknown error'));
+        }
+    })
+    .catch(error => {
+        console.error('Error updating lease state:', error);
+        alert('Failed to update lease state');
+    });
+}
+</script>
 {{end}}

@@ -40,12 +40,10 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Title     string
 		OSImages  []*osimage.OSImage
 		Downloads []*osimage.DownloadStatus
-		Sources   osimage.OSImageSources
 	}{
 		Title:     "OS Images",
 		OSImages:  images,
 		Downloads: downloads,
-		Sources:   osimage.GetDefaultSources(),
 	}
 	
 	templates := LoadTemplates()
@@ -182,38 +180,49 @@ func (h *OSImageHandlers) DeleteOSImage(w http.ResponseWriter, r *http.Request) 
 
 // GetAvailableVersions returns available versions for an OS
 func (h *OSImageHandlers) GetAvailableVersions(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+	
 	os := r.URL.Query().Get("os")
 	if os == "" {
 		http.Error(w, "OS parameter is required", http.StatusBadRequest)
 		return
 	}
 	
-	sources := osimage.GetDefaultSources()
-	var versions []string
-	
-	switch os {
-	case "ubuntu":
-		for version := range sources.Ubuntu {
-			versions = append(versions, version)
-		}
-	case "centos":
-		for version := range sources.CentOS {
-			versions = append(versions, version)
-		}
-	case "nixos":
-		for version := range sources.NixOS {
-			versions = append(versions, version)
-		}
-	default:
-		http.Error(w, "Unsupported OS", http.StatusBadRequest)
+	// Use the service to get available versions
+	versions, err := h.container.OSImageService.GetAvailableVersions(ctx, os)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get versions: %v", err), http.StatusInternalServerError)
 		return
 	}
 	
+	// Create a more detailed response with display names from config
+	osDef, exists := h.container.Config.OSImages.Sources[os]
+	if !exists {
+		http.Error(w, fmt.Sprintf("OS configuration not found: %s", os), http.StatusInternalServerError)
+		return
+	}
+	
+	type versionInfo struct {
+		Value       string `json:"value"`
+		DisplayName string `json:"display_name"`
+	}
+	
+	var versionList []versionInfo
+	for _, version := range versions {
+		displayName := version // Default to version number
+		if versionDef, ok := osDef.Versions[version]; ok {
+			if versionDef.DisplayName != "" {
+				displayName = versionDef.DisplayName
+			}
+		}
+		versionList = append(versionList, versionInfo{
+			Value:       version,
+			DisplayName: displayName,
+		})
+	}
+	
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"os":       os,
-		"versions": versions,
-	})
+	json.NewEncoder(w).Encode(versionList)
 }
 
 // GetOSImageInfo returns detailed information about an OS image
@@ -279,16 +288,161 @@ func (h *OSImageHandlers) CancelDownload(w http.ResponseWriter, r *http.Request)
 	w.Write([]byte("Download cancelled successfully"))
 }
 
-// Helper function to get OS display name
-func getOSDisplayName(os string) string {
-	switch os {
-	case "ubuntu":
-		return "Ubuntu"
-	case "centos":
-		return "CentOS"
-	case "nixos":
-		return "NixOS"
-	default:
-		return os
+// RegisterOSImageHandlers registers all OS image related routes
+func RegisterOSImageHandlers(r *mux.Router, service osimage.OSImageService) {
+	r.HandleFunc("/osimages", GetAllOSImages(service)).Methods("GET")
+	r.HandleFunc("/osimages/{os}", GetOSImagesByOS(service)).Methods("GET")
+	r.HandleFunc("/osimages/{id}", GetOSImage(service)).Methods("GET")
+	r.HandleFunc("/osimages/default/{os}", GetDefaultVersion(service)).Methods("GET")
+	r.HandleFunc("/osimages/set-default/{id}", SetDefaultVersion(service)).Methods("POST")
+	r.HandleFunc("/osimages/delete/{id}", DeleteOSImage(service)).Methods("DELETE")
+	r.HandleFunc("/osimages/download", DownloadOSImage(service)).Methods("POST")
+	r.HandleFunc("/osimages/download/status/{id}", GetDownloadStatus(service)).Methods("GET")
+	r.HandleFunc("/osimages/download/active", GetActiveDownloads(service)).Methods("GET")
+	r.HandleFunc("/osimages/download/cancel/{id}", CancelDownload(service)).Methods("POST")
+	r.HandleFunc("/osimages/available-versions/{os}", GetAvailableVersions(service)).Methods("GET")
+}
+
+func GetAllOSImages(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		images, err := service.GetAllOSImages(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(images)
+	}
+}
+
+func GetOSImagesByOS(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		os := vars["os"]
+		images, err := service.GetOSImagesByOS(r.Context(), os)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(images)
+	}
+}
+
+func GetOSImage(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id := vars["id"]
+		image, err := service.GetOSImage(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(image)
+	}
+}
+
+func GetDefaultVersion(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		os := vars["os"]
+		image, err := service.GetDefaultVersion(r.Context(), os)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(image)
+	}
+}
+
+func SetDefaultVersion(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id := vars["id"]
+		err := service.SetDefaultVersion(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func DeleteOSImage(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id := vars["id"]
+		err := service.DeleteOSImage(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func DownloadOSImage(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		var osConfig osimage.OSImageConfig
+		if err := json.NewDecoder(r.Body).Decode(&osConfig); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		status, err := service.DownloadOSImage(r.Context(), osConfig)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		json.NewEncoder(w).Encode(status)
+	}
+}
+
+func GetDownloadStatus(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id := vars["id"]
+		status, err := service.GetDownloadStatus(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(status)
+	}
+}
+
+func GetActiveDownloads(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		downloads, err := service.GetActiveDownloads(r.Context())
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		json.NewEncoder(w).Encode(downloads)
+	}
+}
+
+func CancelDownload(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		id := vars["id"]
+		err := service.CancelDownload(r.Context(), id)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.WriteHeader(http.StatusOK)
+	}
+}
+
+func GetAvailableVersions(service osimage.OSImageService) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		vars := mux.Vars(r)
+		osName := vars["os"]
+		
+		versions, err := service.GetAvailableVersions(r.Context(), osName)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		
+		json.NewEncoder(w).Encode(versions)
 	}
 }

@@ -12,8 +12,8 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
-
 	"github.com/google/uuid"
+	"sort"
 )
 
 // OSImageServiceImpl provides business logic for OS image management
@@ -21,7 +21,6 @@ type OSImageServiceImpl struct {
 	repo           OSImageRepository
 	downloadRepo   DownloadStatusRepository
 	config         *config.Config
-	sources        OSImageSources
 	downloadChan   chan OSImageConfig
 	activeDownloads map[string]*DownloadStatus
 }
@@ -32,7 +31,6 @@ func NewOSImageService(repo OSImageRepository, downloadRepo DownloadStatusReposi
 		repo:            repo,
 		downloadRepo:    downloadRepo,
 		config:          cfg,
-		sources:         GetDefaultSources(),
 		downloadChan:    make(chan OSImageConfig, 10),
 		activeDownloads: make(map[string]*DownloadStatus),
 	}
@@ -190,19 +188,13 @@ func (s *OSImageServiceImpl) CancelDownload(ctx context.Context, id string) erro
 
 // isValidOSVersion checks if the OS and version combination is supported
 func (s *OSImageServiceImpl) isValidOSVersion(os, version string) bool {
-	switch os {
-	case "ubuntu":
-		_, exists := s.sources.Ubuntu[version]
-		return exists
-	case "centos":
-		_, exists := s.sources.CentOS[version]
-		return exists
-	case "nixos":
-		_, exists := s.sources.NixOS[version]
-		return exists
-	default:
+	osDef, exists := s.config.OSImages.Sources[os]
+	if !exists {
 		return false
 	}
+	
+	_, versionExists := osDef.Versions[version]
+	return versionExists
 }
 
 // downloadWorker processes download requests in the background
@@ -234,20 +226,21 @@ func (s *OSImageServiceImpl) processDownload(osConfig OSImageConfig) {
 		return // Status not found
 	}
 	
-	// Get download URL
-	var baseURL string
-	switch osConfig.OS {
-	case "ubuntu":
-		baseURL = s.sources.Ubuntu[osConfig.Version]
-	case "centos":
-		baseURL = s.sources.CentOS[osConfig.Version]
-	case "nixos":
-		baseURL = s.sources.NixOS[osConfig.Version]
-	default:
+	// Get OS definition from config
+	osDef, exists := s.config.OSImages.Sources[osConfig.OS]
+	if !exists {
 		s.markDownloadFailed(ctx, status, "unsupported OS")
 		return
 	}
 	
+	// Get version info from config
+	versionInfo, versionExists := osDef.Versions[osConfig.Version]
+	if !versionExists {
+		s.markDownloadFailed(ctx, status, "unsupported version for this OS")
+		return
+	}
+	
+	baseURL := versionInfo.BaseURL
 	if baseURL == "" {
 		s.markDownloadFailed(ctx, status, "no download URL found for this version")
 		return
@@ -260,9 +253,9 @@ func (s *OSImageServiceImpl) processDownload(osConfig OSImageConfig) {
 		return
 	}
 	
-	// Download kernel and initrd
-	kernelFile := GetKernelFileName(osConfig.OS)
-	initrdFile := GetInitrdFileName(osConfig.OS)
+	// Get filenames from config
+	kernelFile := osDef.KernelFile
+	initrdFile := osDef.InitrdFile
 	
 	kernelURL := strings.TrimSuffix(baseURL, "/") + "/" + kernelFile
 	initrdURL := strings.TrimSuffix(baseURL, "/") + "/" + initrdFile
@@ -369,4 +362,21 @@ func (s *OSImageServiceImpl) markDownloadFailed(ctx context.Context, status *Dow
 	now := time.Now()
 	status.CompletedAt = &now
 	s.downloadRepo.Save(ctx, status)
+}
+
+
+// GetAvailableVersions returns available versions for a given OS
+func (s *OSImageServiceImpl) GetAvailableVersions(ctx context.Context, os string) ([]string, error) {
+	osDef, exists := s.config.OSImages.Sources[os]
+	if !exists {
+		return nil, fmt.Errorf("unsupported OS: %s", os)
+	}
+	
+	var versions []string
+	for version := range osDef.Versions {
+		versions = append(versions, version)
+	}
+	
+	sort.Strings(versions)
+	return versions, nil
 }

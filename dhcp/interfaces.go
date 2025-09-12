@@ -51,6 +51,13 @@ type LeaseService interface {
 	GetLeasesByServer(ctx context.Context, serverID string) ([]*Lease, error)
 	CleanupExpiredLeases(ctx context.Context) error
 	UpdateLease(ctx context.Context, lease *Lease) error
+	
+	// State management methods
+	UpdateLeaseState(ctx context.Context, mac string, newState string, source string) error
+	RecordHeartbeat(ctx context.Context, mac string) error
+	GetLeaseStateHistory(ctx context.Context, mac string) ([]StateTransition, error)
+	GetLeasesByState(ctx context.Context, state string) ([]*Lease, error)
+	MarkOfflineLeases(ctx context.Context, offlineThreshold time.Duration) error
 }
 
 // DHCPHandler defines the interface for handling DHCP packets

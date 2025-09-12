@@ -39,6 +39,7 @@ func LoadTemplates() map[string]*template.Template {
 		"status-content":     template.Must(template.ParseFiles("templates/partials/status-content.templ")),
 		"provision":          template.Must(template.ParseFiles(baseTemplate, "templates/pages/provision.templ")),
 		"osimages":           template.Must(template.ParseFiles(baseTemplate, "templates/pages/osimages.templ")),
+		"syslinux":           template.Must(template.ParseFiles(baseTemplate, "templates/pages/syslinux.templ")),
 		"dhcpmodal":          template.Must(template.ParseFiles("templates/modals/dhcpmodal.templ")),
 		"reservemodal":       template.Must(template.ParseFiles("templates/modals/reservemodal.templ")),
 		"bootmodal":          template.Must(template.ParseFiles("templates/modals/bootmodal.templ")),
@@ -49,6 +50,7 @@ func LoadTemplates() map[string]*template.Template {
 		"provtempmodal":      template.Must(template.ParseFiles("templates/modals/provtempmodal.templ")),
 		"provconfigmodal":    template.Must(template.ParseFiles("templates/modals/provconfigmodal.templ")),
 		"provsaveasmodal":    template.Must(template.ParseFiles("templates/modals/provsaveasmodal.templ")),
+		"manualleasemodal":   template.Must(template.ParseFiles("templates/modals/manualleasemodal.templ")),
 	}
 }
 
@@ -145,6 +147,13 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 		case "provtempmodal":
 		case "provconfigmodal":
 		case "provsaveasmodal":
+		case "manualleasemodal":
+			data, err = NewManualLeaseModal(w, r, h.container)
+			if err != nil {
+				log.Printf("Error creating manual lease modal data: %v", err)
+				http.Error(w, "Failed to prepare manual lease data: "+err.Error(), http.StatusInternalServerError)
+				return
+			}
 		default:
 			log.Printf("Unhandled template type: %s", template)
 			http.Error(w, "Unhandled template type", http.StatusInternalServerError)
@@ -492,4 +501,15 @@ func ipToInt(ip net.IP) uint32 {
 		ip = ip[12:16] // Convert IPv6 to IPv4 if needed
 	}
 	return uint32(ip[0])<<24 + uint32(ip[1])<<16 + uint32(ip[2])<<8 + uint32(ip[3])
+}
+
+// NewManualLeaseModal creates data for manual lease modal
+func NewManualLeaseModal(w http.ResponseWriter, r *http.Request, container *Container) (map[string]any, error) {
+	networkStr := r.URL.Query().Get("network")
+	
+	data := map[string]any{
+		"Network": networkStr,
+	}
+	
+	return data, nil
 }

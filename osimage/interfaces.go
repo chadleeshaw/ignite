@@ -44,35 +44,17 @@ type DownloadStatusRepository interface {
 	Delete(ctx context.Context, id string) error
 }
 
-// OSImageService defines the interface for OS image business logic
+// OSImageService defines business logic for OS images
 type OSImageService interface {
-	// GetAllOSImages retrieves all OS images
 	GetAllOSImages(ctx context.Context) ([]*OSImage, error)
-	
-	// GetOSImagesByOS retrieves all images for a specific operating system
 	GetOSImagesByOS(ctx context.Context, os string) ([]*OSImage, error)
-	
-	// GetOSImage retrieves an OS image by ID
 	GetOSImage(ctx context.Context, id string) (*OSImage, error)
-	
-	// GetDefaultVersion retrieves the default version for an OS
 	GetDefaultVersion(ctx context.Context, os string) (*OSImage, error)
-	
-	// SetDefaultVersion sets an OS image as the default for its OS type
 	SetDefaultVersion(ctx context.Context, id string) error
-	
-	// DeleteOSImage removes an OS image and its files
 	DeleteOSImage(ctx context.Context, id string) error
-	
-	// DownloadOSImage starts downloading an OS image
 	DownloadOSImage(ctx context.Context, osConfig OSImageConfig) (*DownloadStatus, error)
-	
-	// GetDownloadStatus retrieves the status of a download
 	GetDownloadStatus(ctx context.Context, id string) (*DownloadStatus, error)
-	
-	// GetActiveDownloads retrieves all active downloads
 	GetActiveDownloads(ctx context.Context) ([]*DownloadStatus, error)
-	
-	// CancelDownload cancels an active download
 	CancelDownload(ctx context.Context, id string) error
+	GetAvailableVersions(ctx context.Context, os string) ([]string, error)
 }

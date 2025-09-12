@@ -45,6 +45,11 @@ func NewBoltDB(cfg *config.Config) (*BoltDB, error) {
 	return boltDB, nil
 }
 
+// GetDB returns the underlying bolt.DB instance
+func (b *BoltDB) GetDB() *bolt.DB {
+	return b.DB
+}
+
 // GetOrCreateBucket creates a bucket if it doesn't exist
 func (b *BoltDB) GetOrCreateBucket(ctx context.Context, name string) error {
 	return b.Update(func(tx *bolt.Tx) error {

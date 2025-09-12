@@ -53,10 +53,12 @@ func (a *Application) Start() error {
 
 	// Setup HTTP handlers with dependency injection
 	handlerContainer := &handlers.Container{
-		ServerService:  a.container.ServerService,
-		LeaseService:   a.container.LeaseService,
-		OSImageService: a.container.OSImageService,
-		Config:         a.container.Config,
+		ServerService:   a.container.ServerService,
+		LeaseService:    a.container.LeaseService,
+		OSImageService:  a.container.OSImageService,
+		SyslinuxService: a.container.SyslinuxService,
+		IPXEService:     a.container.IPXEService,
+		Config:          a.container.Config,
 	}
 
 	// Create HTTP router with injected dependencies and static file handling
@@ -125,9 +127,11 @@ func (a *Application) Run() error {
 // GetContainer returns the application's container for access to services
 func (a *Application) GetContainer() *handlers.Container {
 	return &handlers.Container{
-		ServerService:  a.container.ServerService,
-		LeaseService:   a.container.LeaseService,
-		OSImageService: a.container.OSImageService,
-		Config:         a.container.Config,
+		ServerService:   a.container.ServerService,
+		LeaseService:    a.container.LeaseService,
+		OSImageService:  a.container.OSImageService,
+		SyslinuxService: a.container.SyslinuxService,
+		IPXEService:     a.container.IPXEService,
+		Config:          a.container.Config,
 	}
 }
