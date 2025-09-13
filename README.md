@@ -257,6 +257,52 @@ Integration tests validate:
 - End-to-end PXE boot workflows
 - VM network boot scenarios
 
+## Deployment Options
+
+### **Docker Deployment (Recommended)**
+
+#### **Option 1: Pre-built Image**
+```bash
+docker run -d \
+  --name ignite \
+  -p 8080:8080 \
+  -p 69:69/udp \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/public:/app/public \
+  ghcr.io/chadleeshaw/ignite:v2.0.0
+```
+
+#### **Option 2: Build from Source**
+```bash
+# Full build (requires Go toolchain in container)
+docker build -t ignite:local .
+
+# Quick build using release binary (faster, smaller image)
+docker build -f Dockerfile.release -t ignite:release .
+docker run -d --name ignite -p 8080:8080 -p 69:69/udp ignite:release
+```
+
+### **Binary Installation**
+```bash
+# Download for your platform
+wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-linux-amd64
+chmod +x ignite-linux-amd64
+./ignite-linux-amd64
+
+# Or use the x86_64 variant
+wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-x86_64
+chmod +x ignite-x86_64
+./ignite-x86_64
+```
+
+### **Development Setup**
+```bash
+git clone https://github.com/chadleeshaw/ignite.git
+cd ignite
+go mod download
+go run . -mock-data    # Start with sample data
+```
+
 ## To Do
 
 - Enhanced error handling and user feedback
