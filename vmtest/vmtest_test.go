@@ -42,7 +42,7 @@ func stringSliceToInterface(slice []string) []interface{} {
 
 func TestNewTestConfig(t *testing.T) {
 	config := NewTestConfig()
-	
+
 	assert.NotNil(t, config)
 	assert.Equal(t, "../public/tftp", config.TFTPDir)
 	assert.Equal(t, "../ignite", config.IgniteBin)
@@ -59,7 +59,7 @@ func TestTestConfigStructFields(t *testing.T) {
 		MACAddress: "aa:bb:cc:dd:ee:ff",
 		Memory:     "1G",
 	}
-	
+
 	assert.Equal(t, "/custom/tftp", config.TFTPDir)
 	assert.Equal(t, "/custom/ignite", config.IgniteBin)
 	assert.Equal(t, "custom-disk.img", config.TestDisk)
@@ -88,22 +88,22 @@ func TestCheckPrerequisites(t *testing.T) {
 	t.Run("tftp directory not found", func(t *testing.T) {
 		config := NewTestConfig()
 		config.TFTPDir = "/nonexistent/directory"
-		
+
 		err := config.CheckPrerequisites()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "TFTP directory not found")
 	})
-	
+
 	// Test PXE boot files not found
 	t.Run("pxe boot files not found", func(t *testing.T) {
 		// Create temporary directory without boot files
 		tempDir, err := os.MkdirTemp("", "vmtest-*")
 		assert.NoError(t, err)
 		defer os.RemoveAll(tempDir)
-		
+
 		config := NewTestConfig()
 		config.TFTPDir = tempDir
-		
+
 		err = config.CheckPrerequisites()
 		assert.Error(t, err)
 		assert.Contains(t, err.Error(), "PXE boot files not found")
@@ -115,23 +115,23 @@ func TestCheckPrerequisitesWithTempFiles(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "vmtest-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
-	
+
 	// Create test TFTP directory structure
 	tftpDir := filepath.Join(tempDir, "tftp")
 	bootDir := filepath.Join(tftpDir, "boot-bios")
 	err = os.MkdirAll(bootDir, 0755)
 	assert.NoError(t, err)
-	
+
 	// Create mock pxelinux.0 file
 	pxelinuxPath := filepath.Join(bootDir, "pxelinux.0")
 	err = os.WriteFile(pxelinuxPath, []byte("mock pxelinux"), 0644)
 	assert.NoError(t, err)
-	
+
 	// Create mock ignite binary
 	igniteBin := filepath.Join(tempDir, "ignite")
 	err = os.WriteFile(igniteBin, []byte("#!/bin/bash\necho mock ignite"), 0755)
 	assert.NoError(t, err)
-	
+
 	config := &TestConfig{
 		TFTPDir:    tftpDir,
 		IgniteBin:  igniteBin,
@@ -139,7 +139,7 @@ func TestCheckPrerequisitesWithTempFiles(t *testing.T) {
 		MACAddress: "52:54:00:12:34:56",
 		Memory:     "512M",
 	}
-	
+
 	// This test will still fail because qemu-system-x86_64 likely isn't installed
 	// but we can test the file checking logic
 	err = config.CheckPrerequisites()
@@ -153,11 +153,11 @@ func TestCreateTestDisk(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "vmtest-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
-	
+
 	config := &TestConfig{
 		TestDisk: filepath.Join(tempDir, "test-disk.img"),
 	}
-	
+
 	// Test CreateTestDisk - may succeed if qemu-img is available
 	err = config.CreateTestDisk()
 	if err != nil {
@@ -173,15 +173,15 @@ func TestCreateTestDiskAlreadyExists(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "vmtest-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
-	
+
 	diskPath := filepath.Join(tempDir, "existing-disk.img")
 	err = os.WriteFile(diskPath, []byte("mock disk"), 0644)
 	assert.NoError(t, err)
-	
+
 	config := &TestConfig{
 		TestDisk: diskPath,
 	}
-	
+
 	// Should not error if disk already exists
 	err = config.CreateTestDisk()
 	assert.NoError(t, err)
@@ -191,21 +191,21 @@ func TestTestBootFilesOnlySetup(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "vmtest-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
-	
+
 	config := &TestConfig{
 		TFTPDir:    filepath.Join(tempDir, "tftp"),
 		TestDisk:   filepath.Join(tempDir, "test-disk.img"),
 		Memory:     "512M",
 		MACAddress: "52:54:00:12:34:56",
 	}
-	
+
 	// Create the test disk file to avoid creation error
 	err = os.WriteFile(config.TestDisk, []byte("mock disk"), 0644)
 	assert.NoError(t, err)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	
+
 	// This will likely fail because QEMU may not be available or will timeout quickly
 	err = config.TestBootFilesOnly(ctx)
 	if err != nil {
@@ -218,24 +218,24 @@ func TestTestIgniteIntegrationSetup(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "vmtest-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
-	
+
 	config := &TestConfig{
-		TFTPDir:   filepath.Join(tempDir, "tftp"),
-		IgniteBin: filepath.Join(tempDir, "ignite"),
-		TestDisk:  filepath.Join(tempDir, "test-disk.img"),
-		Memory:    "512M",
+		TFTPDir:    filepath.Join(tempDir, "tftp"),
+		IgniteBin:  filepath.Join(tempDir, "ignite"),
+		TestDisk:   filepath.Join(tempDir, "test-disk.img"),
+		Memory:     "512M",
 		MACAddress: "52:54:00:12:34:56",
 	}
-	
+
 	// Create mock files
 	err = os.WriteFile(config.TestDisk, []byte("mock disk"), 0644)
 	assert.NoError(t, err)
 	err = os.WriteFile(config.IgniteBin, []byte("#!/bin/bash\necho mock ignite"), 0755)
 	assert.NoError(t, err)
-	
+
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	
+
 	// This will fail because ignite binary is not real, but we can test setup
 	err = config.TestIgniteIntegration(ctx)
 	if err != nil {
@@ -247,14 +247,14 @@ func TestTestIgniteIntegrationSetup(t *testing.T) {
 func TestSetupDHCPServer(t *testing.T) {
 	config := NewTestConfig()
 	err := config.setupDHCPServer()
-	
+
 	// This method just logs and returns nil
 	assert.NoError(t, err)
 }
 
 func TestCreateDHCPServerInIgnite(t *testing.T) {
 	config := NewTestConfig()
-	
+
 	// This will fail because ignite server is not running
 	err := config.createDHCPServerInIgnite()
 	assert.Error(t, err)
@@ -264,7 +264,7 @@ func TestCreateDHCPServerInIgnite(t *testing.T) {
 
 func TestVerifyIgniteStatus(t *testing.T) {
 	config := NewTestConfig()
-	
+
 	// This will fail because ignite server is not running
 	err := config.verifyIgniteStatus()
 	assert.Error(t, err)
@@ -274,7 +274,7 @@ func TestVerifyIgniteStatus(t *testing.T) {
 
 func TestShowLogsWithNoFiles(t *testing.T) {
 	config := NewTestConfig()
-	
+
 	// Should not panic when no log files exist
 	assert.NotPanics(t, func() {
 		config.ShowLogs()
@@ -285,15 +285,15 @@ func TestShowLogsWithMockFiles(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "vmtest-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
-	
+
 	// Change to temp directory
 	oldDir, err := os.Getwd()
 	assert.NoError(t, err)
 	defer os.Chdir(oldDir)
-	
+
 	err = os.Chdir(tempDir)
 	assert.NoError(t, err)
-	
+
 	// Create mock log files
 	logFiles := []string{
 		"vmtest-serial.log",
@@ -301,7 +301,7 @@ func TestShowLogsWithMockFiles(t *testing.T) {
 		"vmtest-console.log",
 		"vmtest-ignite.log",
 	}
-	
+
 	for _, logFile := range logFiles {
 		content := "Mock log content for " + logFile + "\n"
 		// Create content longer than 500 chars to test truncation
@@ -311,9 +311,9 @@ func TestShowLogsWithMockFiles(t *testing.T) {
 		err = os.WriteFile(logFile, []byte(content), 0644)
 		assert.NoError(t, err)
 	}
-	
+
 	config := NewTestConfig()
-	
+
 	// Should not panic and should handle the log files
 	assert.NotPanics(t, func() {
 		config.ShowLogs()
@@ -324,19 +324,19 @@ func TestCleanup(t *testing.T) {
 	tempDir, err := os.MkdirTemp("", "vmtest-*")
 	assert.NoError(t, err)
 	defer os.RemoveAll(tempDir)
-	
+
 	// Change to temp directory
 	oldDir, err := os.Getwd()
 	assert.NoError(t, err)
 	defer os.Chdir(oldDir)
-	
+
 	err = os.Chdir(tempDir)
 	assert.NoError(t, err)
-	
+
 	config := &TestConfig{
 		TestDisk: "vmtest-disk.img",
 	}
-	
+
 	// Create files to be cleaned up
 	filesToCreate := []string{
 		config.TestDisk,
@@ -345,16 +345,16 @@ func TestCleanup(t *testing.T) {
 		"vmtest-console.log",
 		"vmtest-ignite.log",
 	}
-	
+
 	for _, file := range filesToCreate {
 		err = os.WriteFile(file, []byte("test content"), 0644)
 		assert.NoError(t, err)
 		assert.FileExists(t, file)
 	}
-	
+
 	// Run cleanup
 	config.Cleanup()
-	
+
 	// Verify files are removed
 	for _, file := range filesToCreate {
 		assert.NoFileExists(t, file)
@@ -363,7 +363,7 @@ func TestCleanup(t *testing.T) {
 
 func TestCleanupNonExistentFiles(t *testing.T) {
 	config := NewTestConfig()
-	
+
 	// Should not panic when files don't exist
 	assert.NotPanics(t, func() {
 		config.Cleanup()
@@ -404,7 +404,7 @@ func TestMainFunctionLogic(t *testing.T) {
 			expected: "should run test 2",
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// We can't easily test the main function directly due to os.Exit calls
@@ -420,7 +420,7 @@ func TestContextTimeout(t *testing.T) {
 	// Test that context timeout works as expected
 	ctx, cancel := context.WithTimeout(context.Background(), 100*time.Millisecond)
 	defer cancel()
-	
+
 	select {
 	case <-ctx.Done():
 		assert.Equal(t, context.DeadlineExceeded, ctx.Err())
@@ -436,7 +436,7 @@ func TestColorConstants(t *testing.T) {
 	assert.NotEmpty(t, ColorGreen)
 	assert.NotEmpty(t, ColorYellow)
 	assert.NotEmpty(t, ColorBlue)
-	
+
 	// Test that they contain ANSI escape sequences
 	assert.Contains(t, ColorReset, "\033")
 	assert.Contains(t, ColorRed, "\033")
@@ -447,7 +447,7 @@ func TestColorConstants(t *testing.T) {
 
 func TestQEMUCommandArguments(t *testing.T) {
 	config := NewTestConfig()
-	
+
 	// Test that the QEMU arguments are constructed correctly
 	expectedArgs := []string{
 		"-m", config.Memory,
@@ -459,22 +459,22 @@ func TestQEMUCommandArguments(t *testing.T) {
 		"-serial", "file:vmtest-serial.log",
 		"-monitor", "none",
 	}
-	
+
 	// Verify the arguments would be constructed correctly
 	assert.Equal(t, "512M", config.Memory)
 	assert.Equal(t, "52:54:00:12:34:56", config.MACAddress)
 	assert.Equal(t, "../public/tftp", config.TFTPDir)
 	assert.Equal(t, "vmtest-disk.img", config.TestDisk)
-	
+
 	// Test argument construction logic
 	netdevArg := "user,id=net0,tftp=" + config.TFTPDir + ",bootfile=boot-bios/pxelinux.0"
 	deviceArg := "e1000,netdev=net0,mac=" + config.MACAddress
 	driveArg := "file=" + config.TestDisk + ",format=qcow2"
-	
+
 	assert.Contains(t, netdevArg, config.TFTPDir)
 	assert.Contains(t, deviceArg, config.MACAddress)
 	assert.Contains(t, driveArg, config.TestDisk)
-	
+
 	// expectedArgs has: -m, 512M, -netdev, user..., -device, e1000..., -boot, order=nc, -drive, file..., -nographic, -serial, file:..., -monitor, none
 	// That's 15 elements total
 	assert.Equal(t, 15, len(expectedArgs)) // Should have 15 arguments
@@ -483,29 +483,29 @@ func TestQEMUCommandArguments(t *testing.T) {
 // Test that demonstrates the integration flow without external dependencies
 func TestIntegrationFlowLogic(t *testing.T) {
 	config := NewTestConfig()
-	
+
 	// Test 1: Boot files test flow
 	t.Run("boot files test flow", func(t *testing.T) {
 		// Would create test disk (mocked)
 		assert.Equal(t, "vmtest-disk.img", config.TestDisk)
-		
+
 		// Would start QEMU with built-in TFTP (mocked)
 		assert.Equal(t, "../public/tftp", config.TFTPDir)
-		
+
 		// Would run for 30 seconds (mocked)
 		timeout := 30 * time.Second
 		assert.Equal(t, 30*time.Second, timeout)
 	})
-	
+
 	// Test 2: Ignite integration flow
 	t.Run("ignite integration flow", func(t *testing.T) {
 		// Would setup DHCP server (mocked)
 		err := config.setupDHCPServer()
 		assert.NoError(t, err)
-		
+
 		// Would start ignite server (mocked)
 		assert.Equal(t, "../ignite", config.IgniteBin)
-		
+
 		// Would create DHCP server config (would fail without running server)
 		// Would start QEMU VM (would fail without QEMU)
 		// Would verify ignite status (would fail without running server)
@@ -557,7 +557,7 @@ func TestConfigValidation(t *testing.T) {
 			valid: false,
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Basic validation logic
@@ -566,7 +566,7 @@ func TestConfigValidation(t *testing.T) {
 				test.config.TestDisk != "" &&
 				test.config.MACAddress != "" &&
 				test.config.Memory != ""
-			
+
 			assert.Equal(t, test.valid, isValid)
 		})
 	}

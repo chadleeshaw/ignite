@@ -45,26 +45,26 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 	}
-	
+
 	var supportedArchs []string
 	for arch := range archMap {
 		supportedArchs = append(supportedArchs, arch)
 	}
-	
+
 	// Fallback if no architectures found
 	if len(supportedArchs) == 0 {
 		supportedArchs = []string{"x86_64"}
 	}
 
 	data := struct {
-		Title        string
-		OSImages     []*osimage.OSImage
-		Downloads    []*osimage.DownloadStatus
+		Title         string
+		OSImages      []*osimage.OSImage
+		Downloads     []*osimage.DownloadStatus
 		Architectures []string
 	}{
-		Title:        "OS Images",
-		OSImages:     images,
-		Downloads:    downloads,
+		Title:         "OS Images",
+		OSImages:      images,
+		Downloads:     downloads,
 		Architectures: supportedArchs,
 	}
 

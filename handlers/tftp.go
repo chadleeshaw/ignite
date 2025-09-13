@@ -170,7 +170,7 @@ func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	if tftpDir == "" {
 		tftpDir = "./public/tftp"
 	}
-	
+
 	if err := os.MkdirAll(tftpDir, 0755); err != nil {
 		http.Error(w, "Failed to create upload directory", http.StatusInternalServerError)
 		return

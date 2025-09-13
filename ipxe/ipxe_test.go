@@ -395,13 +395,13 @@ func TestRenderTemplate(t *testing.T) {
 // Test WriteConfigToFile
 func TestWriteConfigToFile(t *testing.T) {
 	ctx := context.Background()
-	
+
 	// Create temporary directory for test
 	tempDir := t.TempDir()
-	
+
 	cfg := createTestConfig()
 	cfg.TFTP.Dir = tempDir
-	
+
 	mockOSService := &MockOSImageService{}
 	service := NewService(cfg, mockOSService)
 
@@ -428,11 +428,11 @@ func TestWriteConfigToFile(t *testing.T) {
 // Test WriteConfigToFile with GenerateConfig error
 func TestWriteConfigToFile_GenerateConfigError(t *testing.T) {
 	ctx := context.Background()
-	
+
 	tempDir := t.TempDir()
 	cfg := createTestConfig()
 	cfg.TFTP.Dir = tempDir
-	
+
 	mockOSService := &MockOSImageService{}
 	service := NewService(cfg, mockOSService)
 
@@ -453,10 +453,10 @@ func TestWriteConfigToFile_GenerateConfigError(t *testing.T) {
 // Test WriteConfigToFile with invalid directory
 func TestWriteConfigToFile_InvalidDirectory(t *testing.T) {
 	ctx := context.Background()
-	
+
 	cfg := createTestConfig()
 	cfg.TFTP.Dir = "/nonexistent/directory"
-	
+
 	mockOSService := &MockOSImageService{}
 	service := NewService(cfg, mockOSService)
 
@@ -536,10 +536,10 @@ func TestTemplateStructure(t *testing.T) {
 
 	// Check essential iPXE structure
 	lines := strings.Split(result, "\n")
-	
+
 	// Should start with shebang
 	assert.True(t, strings.HasPrefix(lines[0], "#!ipxe"))
-	
+
 	// Should contain key iPXE commands
 	assert.Contains(t, result, "dhcp")
 	assert.Contains(t, result, "menu ")
@@ -548,13 +548,13 @@ func TestTemplateStructure(t *testing.T) {
 	assert.Contains(t, result, "kernel ")
 	assert.Contains(t, result, "initrd ")
 	assert.Contains(t, result, "boot")
-	
+
 	// Should contain menu options
 	assert.Contains(t, result, "item local Boot from local disk")
 	assert.Contains(t, result, "item shell iPXE Shell")
 	assert.Contains(t, result, "item exit Exit to BIOS")
 	assert.Contains(t, result, "item memtest Memory Test")
-	
+
 	// Should contain labels
 	assert.Contains(t, result, ":menu")
 	assert.Contains(t, result, ":local")

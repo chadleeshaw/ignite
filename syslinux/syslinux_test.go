@@ -219,7 +219,7 @@ func TestGetRequiredBiosFiles(t *testing.T) {
 	}
 
 	assert.Len(t, files, len(expectedFiles))
-	
+
 	for _, expectedFile := range expectedFiles {
 		description, exists := files[expectedFile]
 		assert.True(t, exists, "Expected file %s should be present", expectedFile)
@@ -242,7 +242,7 @@ func TestGetRequiredEfiFiles(t *testing.T) {
 	}
 
 	assert.Len(t, files, len(expectedFiles))
-	
+
 	for _, expectedFile := range expectedFiles {
 		description, exists := files[expectedFile]
 		assert.True(t, exists, "Expected file %s should be present", expectedFile)
@@ -266,14 +266,14 @@ func TestGetBootFileSourcePath(t *testing.T) {
 		{"bios", "libcom32.c32", "bios/com32/lib/libcom32.c32"},
 		{"bios", "vesamenu.c32", "bios/com32/menu/vesamenu.c32"},
 		{"bios", "chain.c32", "bios/com32/modules/chain.c32"},
-		
+
 		// Test EFI paths
 		{"efi", "syslinux.efi", "efi64/efi/syslinux.efi"},
 		{"efi", "ldlinux.e64", "efi64/com32/elflink/ldlinux/ldlinux.e64"},
 		{"efi", "libcom32.c32", "efi64/com32/lib/libcom32.c32"},
 		{"efi", "vesamenu.c32", "efi64/com32/menu/vesamenu.c32"},
 		{"efi", "chain.c32", "efi64/com32/modules/chain.c32"},
-		
+
 		// Test invalid cases
 		{"invalid", "pxelinux.0", ""},
 		{"bios", "nonexistent.c32", ""},
@@ -281,8 +281,8 @@ func TestGetBootFileSourcePath(t *testing.T) {
 
 	for _, test := range tests {
 		result := GetBootFileSourcePath(test.bootType, test.fileName)
-		assert.Equal(t, test.expected, result, 
-			"GetBootFileSourcePath(%s, %s) should return %s", 
+		assert.Equal(t, test.expected, result,
+			"GetBootFileSourcePath(%s, %s) should return %s",
 			test.bootType, test.fileName, test.expected)
 	}
 }
@@ -301,7 +301,7 @@ func TestGetBootTypeFromVersion(t *testing.T) {
 
 	for _, test := range tests {
 		result := GetBootTypeFromVersion(test.version)
-		assert.Equal(t, test.expected, result, 
+		assert.Equal(t, test.expected, result,
 			"GetBootTypeFromVersion(%s) should return %v", test.version, test.expected)
 	}
 }
@@ -315,11 +315,11 @@ func TestParseVersionFromFilename(t *testing.T) {
 		{"syslinux-6.04-pre1.tar.gz", "6.04-pre1"},
 		{"syslinux-4.07.tar.gz", "4.07"},
 		{"syslinux-3.86.tar.gz", "3.86"},
-		
+
 		// Invalid cases
 		{"invalid-file.tar.gz", ""},
 		{"syslinux-.tar.gz", ""},
-		{"syslinux-6.03.zip", "6"},      // Wrong extension, but still parses (implementation quirk)
+		{"syslinux-6.03.zip", "6"},       // Wrong extension, but still parses (implementation quirk)
 		{"notasyslinux-6.03.tar.gz", ""}, // Wrong prefix
 		{"syslinux", ""},                 // No extension
 		{"", ""},                         // Empty string
@@ -327,7 +327,7 @@ func TestParseVersionFromFilename(t *testing.T) {
 
 	for _, test := range tests {
 		result := ParseVersionFromFilename(test.filename)
-		assert.Equal(t, test.expected, result, 
+		assert.Equal(t, test.expected, result,
 			"ParseVersionFromFilename(%s) should return %s", test.filename, test.expected)
 	}
 }
@@ -359,7 +359,7 @@ func TestSystemStatus(t *testing.T) {
 		BiosFilesCount: 9,
 		EfiFilesCount:  9,
 		TotalDiskUsage: 2048000,
-		LastUpdate:    "2023-01-01T12:00:00Z",
+		LastUpdate:     "2023-01-01T12:00:00Z",
 		HealthStatus:   "healthy",
 	}
 
@@ -548,8 +548,8 @@ func TestMockRepository_DownloadStatusOperations(t *testing.T) {
 
 func TestParseVersionFromFilename_EdgeCases(t *testing.T) {
 	// Test with exactly minimum length cases
-	assert.Equal(t, "", ParseVersionFromFilename("syslinux-.tar.gz"))  // 16 chars, but no version
-	assert.Equal(t, "", ParseVersionFromFilename("syslinux.tar.gz"))   // 15 chars, no dash
+	assert.Equal(t, "", ParseVersionFromFilename("syslinux-.tar.gz"))   // 16 chars, but no version
+	assert.Equal(t, "", ParseVersionFromFilename("syslinux.tar.gz"))    // 15 chars, no dash
 	assert.Equal(t, "a", ParseVersionFromFilename("syslinux-a.tar.gz")) // Single character version
 }
 
@@ -557,7 +557,7 @@ func TestGetBootTypeFromVersion_Boundary(t *testing.T) {
 	// Test boundary condition exactly at 4.00
 	assert.Equal(t, []string{"bios", "efi"}, GetBootTypeFromVersion("4.00"))
 	assert.Equal(t, []string{"bios"}, GetBootTypeFromVersion("3.99"))
-	
+
 	// Test string comparison behavior
 	assert.Equal(t, []string{"bios"}, GetBootTypeFromVersion("3.999")) // String comparison
 }
@@ -567,7 +567,7 @@ func TestSyslinuxConfig_Validation(t *testing.T) {
 	config := SyslinuxConfig{
 		BaseURL:        "https://mirrors.kernel.org/pub/linux/utils/boot/syslinux/",
 		TFTPDir:        "/tmp/tftp",
-		BiosDir:        "boot-bios", 
+		BiosDir:        "boot-bios",
 		EfiDir:         "boot-efi",
 		TempDir:        "/tmp/syslinux",
 		AutoExtract:    true,
@@ -581,7 +581,7 @@ func TestSyslinuxConfig_Validation(t *testing.T) {
 	assert.NotEmpty(t, config.BiosDir)
 	assert.NotEmpty(t, config.EfiDir)
 	assert.NotEmpty(t, config.TempDir)
-	
+
 	// URL validation
 	assert.Contains(t, config.BaseURL, "https://")
 	assert.Contains(t, config.BaseURL, "syslinux")

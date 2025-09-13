@@ -184,7 +184,7 @@ func TestNewDHCPHandlers(t *testing.T) {
 	container := createTestContainer()
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	container.ServerService = mockServerService
 	container.LeaseService = mockLeaseService
 
@@ -200,7 +200,7 @@ func TestNewDHCPHandlers(t *testing.T) {
 func TestDHCPHandlers_GetDHCPServers_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -218,7 +218,7 @@ func TestDHCPHandlers_GetDHCPServers_Success(t *testing.T) {
 			Started:       true,
 		},
 		{
-			ID:            "server-2", 
+			ID:            "server-2",
 			IP:            net.ParseIP("192.168.2.1"),
 			IPStart:       net.ParseIP("192.168.2.100"),
 			LeaseRange:    30,
@@ -260,7 +260,7 @@ func TestDHCPHandlers_GetDHCPServers_Success(t *testing.T) {
 func TestDHCPHandlers_GetDHCPServers_Error(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -283,7 +283,7 @@ func TestDHCPHandlers_GetDHCPServers_Error(t *testing.T) {
 func TestDHCPHandlers_StartDHCPServer_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -306,7 +306,7 @@ func TestDHCPHandlers_StartDHCPServer_Success(t *testing.T) {
 func TestDHCPHandlers_StartDHCPServer_MissingID(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -327,7 +327,7 @@ func TestDHCPHandlers_StartDHCPServer_MissingID(t *testing.T) {
 func TestDHCPHandlers_StopDHCPServer_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -350,7 +350,7 @@ func TestDHCPHandlers_StopDHCPServer_Success(t *testing.T) {
 func TestDHCPHandlers_DeleteDHCPServer_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -373,7 +373,7 @@ func TestDHCPHandlers_DeleteDHCPServer_Success(t *testing.T) {
 func TestDHCPHandlers_ReserveLease_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -383,7 +383,7 @@ func TestDHCPHandlers_ReserveLease_Success(t *testing.T) {
 	serverID := "test-server"
 	mac := "aa:bb:cc:dd:ee:ff"
 	ip := net.ParseIP("192.168.1.100")
-	
+
 	mockLeaseService.On("ReserveLease", mock.Anything, serverID, mac, ip).Return(nil)
 
 	req := httptest.NewRequest("POST", "/dhcp/submit_reserve?server_id="+serverID+"&mac="+mac+"&ip="+ip.String(), nil)
@@ -399,7 +399,7 @@ func TestDHCPHandlers_ReserveLease_Success(t *testing.T) {
 func TestDHCPHandlers_ReserveLease_InvalidMAC(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -419,7 +419,7 @@ func TestDHCPHandlers_ReserveLease_InvalidMAC(t *testing.T) {
 func TestDHCPHandlers_UnreserveLease_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -442,7 +442,7 @@ func TestDHCPHandlers_UnreserveLease_Success(t *testing.T) {
 func TestDHCPHandlers_DeleteLease_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,
@@ -465,7 +465,7 @@ func TestDHCPHandlers_DeleteLease_Success(t *testing.T) {
 func TestDHCPHandlers_GetLeaseStateHistory_Success(t *testing.T) {
 	mockServerService := &MockServerService{}
 	mockLeaseService := &MockLeaseService{}
-	
+
 	handlers := &DHCPHandlers{
 		serverService: mockServerService,
 		leaseService:  mockLeaseService,

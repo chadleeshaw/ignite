@@ -159,24 +159,24 @@ func (tc *TestConfig) setupDHCPServer() error {
 
 func (tc *TestConfig) createDHCPServerInIgnite() error {
 	logInfo("Creating DHCP server configuration in ignite...")
-	
+
 	// Wait a moment for ignite web interface to be ready
 	time.Sleep(2 * time.Second)
-	
-	// Use curl to create a DHCP server configuration  
-	createCmd := exec.Command("curl", "-X", "POST", 
+
+	// Use curl to create a DHCP server configuration
+	createCmd := exec.Command("curl", "-X", "POST",
 		"http://localhost:8080/dhcp/create_server",
 		"-H", "Content-Type: application/x-www-form-urlencoded",
 		"-d", "interface=vmtest0&start_ip=192.168.100.10&end_ip=192.168.100.50&subnet=192.168.100.0/24&gateway=192.168.100.1&dns=8.8.8.8",
 		"-s") // Silent mode
-	
+
 	output, err := createCmd.CombinedOutput()
 	if err != nil {
 		logWarn(fmt.Sprintf("Failed to create DHCP server: %v", err))
 		logWarn(fmt.Sprintf("Output: %s", string(output)))
 		return err
 	}
-	
+
 	logSuccess("DHCP server created in ignite")
 	logInfo(fmt.Sprintf("Server response: %s", string(output)))
 	return nil
@@ -234,7 +234,7 @@ func (tc *TestConfig) TestIgniteIntegration(ctx context.Context) error {
 	args := []string{
 		"-m", tc.Memory,
 		// Use QEMU user networking (can't reach host DHCP but safer for testing)
-		"-netdev", "user,id=net0", 
+		"-netdev", "user,id=net0",
 		"-device", fmt.Sprintf("e1000,netdev=net0,mac=%s", tc.MACAddress),
 		"-boot", "order=nc",
 		"-drive", fmt.Sprintf("file=%s,format=qcow2", tc.TestDisk),
@@ -279,35 +279,35 @@ func (tc *TestConfig) TestIgniteIntegration(ctx context.Context) error {
 
 func (tc *TestConfig) verifyIgniteStatus() error {
 	logInfo("Verifying ignite server status...")
-	
+
 	// Test web interface is responding
-	statusCmd := exec.Command("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", 
+	statusCmd := exec.Command("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
 		"http://localhost:8080/")
-	
+
 	output, err := statusCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to check ignite web status: %v", err)
 	}
-	
+
 	httpCode := string(output)
 	if httpCode != "200" {
 		return fmt.Errorf("ignite web interface returned HTTP %s", httpCode)
 	}
-	
+
 	// Test DHCP API endpoint
-	dhcpCmd := exec.Command("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}", 
+	dhcpCmd := exec.Command("curl", "-s", "-o", "/dev/null", "-w", "%{http_code}",
 		"http://localhost:8080/dhcp")
-	
+
 	output, err = dhcpCmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("failed to check DHCP endpoint: %v", err)
 	}
-	
+
 	httpCode = string(output)
 	if httpCode != "200" {
 		return fmt.Errorf("ignite DHCP endpoint returned HTTP %s", httpCode)
 	}
-	
+
 	logSuccess("Ignite server is responsive")
 	logSuccess("Web interface: OK")
 	logSuccess("DHCP endpoint: OK")

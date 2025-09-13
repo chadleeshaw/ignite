@@ -6,8 +6,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"ignite/handlers"
 	"ignite/config"
+	"ignite/handlers"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -60,7 +60,7 @@ func TestHandlersInstantiation(t *testing.T) {
 	assert.NotPanics(t, func() {
 		router.ServeHTTP(w, req)
 	})
-	
+
 	// Should return 404 for non-existent route
 	assert.Equal(t, http.StatusNotFound, w.Code)
 }

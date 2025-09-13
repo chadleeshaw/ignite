@@ -10,7 +10,7 @@ import (
 func TestNewContainer(t *testing.T) {
 	// Create a temporary directory for test database
 	tempDir := t.TempDir()
-	
+
 	// Set environment variable to use temp directory for database
 	oldPath := os.Getenv("DB_PATH")
 	defer func() {
@@ -20,9 +20,9 @@ func TestNewContainer(t *testing.T) {
 			os.Unsetenv("DB_PATH")
 		}
 	}()
-	
+
 	os.Setenv("DB_PATH", tempDir)
-	
+
 	container, err := NewContainer()
 	assert.NoError(t, err)
 	assert.NotNil(t, container)
@@ -30,7 +30,7 @@ func TestNewContainer(t *testing.T) {
 	assert.NotNil(t, container.ServerService)
 	assert.NotNil(t, container.LeaseService)
 	assert.NotNil(t, container.Config)
-	
+
 	// Clean up
 	container.Close()
 }

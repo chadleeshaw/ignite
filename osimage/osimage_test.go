@@ -167,7 +167,7 @@ func TestNewOSImageService(t *testing.T) {
 	service := NewOSImageService(mockRepo, mockDownloadRepo, config)
 
 	assert.NotNil(t, service)
-	
+
 	// Cast to implementation to verify internal structure
 	impl, ok := service.(*OSImageServiceImpl)
 	assert.True(t, ok)
@@ -349,7 +349,7 @@ func TestDownloadOSImage_Valid(t *testing.T) {
 
 	// Mock that the OS/version doesn't exist yet
 	mockRepo.On("GetByOSAndVersion", ctx, osConfig.OS, osConfig.Version).Return(nil, errors.New("not found"))
-	
+
 	// Mock saving the download status twice (queued, then downloading)
 	mockDownloadRepo.On("Save", ctx, mock.AnythingOfType("*osimage.DownloadStatus")).Return(nil).Twice()
 
@@ -501,7 +501,7 @@ func TestGetActiveDownloads(t *testing.T) {
 			Version: "22.04",
 		},
 		{
-			ID:      "download-2", 
+			ID:      "download-2",
 			Status:  "queued",
 			OS:      "centos",
 			Version: "8",
@@ -537,11 +537,11 @@ func TestCancelDownload(t *testing.T) {
 
 	mockDownloadRepo.On("Get", ctx, id).Return(downloadStatus, nil)
 	mockDownloadRepo.On("Save", ctx, mock.MatchedBy(func(status *DownloadStatus) bool {
-		return status.ID == id && 
-			   status.Status == "cancelled" && 
-			   status.Progress == 0 &&
-			   status.ErrorMessage == "Download cancelled by user" &&
-			   status.CompletedAt != nil
+		return status.ID == id &&
+			status.Status == "cancelled" &&
+			status.Progress == 0 &&
+			status.ErrorMessage == "Download cancelled by user" &&
+			status.CompletedAt != nil
 	})).Return(nil)
 
 	err := service.CancelDownload(ctx, id)
@@ -618,7 +618,7 @@ func TestOSImageConfig(t *testing.T) {
 func TestDownloadStatus(t *testing.T) {
 	now := time.Now()
 	completed := now.Add(5 * time.Minute)
-	
+
 	status := DownloadStatus{
 		ID:           "download-123",
 		OS:           "ubuntu",

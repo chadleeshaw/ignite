@@ -17,7 +17,7 @@ import (
 func TestEmbeddedStaticFS(t *testing.T) {
 	// Test that staticFS is properly embedded
 	assert.NotNil(t, staticFS)
-	
+
 	// Test that we can read from the embedded filesystem
 	// Note: This might fail if public/http directory doesn't exist, but that's expected
 	entries, err := staticFS.ReadDir(".")
@@ -32,20 +32,20 @@ func TestEmbeddedStaticFS(t *testing.T) {
 func TestMainIntegration(t *testing.T) {
 	// This test verifies that the main function dependencies are available
 	// without actually starting the server or creating real database connections
-	
+
 	// Test that embedded FS is available
 	assert.NotNil(t, staticFS)
-	
+
 	// Test that we can parse flags
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
-	
+
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"ignite"}
-	
+
 	config := testdata.ParseFlags()
 	assert.NotNil(t, config)
-	
+
 	// Test that app package is accessible (compilation test)
 	// We won't actually create the app to avoid database connections
 	assert.NotNil(t, app.Application{})
@@ -56,7 +56,7 @@ func TestCLIFlags(t *testing.T) {
 	// Save original args
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
-	
+
 	tests := []struct {
 		name     string
 		args     []string
@@ -95,18 +95,18 @@ func TestCLIFlags(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Reset flag state
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-			
+
 			// Set test args
 			os.Args = test.args
-			
+
 			// Parse flags
 			config := testdata.ParseFlags()
-			
+
 			assert.Equal(t, test.expected.MockData, config.MockData)
 			assert.Equal(t, test.expected.ClearData, config.ClearData)
 		})
@@ -118,7 +118,7 @@ func TestDataOperationsHandling(t *testing.T) {
 	// Save original args
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
-	
+
 	tests := []struct {
 		name           string
 		config         testdata.Config
@@ -137,18 +137,18 @@ func TestDataOperationsHandling(t *testing.T) {
 			description:    "Should continue when no data operations requested",
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Reset flag state
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
-			
+
 			// Set test args
 			args := []string{"ignite"}
 			args = append(args, test.additionalArgs...)
 			os.Args = args
 			flag.Parse() // Parse to set up flag.NArg()
-			
+
 			// Only test the logic flow for non-data operations (doesn't require real app)
 			if !test.config.MockData && !test.config.ClearData {
 				// For this case, we know HandleDataOperations should return true without needing a real app
@@ -163,11 +163,11 @@ func TestDataOperationsHandling(t *testing.T) {
 func TestApplicationLifecycle(t *testing.T) {
 	// Test that the application types and methods are available
 	// without creating real instances
-	
+
 	// Test that Application type exists and has expected methods
 	var app *app.Application
 	assert.Nil(t, app) // Just testing the type system
-	
+
 	// Note: We can't easily test Start() and Run() without actually starting servers
 	// But we've tested the individual components in app_test.go
 }
@@ -176,11 +176,11 @@ func TestApplicationLifecycle(t *testing.T) {
 func TestErrorHandling(t *testing.T) {
 	// Test that the embedded FS is properly configured
 	assert.NotNil(t, staticFS)
-	
+
 	// Test that empty FS can be created
 	emptyFS := embed.FS{}
 	assert.NotNil(t, emptyFS)
-	
+
 	// Test type safety
 	var fs embed.FS
 	assert.NotNil(t, fs)
@@ -209,20 +209,20 @@ func TestMainFunctionBehavior(t *testing.T) {
 			description: "Application startup with data clearing",
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
 			// Test flag parsing without creating real applications
-			
+
 			oldArgs := os.Args
 			defer func() { os.Args = oldArgs }()
-			
+
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 			os.Args = test.args
-			
+
 			config := testdata.ParseFlags()
 			assert.NotNil(t, config)
-			
+
 			// Verify flags are parsed correctly
 			switch test.name {
 			case "normal startup":
@@ -242,22 +242,22 @@ func TestMainFunctionBehavior(t *testing.T) {
 // Test the complete integration flow
 func TestCompleteIntegrationFlow(t *testing.T) {
 	// This test verifies the complete flow from main() without actually running servers
-	
+
 	// 1. Test embedded filesystem
 	assert.NotNil(t, staticFS)
-	
+
 	// 2. Test flag parsing
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
-	
+
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"ignite"}
-	
+
 	config := testdata.ParseFlags()
 	assert.NotNil(t, config)
 	assert.False(t, config.MockData)
 	assert.False(t, config.ClearData)
-	
+
 	// 3. Test that for no-operation config, HandleDataOperations returns true
 	// without needing a real application
 	if !config.MockData && !config.ClearData {
@@ -266,8 +266,8 @@ func TestCompleteIntegrationFlow(t *testing.T) {
 		assert.False(t, config.MockData)
 		assert.False(t, config.ClearData)
 	}
-	
-	// Note: We don't create real applications or call application.Run() 
+
+	// Note: We don't create real applications or call application.Run()
 	// because that would start actual servers and databases
 }
 
@@ -279,10 +279,10 @@ func TestLogging(t *testing.T) {
 	defer func() {
 		log.SetOutput(os.Stderr) // Reset to default
 	}()
-	
+
 	// Test that logging works
 	log.Println("test message")
-	
+
 	// Check that the log message was captured
 	logOutput := buf.String()
 	assert.Contains(t, logOutput, "test message")
@@ -291,13 +291,13 @@ func TestLogging(t *testing.T) {
 // Test package-level functionality
 func TestPackageLevelFunctionality(t *testing.T) {
 	// Test that the main package is properly structured
-	
+
 	// Verify embedded FS is available
 	assert.NotNil(t, staticFS)
-	
+
 	// Test that the app package is importable
 	assert.NotNil(t, &app.Application{})
-	
+
 	// Test that testdata package is importable
 	assert.NotNil(t, &testdata.Config{})
 }
@@ -306,11 +306,11 @@ func TestPackageLevelFunctionality(t *testing.T) {
 func BenchmarkFlagParsing(b *testing.B) {
 	oldArgs := os.Args
 	defer func() { os.Args = oldArgs }()
-	
+
 	for i := 0; i < b.N; i++ {
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 		os.Args = []string{"ignite", "-mock-data"}
-		
+
 		config := testdata.ParseFlags()
 		_ = config // Use the result
 	}
@@ -329,15 +329,15 @@ func TestCLIEdgeCases(t *testing.T) {
 			test: func(t *testing.T) {
 				// Reset flag state
 				flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
-				
+
 				// Capture stderr to check for flag errors
 				var stderr bytes.Buffer
 				flag.CommandLine.SetOutput(&stderr)
-				
+
 				oldArgs := os.Args
 				defer func() { os.Args = oldArgs }()
 				os.Args = []string{"ignite", "-unknown-flag"}
-				
+
 				// This should handle unknown flags gracefully
 				config := testdata.ParseFlags()
 				assert.NotNil(t, config)
@@ -350,14 +350,14 @@ func TestCLIEdgeCases(t *testing.T) {
 				// Testing help flag is tricky because it calls os.Exit(2)
 				// We'll just verify the flag system works
 				flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ContinueOnError)
-				
+
 				var stderr bytes.Buffer
 				flag.CommandLine.SetOutput(&stderr)
-				
+
 				oldArgs := os.Args
 				defer func() { os.Args = oldArgs }()
 				os.Args = []string{"ignite", "-h"}
-				
+
 				// This would normally print help and exit
 				// We'll just test that the flag parsing doesn't crash
 				assert.NotPanics(t, func() {
@@ -366,7 +366,7 @@ func TestCLIEdgeCases(t *testing.T) {
 			},
 		},
 	}
-	
+
 	for _, test := range tests {
 		t.Run(test.name, test.test)
 	}
