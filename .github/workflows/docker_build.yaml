@@ -94,7 +94,6 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
             type=semver,pattern={{major}}
             type=raw,value=latest,enable={{is_default_branch}}
 
@@ -133,7 +132,6 @@ jobs:
           GOOS=darwin GOARCH=amd64 go build -o ignite-darwin-amd64 .
           GOOS=darwin GOARCH=arm64 go build -o ignite-darwin-arm64 .
           GOOS=windows GOARCH=amd64 go build -o ignite-windows-amd64.exe .
-          GOOS=linux GOARCH=amd64 go build -o ignite-x86_64 .
 
       - name: Create Release
         uses: softprops/action-gh-release@v2
@@ -144,6 +142,5 @@ jobs:
             ignite-darwin-amd64
             ignite-darwin-arm64
             ignite-windows-amd64.exe
-            ignite-x86_64
           generate_release_notes: true
           make_latest: true
