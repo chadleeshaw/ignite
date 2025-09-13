@@ -58,10 +58,11 @@ jobs:
           name: coverage-report
           path: coverage.html
 
-      - name: Test vmtest package
+      - name: Test vmtest package (without QEMU integration tests)
         run: |
           cd vmtest
-          go test -v
+          # Run tests with short mode to skip QEMU-dependent tests
+          go test -v -short
 
   build-and-push:
     name: Build and Push Docker Image
