@@ -20,8 +20,9 @@ ENV PROV_DIR=/app/public/provision
 WORKDIR /app
 
 # Download the pre-built binary from GitHub release
-ADD https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-x86_64 ./ignite
-RUN chmod +x ./ignite
+# Use curl with follow redirects for better GitHub releases handling
+RUN curl -L -o ./ignite https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-x86_64 && \
+    chmod +x ./ignite
 
 # Copy public files
 COPY --chown=ignite:ignite ./public ./public
