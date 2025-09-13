@@ -18,10 +18,20 @@
                     <div class="form-control mt-4">
                         <label class="label"><span class="label-text">Operating System</span></label>
                         <div class="flex flex-wrap gap-4">
-                            <label class="cursor-pointer label"><input type="radio" name="os" value="Ubuntu" class="radio radio-primary" {{ if eq .os "Ubuntu" }}checked{{ end }} required><span class="label-text ml-2">Ubuntu</span></label>
-                            <label class="cursor-pointer label"><input type="radio" name="os" value="NixOS" class="radio radio-primary" {{ if eq .os "NixOS" }}checked{{ end }} required><span class="label-text ml-2">NixOS</span></label>
-                            <label class="cursor-pointer label"><input type="radio" name="os" value="Redhat" class="radio radio-primary" {{ if eq .os "Redhat" }}checked{{ end }} required><span class="label-text ml-2">Red Hat</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="ubuntu" class="radio radio-primary" onchange="updateVersions('ubuntu')" {{ if eq .os "ubuntu" }}checked{{ end }} required><span class="label-text ml-2">Ubuntu</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="nixos" class="radio radio-primary" onchange="updateVersions('nixos')" {{ if eq .os "nixos" }}checked{{ end }} required><span class="label-text ml-2">NixOS</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="centos" class="radio radio-primary" onchange="updateVersions('centos')" {{ if eq .os "centos" }}checked{{ end }} required><span class="label-text ml-2">CentOS</span></label>
                         </div>
+                    </div>
+
+                    <div class="form-control mt-4">
+                        <label class="label"><span class="label-text">Version</span></label>
+                        <select name="version" id="versionSelect" class="select select-bordered" required>
+                            <option value="">Select OS first</option>
+                            {{ if .version }}
+                            <option value="{{ .version }}" selected>{{ .version }}</option>
+                            {{ end }}
+                        </select>
                     </div>
 
                     <div class="form-control mt-4">
@@ -80,3 +90,42 @@
         </form>
     </div>
 </div>
+
+<script>
+// OS Image versions data from backend
+const osImagesData = {{ .osImages }};
+
+function updateVersions(selectedOS) {
+    const versionSelect = document.getElementById('versionSelect');
+    versionSelect.innerHTML = '<option value="">Select version</option>';
+    
+    if (selectedOS && osImagesData && osImagesData[selectedOS]) {
+        osImagesData[selectedOS].forEach(image => {
+            const option = document.createElement('option');
+            option.value = image.version;
+            option.textContent = image.version + (image.active ? ' (Default)' : '');
+            versionSelect.appendChild(option);
+        });
+        
+        // If there's only one version, select it automatically
+        if (osImagesData[selectedOS].length === 1) {
+            versionSelect.value = osImagesData[selectedOS][0].version;
+        }
+        // Or if there's a default version, select that
+        else {
+            const defaultVersion = osImagesData[selectedOS].find(img => img.active);
+            if (defaultVersion) {
+                versionSelect.value = defaultVersion.version;
+            }
+        }
+    }
+}
+
+// Initialize version dropdown on page load if OS is already selected
+document.addEventListener('DOMContentLoaded', function() {
+    const selectedOS = document.querySelector('input[name="os"]:checked');
+    if (selectedOS) {
+        updateVersions(selectedOS.value);
+    }
+});
+</script>

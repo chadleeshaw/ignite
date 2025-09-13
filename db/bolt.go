@@ -45,6 +45,11 @@ func NewBoltDB(cfg *config.Config) (*BoltDB, error) {
 	return boltDB, nil
 }
 
+// GetDB returns the underlying bolt.DB instance
+func (b *BoltDB) GetDB() *bolt.DB {
+	return b.DB
+}
+
 // GetOrCreateBucket creates a bucket if it doesn't exist
 func (b *BoltDB) GetOrCreateBucket(ctx context.Context, name string) error {
 	return b.Update(func(tx *bolt.Tx) error {
@@ -101,7 +106,8 @@ func (b *BoltDB) GetAllKV(ctx context.Context, bucket string) (map[string][]byte
 	err := b.View(func(tx *bolt.Tx) error {
 		bkt := tx.Bucket([]byte(bucket))
 		if bkt == nil {
-			return fmt.Errorf("bucket %q not found", bucket)
+			// Return empty map if bucket doesn't exist
+			return nil
 		}
 
 		return bkt.ForEach(func(k, v []byte) error {

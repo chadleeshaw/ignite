@@ -1,0 +1,42 @@
+<div class="modal modal-open">
+    <div class="modal-box bg-base-100">
+        <h3 class="font-bold text-2xl text-primary mb-4">Add Manual DHCP Entry</h3>
+        <form hx-post="/dhcp/add_manual_lease" hx-target="body" hx-swap="innerHTML">
+            <input type="hidden" name="network" value="{{.Network}}">
+            
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">MAC Address</span>
+                </label>
+                <input type="text" name="mac" class="input input-bordered w-full" 
+                       placeholder="aa:bb:cc:dd:ee:ff" 
+                       pattern="^[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}:[0-9A-Fa-f]{2}$"
+                       title="Please enter a valid MAC address (format: aa:bb:cc:dd:ee:ff)"
+                       required>
+            </div>
+            
+            <div class="form-control mb-4">
+                <label class="label">
+                    <span class="label-text">IP Address</span>
+                </label>
+                <input type="text" name="ip" class="input input-bordered w-full" 
+                       placeholder="192.168.1.100" 
+                       pattern="^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$"
+                       title="Please enter a valid IP address"
+                       required>
+            </div>
+            
+            <div class="form-control mb-4">
+                <label class="label cursor-pointer">
+                    <span class="label-text">Make this a static reservation</span>
+                    <input type="checkbox" name="static" value="true" class="checkbox checkbox-primary">
+                </label>
+            </div>
+            
+            <div class="modal-action">
+                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+                <button type="submit" class="btn btn-primary">Add Entry</button>
+            </div>
+        </form>
+    </div>
+</div>

@@ -1,11 +1,11 @@
 package handlers
 
 import (
+	"encoding/json"
 	"fmt"
 	"net"
 	"net/http"
 	"sort"
-	"strconv"
 	"time"
 
 	"ignite/config"
@@ -187,13 +187,39 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
+	// Check if this is an edit or create operation
+	serverID := r.FormValue("server_id")
+	isEdit := serverID != ""
+
 	// Parse form data
 	networkStr := r.FormValue("network")
 	subnetStr := r.FormValue("subnet")
 	gatewayStr := r.FormValue("gateway")
 	dnsStr := r.FormValue("dns")
 	startIPStr := r.FormValue("startIP")
-	numLeasesStr := r.FormValue("numLeases")
+
+	// Always use endIP approach now
+	endIPStr := r.FormValue("endIP")
+	endIP := net.ParseIP(endIPStr)
+	if endIP == nil {
+		http.Error(w, "Invalid end IP", http.StatusBadRequest)
+		return
+	}
+
+	startIP := net.ParseIP(startIPStr)
+	if startIP == nil {
+		http.Error(w, "Invalid start IP", http.StatusBadRequest)
+		return
+	}
+
+	// Calculate numLeases from start and end IP
+	startInt := ipToInt(startIP)
+	endInt := ipToInt(endIP)
+	if endInt < startInt {
+		http.Error(w, "End IP must be greater than start IP", http.StatusBadRequest)
+		return
+	}
+	numLeases := int(endInt - startInt + 1)
 
 	// Validate and parse inputs
 	network := net.ParseIP(networkStr)
@@ -220,18 +246,6 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	startIP := net.ParseIP(startIPStr)
-	if startIP == nil {
-		http.Error(w, "Invalid start IP", http.StatusBadRequest)
-		return
-	}
-
-	numLeases, err := strconv.Atoi(numLeasesStr)
-	if err != nil || numLeases <= 0 {
-		http.Error(w, "Invalid number of leases", http.StatusBadRequest)
-		return
-	}
-
 	// Create server configuration
 	config := dhcp.ServerConfig{
 		IP:            network,
@@ -243,17 +257,31 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		LeaseDuration: 2 * time.Hour, // Default lease duration
 	}
 
-	// Create server
-	server, err := h.serverService.CreateServer(ctx, config)
-	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create server: %v", err), http.StatusInternalServerError)
-		return
-	}
+	if isEdit {
+		// Update existing server
+		err := h.serverService.UpdateServer(ctx, serverID, config)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to update server: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-	// Redirect back to DHCP page to show the updated server list
-	w.Header().Set("HX-Redirect", "/dhcp")
-	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte(fmt.Sprintf("DHCP server created with ID: %s", server.ID)))
+		// Redirect back to DHCP page to show the updated server list
+		w.Header().Set("HX-Redirect", "/dhcp")
+		w.WriteHeader(http.StatusOK)
+		w.Write([]byte("DHCP server updated successfully"))
+	} else {
+		// Create new server
+		server, err := h.serverService.CreateServer(ctx, config)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create server: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		// Redirect back to DHCP page to show the updated server list
+		w.Header().Set("HX-Redirect", "/dhcp")
+		w.WriteHeader(http.StatusCreated)
+		w.Write([]byte(fmt.Sprintf("DHCP server created with ID: %s", server.ID)))
+	}
 }
 
 // ReserveLease handles POST /dhcp/submit_reserve
@@ -328,6 +356,148 @@ func (h *DHCPHandlers) DeleteLease(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("Lease deleted successfully"))
 }
 
+// AddManualLease handles POST /dhcp/add_manual_lease
+func (h *DHCPHandlers) AddManualLease(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	networkStr := r.FormValue("network")
+	macStr := r.FormValue("mac")
+	ipStr := r.FormValue("ip")
+	staticStr := r.FormValue("static")
+
+	if networkStr == "" || macStr == "" || ipStr == "" {
+		http.Error(w, "Network, MAC address, and IP address are required", http.StatusBadRequest)
+		return
+	}
+
+	// Find the server by network IP
+	servers, err := h.serverService.GetAllServers(ctx)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get servers: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	var serverID string
+	for _, server := range servers {
+		if server.IP.String() == networkStr {
+			serverID = server.ID
+			break
+		}
+	}
+
+	if serverID == "" {
+		http.Error(w, "Server not found for network", http.StatusBadRequest)
+		return
+	}
+
+	// Parse IP address
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		http.Error(w, "Invalid IP address", http.StatusBadRequest)
+		return
+	}
+
+	// Check if it should be a static reservation
+	isStatic := staticStr == "true"
+
+	if isStatic {
+		// Create a reserved lease
+		err = h.leaseService.ReserveLease(ctx, serverID, macStr, ip)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create reserved lease: %v", err), http.StatusInternalServerError)
+			return
+		}
+	} else {
+		// Create a regular lease
+		_, err = h.leaseService.AssignLease(ctx, serverID, macStr, ip)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("Failed to create lease: %v", err), http.StatusInternalServerError)
+			return
+		}
+	}
+
+	// Redirect back to DHCP page to show updated lease list
+	w.Header().Set("HX-Redirect", "/dhcp")
+	w.WriteHeader(http.StatusCreated)
+	w.Write([]byte("Manual DHCP entry added successfully"))
+}
+
+// UpdateLeaseState handles POST /dhcp/lease/{mac}/state
+func (h *DHCPHandlers) UpdateLeaseState(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	mac := r.URL.Query().Get("mac")
+	newState := r.FormValue("state")
+	source := r.FormValue("source")
+
+	if mac == "" || newState == "" {
+		http.Error(w, "MAC address and state are required", http.StatusBadRequest)
+		return
+	}
+
+	if source == "" {
+		source = "manual"
+	}
+
+	err := h.leaseService.UpdateLeaseState(ctx, mac, newState, source)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to update lease state: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "success", "message": "Lease state updated successfully"}`))
+}
+
+// RecordHeartbeat handles POST /dhcp/lease/{mac}/heartbeat
+func (h *DHCPHandlers) RecordHeartbeat(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	mac := r.URL.Query().Get("mac")
+	if mac == "" {
+		http.Error(w, "MAC address is required", http.StatusBadRequest)
+		return
+	}
+
+	err := h.leaseService.RecordHeartbeat(ctx, mac)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to record heartbeat: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte(`{"status": "success", "message": "Heartbeat recorded"}`))
+}
+
+// GetLeaseStateHistory handles GET /dhcp/lease/{mac}/history
+func (h *DHCPHandlers) GetLeaseStateHistory(w http.ResponseWriter, r *http.Request) {
+	ctx := r.Context()
+
+	mac := r.URL.Query().Get("mac")
+	if mac == "" {
+		http.Error(w, "MAC address is required", http.StatusBadRequest)
+		return
+	}
+
+	history, err := h.leaseService.GetLeaseStateHistory(ctx, mac)
+	if err != nil {
+		http.Error(w, fmt.Sprintf("Failed to get lease history: %v", err), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	// Return proper JSON with history data
+	response := map[string]interface{}{
+		"mac":     mac,
+		"history": history,
+	}
+	json.NewEncoder(w).Encode(response)
+}
+
 // Helper methods
 func (h *DHCPHandlers) getServerStatusBadge(started bool) string {
 	if started {
@@ -366,11 +536,15 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 	views := make([]LeaseView, 0, len(leases))
 	for _, lease := range leases {
 		views = append(views, LeaseView{
-			MAC:    lease.MAC,
-			IP:     lease.IP.String(),
-			Static: lease.Reserved,
-			Menu:   lease.Menu,
-			IPMI:   lease.IPMI,
+			MAC:              lease.MAC,
+			IP:               lease.IP.String(),
+			Static:           lease.Reserved,
+			Menu:             lease.Menu,
+			IPMI:             lease.IPMI,
+			State:            lease.State,
+			StateBadgeClass:  lease.GetStateBadgeClass(),
+			StateDisplayName: lease.GetStateDisplayName(),
+			LastSeen:         lease.LastSeen,
 		})
 	}
 
@@ -410,11 +584,15 @@ type DHCPServerView struct {
 }
 
 type LeaseView struct {
-	MAC    string        `json:"mac"`
-	IP     string        `json:"ip"`
-	Static bool          `json:"static"`
-	Menu   dhcp.BootMenu `json:"menu"`
-	IPMI   dhcp.IPMI     `json:"ipmi"`
+	MAC              string        `json:"mac"`
+	IP               string        `json:"ip"`
+	Static           bool          `json:"static"`
+	Menu             dhcp.BootMenu `json:"menu"`
+	IPMI             dhcp.IPMI     `json:"ipmi"`
+	State            string        `json:"state"`
+	StateBadgeClass  string        `json:"state_badge_class"`
+	StateDisplayName string        `json:"state_display_name"`
+	LastSeen         time.Time     `json:"last_seen"`
 }
 
 // renderTemplate is a placeholder for template rendering

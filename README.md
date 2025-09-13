@@ -6,6 +6,15 @@
 
 Ignite is a powerful, all-in-one solution for network booting and server provisioning, implemented in Go. It simplifies the complexities of setting up network boot environments by integrating DHCP, TFTP, and a web-based management interface into a single, easy-to-use application.
 
+## 🏆 Quality & Testing
+
+Ignite features comprehensive test coverage across all components:
+
+- **Comprehensive Unit Tests**: All packages include extensive test suites with mock implementations
+- **Integration Testing**: VM-based testing with QEMU for end-to-end PXE boot validation  
+- **Test Coverage**: Significant coverage across core packages (osimage, syslinux, handlers, routes, vmtest)
+- **Quality Assurance**: Automated formatting (`gofmt`) and static analysis (`go vet`) validation
+
 ## Overview
 
 Designed for developers, system administrators, and hobbyists, Ignite provides a streamlined workflow for managing PXE boot environments. Whether you're deploying operating systems, running diagnostics, or managing server configurations, Ignite offers the tools you need to get the job done efficiently.
@@ -24,23 +33,52 @@ Designed for developers, system administrators, and hobbyists, Ignite provides a
 
 ## Screenshots
 
-Here's a glimpse of the Ignite web interface:
+Here's a comprehensive look at the Ignite web interface across all major features:
 
-**Main Page**
+### **Main Dashboard**
+The central hub providing system overview, quick actions, and navigation to all features.
 
-![Main Page](./public/http/img/main_page.png)
+![Main Dashboard](./public/http/img/main_page.png)
 
-**DHCP Page**
+### **DHCP Management** 
+Complete DHCP server management with lease monitoring, reservations, and dynamic IP allocation.
 
-![DHCP Page](./public/http/img/dhcp_page.png)
+![DHCP Management](./public/http/img/dhcp_page.png)
+
+### **TFTP File Management**
+File browser and management interface for boot files, operating system images, and PXE configurations.
+
+![TFTP File Management](./public/http/img/tftp_page.png)
+
+### **Provision Templates**
+Cloud-init and Kickstart template editor with syntax highlighting and template management.
+
+![Provision Templates](./public/http/img/provision_page.png)
+
+### **OS Images Management**
+Download, manage, and deploy operating system images with progress tracking and version control.
+
+![OS Images Management](./public/http/img/osimage_page.png)
+
+### **Syslinux Configuration**
+Advanced PXE boot menu configuration and SYSLINUX management interface.
+
+![Syslinux Configuration](./public/http/img/syslinux_page.png)
+
+### **System Status**
+Real-time monitoring of server status, services, and system health indicators.
+
+![System Status](./public/http/img/status_page.png)
 
 ## Getting Started
 
 ### Prerequisites
 
-- **Go**: Version 1.18 or higher.
+- **Go**: Version 1.21 or higher (tested with Go 1.23.4).
 - **Node.js & npm**: For managing frontend dependencies.
 - **Tailwind CSS**: For styling the web interface.
+- **QEMU** (optional): For running integration tests (`qemu-system-x86_64`, `qemu-img`).
+- **curl**: For API testing and health checks.
 - A basic understanding of network booting concepts (DHCP, TFTP, PXE).
 
 ### Setup
@@ -65,6 +103,45 @@ Here's a glimpse of the Ignite web interface:
 3. **Access the Web UI**:
 
    Once the server is running, open your browser and navigate to `http://localhost:8080`.
+
+### Development & Testing
+
+**Running Tests**:
+
+```bash
+# Run all unit tests
+go test ./...
+
+# Run tests with coverage
+go test -cover ./...
+
+# Run vmtest integration tests (requires QEMU)
+cd vmtest
+go run vmtest.go 1    # Test boot files with QEMU built-in TFTP
+go run vmtest.go 2    # Test ignite integration
+go run vmtest.go logs # Show test logs
+go run vmtest.go clean # Clean up test files
+```
+
+**Code Quality**:
+
+```bash
+# Format code
+gofmt -w .
+
+# Run static analysis
+go vet ./...
+```
+
+**CLI Options**:
+
+```bash
+# Populate with mock data for testing
+./ignite -mock-data
+
+# Clear all data
+./ignite -clear-data
+```
 
 ### Configuration
 
@@ -110,6 +187,7 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 
 | Endpoint                  | Description                                   |
 |---------------------------|-----------------------------------------------|
+| `/dhcp/create_server`     | Creates a new DHCP server configuration.      |
 | `/dhcp/start`             | Starts a DHCP server.                         |
 | `/dhcp/stop`              | Stops a DHCP server.                          |
 | `/dhcp/delete`            | Deletes a DHCP server.                        |
@@ -124,17 +202,95 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/prov/newtemplate`       | Creates a new provisioning template.          |
 | `/prov/save`              | Saves a provisioning file.                    |
 
+## Architecture
+
+Ignite follows a clean, modular architecture with clear separation of concerns:
+
+### Core Packages
+
+- **`app/`**: Application lifecycle, dependency injection, and service orchestration
+- **`dhcp/`**: DHCP server implementation with lease management and reservation support
+- **`tftp/`**: TFTP server for serving boot files and OS images
+- **`handlers/`**: HTTP request handlers with dependency injection for web API endpoints
+- **`routes/`**: HTTP routing configuration and middleware setup
+- **`config/`**: Configuration management with environment variable support
+- **`db/`**: Database abstraction layer using BoltDB for persistent storage
+
+### Specialized Components
+
+- **`osimage/`**: OS image management with download tracking and file operations
+- **`syslinux/`**: SYSLINUX boot file management and menu generation
+- **`ipxe/`**: iPXE configuration generation and template rendering
+- **`vmtest/`**: Integration testing framework using QEMU for end-to-end PXE testing
+
+### Testing Strategy
+
+- **Unit Tests**: Comprehensive test coverage with mock implementations for all external dependencies
+- **Integration Tests**: Real-world testing using QEMU VMs to validate PXE boot workflows
+- **Mock Services**: Testify-based mocks for database operations, file system interactions, and external services
+
+## vmtest Integration Testing
+
+The `vmtest/` package provides comprehensive integration testing capabilities:
+
+```bash
+cd vmtest
+./setup-boot-files.sh    # One-time setup: download SYSLINUX boot files
+
+# Test boot files with QEMU built-in TFTP (validates PXE menu display)
+go run vmtest.go 1
+
+# Test full ignite integration (DHCP server, API endpoints, VM boot)
+go run vmtest.go 2
+
+# View test results and VM serial output
+go run vmtest.go logs
+
+# Clean up test artifacts
+go run vmtest.go clean
+```
+
+Integration tests validate:
+- SYSLINUX boot file functionality
+- DHCP server API endpoints
+- Ignite web interface responsiveness  
+- End-to-end PXE boot workflows
+- VM network boot scenarios
+
 ## To Do
 
-   * Better error handling
-   * IP validation
-   * TFTP path security
-   * Better inheritence
-   * Interfaces
+- Enhanced error handling and user feedback
+- IP address validation for DHCP configurations
+- TFTP directory path security improvements
+- Interface standardization across services
+- Additional OS template support
 
 ## Contributing
 
-Contributions are welcome! Please feel free to submit a pull request, report an issue, or suggest a feature.
+Contributions are welcome! Please ensure all contributions include:
+
+1. **Comprehensive tests** for new functionality
+2. **Code formatting** using `gofmt -w .`
+3. **Static analysis** compliance via `go vet ./...`
+4. **Documentation updates** for new features or API changes
+
+### Development Workflow
+
+```bash
+# Format and validate code
+gofmt -w .
+go vet ./...
+
+# Run full test suite
+go test ./...
+
+# Run integration tests (if QEMU available)
+cd vmtest && go test -v
+
+# Build and test the application
+go build -o ignite .
+./ignite -mock-data  # Test with sample data
+```
 
 ## License
 

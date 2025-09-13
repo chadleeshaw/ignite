@@ -1,3 +1,4 @@
+*.log
 .vscode
 .DS_Store
 .idea
@@ -6,7 +7,11 @@
 .grok
 ignite.db
 ignite
+initrd.img
+vmtest-disk.img
+vmlinuz
 bin
+public/tftp/*
 public/node_modules
 public/http/css/tailwind.css
 public/tftp/pxelinux.cfg/*

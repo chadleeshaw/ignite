@@ -1,56 +1,64 @@
 <div id="new-dhcp-server-modal" class="modal modal-open">
     <div class="modal-box bg-base-100">
-        <h3 class="font-bold text-2xl text-primary mb-4">New DHCP Server</h3>
+        <h3 class="font-bold text-2xl text-primary mb-4">{{.title}}</h3>
         <form hx-post="/dhcp/submit_dhcp" hx-target="body" hx-swap="innerHTML">
+            {{if .IsEdit}}
+            <input type="hidden" name="server_id" value="{{.server_id}}" />
+            {{end}}
             <div class="form-control">
                 <label class="label">
                     <span class="label-text">Network</span>
                 </label>
+                {{if .IsEdit}}
+                <input type="text" name="network" value="{{.tftpip}}" class="input input-bordered w-full" readonly />
+                <div class="text-xs text-gray-500 mt-1">Network IP cannot be changed when editing</div>
+                {{else}}
                 <select name="network" class="select select-bordered w-full">
                     <option disabled selected>Select Network</option>
                     {{ range .Networks }}
                     <option value="{{ . }}">{{ . }}</option>
                     {{ end }}
                 </select>
+                {{end}}
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Subnet Mask</span>
                 </label>
-                <input type="text" name="subnet" placeholder="255.255.255.0" class="input input-bordered" id="subnet" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid subnet mask (e.g., 255.255.255.0)" required />
+                <input type="text" name="subnet" placeholder="255.255.255.0" value="{{.subnet}}" class="input input-bordered" id="subnet" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid subnet mask (e.g., 255.255.255.0)" required />
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Gateway IP</span>
                 </label>
-                <input type="text" name="gateway" placeholder="192.168.1.1" class="input input-bordered" id="gateway" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.1)" required />
+                <input type="text" name="gateway" placeholder="192.168.1.1" value="{{.gateway}}" class="input input-bordered" id="gateway" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.1)" required />
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">DNS IP</span>
                 </label>
-                <input type="text" name="dns" placeholder="8.8.8.8" class="input input-bordered" id="dns" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 8.8.8.8)" required />
+                <input type="text" name="dns" placeholder="8.8.8.8" value="{{.dns}}" class="input input-bordered" id="dns" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 8.8.8.8)" required />
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
                     <span class="label-text">Start IP</span>
                 </label>
-                <input type="text" name="startIP" placeholder="192.168.1.100" class="input input-bordered" id="startIP" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.100)" required />
+                <input type="text" name="startIP" placeholder="192.168.1.100" value="{{.startip}}" class="input input-bordered" id="startIP" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.100)" required />
             </div>
 
             <div class="form-control mt-4">
                 <label class="label">
-                    <span class="label-text">Number of Leases</span>
+                    <span class="label-text">End IP</span>
                 </label>
-                <input type="number" name="numLeases" placeholder="e.g., 50" class="input input-bordered" min="1" id="numLeases" required />
+                <input type="text" name="endIP" placeholder="192.168.1.200" value="{{.endip}}" class="input input-bordered" id="endIP" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 192.168.1.200)" required />
             </div>
 
             <div class="modal-action mt-6">
-                <button type="submit" class="btn btn-primary">Create</button>
+                <button type="submit" class="btn btn-primary">{{if .IsEdit}}Update{{else}}Create{{end}}</button>
                 <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
             </div>
         </form>

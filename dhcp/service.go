@@ -62,6 +62,60 @@ func (s *DHCPServerService) CreateServer(ctx context.Context, config ServerConfi
 	return server, nil
 }
 
+// UpdateServer updates an existing DHCP server configuration
+func (s *DHCPServerService) UpdateServer(ctx context.Context, serverID string, config ServerConfig) error {
+	// Validate configuration
+	if err := s.validateServerConfig(config); err != nil {
+		return fmt.Errorf("invalid server configuration: %w", err)
+	}
+
+	// Get existing server
+	server, err := s.serverRepo.Get(ctx, serverID)
+	if err != nil {
+		return fmt.Errorf("failed to get server: %w", err)
+	}
+
+	// For updates, we don't allow changing the network IP to prevent conflicts
+	// The UI should prevent this, but we enforce it here as well
+	config.IP = server.IP
+
+	// If server is running, we need to stop and restart it
+	wasRunning := server.Started
+	if wasRunning {
+		if err := s.StopServer(ctx, serverID); err != nil {
+			return fmt.Errorf("failed to stop server for update: %w", err)
+		}
+	}
+
+	// Update server configuration
+	server.IP = config.IP
+	server.IPStart = config.StartIP
+	server.LeaseRange = config.LeaseRange
+	server.LeaseDuration = config.LeaseDuration
+	server.UpdatedAt = time.Now()
+	server.Options = DHCPOptions{
+		SubnetMask: config.SubnetMask,
+		Gateway:    config.Gateway,
+		DNS:        config.DNS,
+		TFTPServer: config.IP,
+	}
+
+	// Save updated server
+	if err := s.serverRepo.Save(ctx, server); err != nil {
+		return fmt.Errorf("failed to save updated server: %w", err)
+	}
+
+	// Restart server if it was running
+	if wasRunning {
+		if err := s.StartServer(ctx, serverID); err != nil {
+			log.Printf("Warning: failed to restart server after update: %v", err)
+			// Don't return error here, the update was successful
+		}
+	}
+
+	return nil
+}
+
 // StartServer starts a DHCP server
 func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) error {
 	server, err := s.serverRepo.Get(ctx, serverID)

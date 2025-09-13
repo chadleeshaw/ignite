@@ -20,15 +20,12 @@
                 </label>
                 <input type="text" id="static-ip" name="static-ip" value="{{ .ip }}" class="input input-bordered"/>
             </div>
-            <div class="modal-action mt-6 flex justify-between">
-                <div>
-                    {{ if .static }}
-                    <button type="button" class="btn btn-warning" hx-post="/dhcp/remove_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}" hx-target="body" hx-swap="innerHTML">Un-Reserve</button>
-                    {{ else }}
-                    <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Reserve</button>
-                    {{ end }}
-                    <button type="button" class="btn btn-error" hx-post="/dhcp/delete_lease?mac={{ urlquery .mac }}" hx-target="body" hx-swap="innerHTML">Delete Lease</button>
-                </div>
+            <div class="modal-action mt-6">
+                {{ if .static }}
+                <button type="button" class="btn btn-warning" hx-post="/dhcp/remove_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}" hx-target="body" hx-swap="innerHTML">Un-Reserve</button>
+                {{ else }}
+                <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Reserve</button>
+                {{ end }}
                 <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
             </div>
         </form>

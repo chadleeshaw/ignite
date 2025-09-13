@@ -43,6 +43,7 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 		"tftpip":        r.Form.Get("tftpip"),
 		"mac":           r.Form.Get("mac"),
 		"os":            r.Form.Get("os"),
+		"version":       r.Form.Get("version"),
 		"typeSelect":    r.Form.Get("typeSelect"),
 		"template_name": r.Form.Get("template_name"),
 		"hostname":      r.Form.Get("hostname"),
@@ -75,6 +76,7 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 	bootMenu := dhcp.BootMenu{
 		Filename:     pxefile,
 		OS:           formData["os"],
+		Version:      formData["version"],
 		TemplateType: formData["typeSelect"],
 		TemplateName: formData["template_name"],
 		Hostname:     formData["hostname"],
@@ -131,8 +133,8 @@ func (h *BootMenuHandlers) generateBootData(formData map[string]string, configFi
 
 	return BootMenuData{
 		Name:    h.osToName(formData["os"]),
-		Kernel:  h.osToKernel(formData["os"]),
-		Initrd:  h.osToInitrd(formData["os"]),
+		Kernel:  h.osToKernel(formData["os"], formData["version"]),
+		Initrd:  h.osToInitrd(formData["os"], formData["version"]),
 		Options: options,
 	}
 }
@@ -163,13 +165,57 @@ func (h *BootMenuHandlers) osToName(os string) string {
 	return ""
 }
 
-// osToKernel constructs the kernel file path for the given OS.
-func (h *BootMenuHandlers) osToKernel(os string) string {
+// osToKernel constructs the kernel file path for the given OS and version.
+// If a specific version is provided, it tries to find that version, otherwise uses the default version.
+func (h *BootMenuHandlers) osToKernel(os, version string) string {
+	ctx := context.Background()
+
+	if h.container.OSImageService != nil {
+		// If a specific version is requested, try to find that exact version
+		if version != "" {
+			if allImages, err := h.container.OSImageService.GetAllOSImages(ctx); err == nil {
+				for _, image := range allImages {
+					if image.OS == os && image.Version == version {
+						return image.KernelPath
+					}
+				}
+			}
+		}
+
+		// Fallback to default version
+		if image, err := h.container.OSImageService.GetDefaultVersion(ctx, os); err == nil {
+			return image.KernelPath
+		}
+	}
+
+	// Final fallback to legacy path structure
 	return fmt.Sprintf("%s/vmlinuz", h.osToName(os))
 }
 
-// osToInitrd constructs the initrd file path for the given OS.
-func (h *BootMenuHandlers) osToInitrd(os string) string {
+// osToInitrd constructs the initrd file path for the given OS and version.
+// If a specific version is provided, it tries to find that version, otherwise uses the default version.
+func (h *BootMenuHandlers) osToInitrd(os, version string) string {
+	ctx := context.Background()
+
+	if h.container.OSImageService != nil {
+		// If a specific version is requested, try to find that exact version
+		if version != "" {
+			if allImages, err := h.container.OSImageService.GetAllOSImages(ctx); err == nil {
+				for _, image := range allImages {
+					if image.OS == os && image.Version == version {
+						return image.InitrdPath
+					}
+				}
+			}
+		}
+
+		// Fallback to default version
+		if image, err := h.container.OSImageService.GetDefaultVersion(ctx, os); err == nil {
+			return image.InitrdPath
+		}
+	}
+
+	// Final fallback to legacy path structure
 	return fmt.Sprintf("%s/initrd.img", h.osToName(os))
 }
 
