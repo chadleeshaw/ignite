@@ -1,27 +1,142 @@
-name: Deploy Images to GHCR
+name: CI/CD Pipeline
 
 on:
   push:
-    branches:
-      - main
+    branches: [ main ]
+    tags: [ 'v*' ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository }}
 
 jobs:
-  push-to-ghcr:
-    name: Push Docker image to GHCR
-    permissions: write-all
+  test:
+    name: Test & Quality Assurance
     runs-on: ubuntu-latest
     steps:
-      - name: 'Checkout GitHub Action'
-        uses: actions/checkout@main
+      - name: Checkout code
+        uses: actions/checkout@v4
 
-      - name: 'Login to GitHub Container Registry'
-        uses: docker/login-action@v1
+      - name: Set up Go
+        uses: actions/setup-go@v4
         with:
-          registry: ghcr.io
-          username: ${{github.actor}}
-          password: ${{secrets.GITHUB_TOKEN}}
+          go-version: '1.23.4'
 
-      - name: 'Build And Push Image'
+      - name: Cache Go modules
+        uses: actions/cache@v3
+        with:
+          path: ~/go/pkg/mod
+          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+          restore-keys: |
+            ${{ runner.os }}-go-
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Run go vet
+        run: go vet ./...
+
+      - name: Check formatting
         run: |
-          docker build . --tag ghcr.io/chadleeshaw/ignite:latest
-          docker push ghcr.io/chadleeshaw/ignite:latest
+          if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+            echo "Code is not properly formatted. Run 'gofmt -w .'"
+            gofmt -s -l .
+            exit 1
+          fi
+
+      - name: Run tests
+        run: go test -v -race -coverprofile=coverage.out ./...
+
+      - name: Generate coverage report
+        run: go tool cover -html=coverage.out -o coverage.html
+
+      - name: Upload coverage reports
+        uses: actions/upload-artifact@v3
+        with:
+          name: coverage-report
+          path: coverage.html
+
+      - name: Test vmtest package
+        run: |
+          cd vmtest
+          go test -v
+
+  build-and-push:
+    name: Build and Push Docker Image
+    needs: test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Log in to Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=semver,pattern={{major}}
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  release:
+    name: Create Release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [test, build-and-push]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.23.4'
+
+      - name: Build release binaries
+        run: |
+          # Build for multiple platforms
+          GOOS=linux GOARCH=amd64 go build -o ignite-linux-amd64 .
+          GOOS=linux GOARCH=arm64 go build -o ignite-linux-arm64 .
+          GOOS=darwin GOARCH=amd64 go build -o ignite-darwin-amd64 .
+          GOOS=darwin GOARCH=arm64 go build -o ignite-darwin-arm64 .
+          GOOS=windows GOARCH=amd64 go build -o ignite-windows-amd64.exe .
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            ignite-linux-amd64
+            ignite-linux-arm64
+            ignite-darwin-amd64
+            ignite-darwin-arm64
+            ignite-windows-amd64.exe
+          generate_release_notes: true
+          make_latest: true
