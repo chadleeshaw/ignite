@@ -479,7 +479,6 @@ func NewProvisionNewFileModal() map[string]any {
 	}
 }
 
-
 // ipToInt converts IP to uint32 (helper function for IP calculations)
 func ipToInt(ip net.IP) uint32 {
 	if len(ip) == 16 {
