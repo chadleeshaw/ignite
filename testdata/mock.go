@@ -92,9 +92,9 @@ func (m *MockDataService) PopulateMockData(ctx context.Context) error {
 			reserved: true,
 			menu: dhcp.BootMenu{
 				Filename:     "ipxe.efi",
-				OS:           "Windows 11",
-				TemplateType: "unattend",
-				TemplateName: "windows-enterprise",
+				OS:           "ubuntu",
+				TemplateType: "cloud-init",
+				TemplateName: "default",
 				Hostname:     "server-01",
 				IP:           net.ParseIP("192.168.1.101"),
 				Subnet:       net.ParseIP("255.255.255.0"),

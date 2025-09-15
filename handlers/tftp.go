@@ -47,17 +47,59 @@ func (h *TFTPHandlers) HandleTFTPPage(w http.ResponseWriter, r *http.Request) {
 func (h *TFTPHandlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	fileName := r.URL.Query().Get("file")
 	if fileName == "" {
-		http.Error(w, "File parameter is required", http.StatusBadRequest)
+		appErr := NewValidationError("Missing file parameter", "File parameter is required")
+		HandleError(w, r, appErr)
 		return
 	}
 
-	filePath := filepath.Join(TFTPDir, fileName)
+	// Create security validator
+	validator := NewTFTPSecurityValidator(TFTPDir)
+
+	// Validate the file path
+	if err := validator.ValidateTFTPPath(fileName); err != nil {
+		appErr := NewValidationError(
+			fmt.Sprintf("Invalid file path: %v", err),
+			"The requested file path is not allowed",
+		)
+		HandleError(w, r, appErr)
+		return
+	}
+
+	// Get safe file path
+	filePath, err := validator.GetSafePath(TFTPDir, fileName)
+	if err != nil {
+		appErr := NewValidationError(
+			fmt.Sprintf("Cannot resolve safe path: %v", err),
+			"The requested file path is not allowed",
+		)
+		HandleError(w, r, appErr)
+		return
+	}
+
+	// Validate file size
+	if err := validator.pathValidator.ValidateFileSize(filePath); err != nil {
+		appErr := NewValidationError(
+			fmt.Sprintf("File validation failed: %v", err),
+			"The requested file is too large or invalid",
+		)
+		HandleError(w, r, appErr)
+		return
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "File not found", http.StatusNotFound)
+			appErr := NewNotFoundError(
+				fmt.Sprintf("File not found: %s", fileName),
+				"The requested file does not exist",
+			)
+			HandleError(w, r, appErr)
 		} else {
-			http.Error(w, "Error opening file", http.StatusInternalServerError)
+			appErr := NewInternalError(
+				fmt.Sprintf("Error opening file %s: %v", fileName, err),
+				"Unable to open the requested file",
+			)
+			HandleError(w, r, appErr)
 		}
 		return
 	}

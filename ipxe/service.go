@@ -125,7 +125,7 @@ func (s *Service) getDisplayName(os, version string) string {
 	case "nixos":
 		return fmt.Sprintf("NixOS %s", version)
 	default:
-		return fmt.Sprintf("%s %s", strings.Title(os), version)
+		return fmt.Sprintf("%s %s", strings.ToUpper(string(os[0]))+os[1:], version)
 	}
 }
 

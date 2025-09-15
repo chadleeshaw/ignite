@@ -139,16 +139,17 @@ func (l *Lease) IsActive() bool {
 
 // BootMenu contains PXE boot configuration
 type BootMenu struct {
-	Filename     string `json:"filename"`
-	OS           string `json:"os"`
-	Version      string `json:"version"`
-	TemplateType string `json:"template_type"`
-	TemplateName string `json:"template_name"`
-	Hostname     string `json:"hostname"`
-	IP           net.IP `json:"ip"`
-	Subnet       net.IP `json:"subnet"`
-	Gateway      net.IP `json:"gateway"`
-	DNS          net.IP `json:"dns"`
+	Filename      string `json:"filename"`
+	OS            string `json:"os"`
+	Version       string `json:"version"`
+	TemplateType  string `json:"template_type"`
+	TemplateName  string `json:"template_name"`
+	Hostname      string `json:"hostname"`
+	IP            net.IP `json:"ip"`
+	Subnet        net.IP `json:"subnet"`
+	Gateway       net.IP `json:"gateway"`
+	DNS           net.IP `json:"dns"`
+	KernelOptions string `json:"kernel_options"`
 }
 
 // IPMI holds IPMI configuration for remote server management

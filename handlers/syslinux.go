@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"strconv"
 	"time"
 
 	"ignite/syslinux"
@@ -505,52 +504,6 @@ func (h *SyslinuxHandler) ValidateInstallation(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
-}
-
-// Helper function to parse pagination parameters
-func parsePaginationParams(r *http.Request) (page, limit int, err error) {
-	pageStr := r.URL.Query().Get("page")
-	limitStr := r.URL.Query().Get("limit")
-
-	page = 1 // default
-	if pageStr != "" {
-		if page, err = strconv.Atoi(pageStr); err != nil {
-			return 0, 0, fmt.Errorf("invalid page parameter")
-		}
-	}
-
-	limit = 20 // default
-	if limitStr != "" {
-		if limit, err = strconv.Atoi(limitStr); err != nil {
-			return 0, 0, fmt.Errorf("invalid limit parameter")
-		}
-	}
-
-	if page < 1 {
-		page = 1
-	}
-	if limit < 1 || limit > 100 {
-		limit = 20
-	}
-
-	return page, limit, nil
-}
-
-// Helper function to create paginated response
-func createPaginatedResponse(data interface{}, total, page, limit int) map[string]interface{} {
-	totalPages := (total + limit - 1) / limit
-
-	return map[string]interface{}{
-		"data": data,
-		"pagination": map[string]interface{}{
-			"current_page":   page,
-			"total_pages":    totalPages,
-			"total_items":    total,
-			"items_per_page": limit,
-			"has_next":       page < totalPages,
-			"has_previous":   page > 1,
-		},
-	}
 }
 
 // Helper methods for version management

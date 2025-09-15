@@ -71,7 +71,7 @@ func (h *ProvisionHandlers) getProvisionData() *ProvisionData {
 	data := &ProvisionData{
 		Title:      "Provisioning Scripts",
 		Files:      []*ProvisionFileInfo{},
-		Categories: []string{"cloud-init", "kickstart", "bootmenu"},
+		Categories: []string{"autoyast", "bootmenu", "cloud-init", "ipxe", "kickstart", "preseed"},
 		Types:      []string{"templates", "configs"},
 	}
 
@@ -145,6 +145,10 @@ func (h *ProvisionHandlers) detectLanguage(path string) string {
 		return "ini"
 	case ".ks":
 		return "kickstart"
+	case ".xml":
+		return "xml"
+	case ".ipxe":
+		return "ipxe"
 	default:
 		// Check directory or filename for hints
 		if strings.Contains(path, "cloud-init") {
@@ -152,6 +156,15 @@ func (h *ProvisionHandlers) detectLanguage(path string) string {
 		}
 		if strings.Contains(path, "kickstart") {
 			return "kickstart"
+		}
+		if strings.Contains(path, "preseed") {
+			return "preseed"
+		}
+		if strings.Contains(path, "autoyast") {
+			return "xml"
+		}
+		if strings.Contains(path, "ipxe") {
+			return "ipxe"
 		}
 		if strings.Contains(path, "bootmenu") || strings.Contains(path, "pxe") {
 			return "ini"
@@ -397,6 +410,33 @@ func (h *ProvisionHandlers) loadFileContent(filePath string) (string, error) {
 	return string(content), nil
 }
 
+// isPathAllowed checks if a file path is within allowed directories
+func (h *ProvisionHandlers) isPathAllowed(filePath string, allowedDirs ...string) bool {
+	absPath, err := filepath.Abs(filePath)
+	if err != nil {
+		return false
+	}
+
+	for _, allowedDir := range allowedDirs {
+		absAllowedDir, err := filepath.Abs(allowedDir)
+		if err != nil {
+			continue
+		}
+
+		relPath, err := filepath.Rel(absAllowedDir, absPath)
+		if err != nil {
+			continue
+		}
+
+		// Check if the relative path doesn't start with ".." (which would indicate it's outside the allowed directory)
+		if !strings.HasPrefix(relPath, "..") && !filepath.IsAbs(relPath) {
+			return true
+		}
+	}
+
+	return false
+}
+
 // Additional API endpoints for the new interface
 
 // LoadFileContent loads file content via API
@@ -456,6 +496,59 @@ func (h *ProvisionHandlers) SaveFileContent(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(map[string]interface{}{
 		"success": true,
 		"message": "File saved successfully",
+	})
+}
+
+// DeleteFile deletes a file via API
+func (h *ProvisionHandlers) DeleteFile(w http.ResponseWriter, r *http.Request) {
+	filePath := r.FormValue("path")
+
+	if filePath == "" {
+		w.WriteHeader(http.StatusBadRequest)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "path parameter is required",
+		})
+		return
+	}
+
+	// Security check: ensure file is within allowed directories
+	provisionDir := h.container.Config.Provision.Dir
+	tftpDir := h.container.Config.TFTP.Dir
+
+	if !h.isPathAllowed(filePath, provisionDir, tftpDir) {
+		w.WriteHeader(http.StatusForbidden)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "File deletion not allowed outside of provision directories",
+		})
+		return
+	}
+
+	// Check if file exists
+	if _, err := os.Stat(filePath); os.IsNotExist(err) {
+		w.WriteHeader(http.StatusNotFound)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   "File not found",
+		})
+		return
+	}
+
+	// Delete file
+	if err := os.Remove(filePath); err != nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		json.NewEncoder(w).Encode(map[string]interface{}{
+			"success": false,
+			"error":   fmt.Sprintf("Error deleting file: %v", err),
+		})
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": true,
+		"message": "File deleted successfully",
 	})
 }
 

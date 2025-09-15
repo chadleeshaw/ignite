@@ -180,8 +180,8 @@ document.addEventListener("DOMContentLoaded", () => {
                 localStorage.setItem('codeBlockContent', editableTextarea.value);
                 if (currentFilename) {
                     const filename = currentFilename.textContent.split(': ')[1] || 'untitled';
-                    updateCurrentFilename(filename)
-                    localStorage.setItem('currentFilename', filename)
+                    updateCurrentFilename(filename);
+                    localStorage.setItem('currentFilename', filename);
                 }
                 if (currentLanguage) {
                     localStorage.setItem('currentLanguage', currentLanguage.textContent.split(': ')[1] || 'yaml');
@@ -205,8 +205,8 @@ document.addEventListener("DOMContentLoaded", () => {
                     updateHighlighting();
                 }
                 if (savedFilename && currentFilename) {
-                    safeSetElementValue('currentFilename', savedFilename)
-                    updateCurrentFilename(savedFilename)
+                    safeSetElementValue('currentFilename', savedFilename);
+                    updateCurrentFilename(savedFilename);
                 }
                 if (savedLanguage && currentLanguage) {
                     safeSetElementValue('currentLanguage', savedLanguage);
@@ -249,16 +249,6 @@ document.addEventListener("DOMContentLoaded", () => {
             codeContentInput.value = editableTextarea.value;
         }
         saveEditorState();
-    });
-
-    ['loadConfigBtn', 'newTemplateBtn', 'loadTemplateBtn'].forEach(id => {
-        const button = document.getElementById(id);
-        if (button) {
-            button.addEventListener('click', function() {
-                // I might want to update or load content from the modal
-                // but since the modal handling is outside this script, no action here
-            });
-        }
     });
 
     loadEditorState();

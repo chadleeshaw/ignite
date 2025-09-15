@@ -1,0 +1,106 @@
+#!ipxe
+# iPXE Boot Script Template
+
+# Set console output
+console --picture --left 100 --right 80
+
+# Display banner
+echo
+echo ================================================================================
+echo Welcome to PXE Boot - {{ .hostname }}
+echo ================================================================================
+echo
+
+# Configure network interface
+echo Configuring network interface...
+ifopen net0
+set net0/ip {{ .ip }}
+set net0/netmask {{ .subnet }}
+set net0/gateway {{ .gateway }}
+set net0/dns {{ .dns }}
+
+# Set hostname
+set hostname {{ .hostname }}
+
+# Define kernel and initrd URLs (customize as needed)
+set kernel-url http://{{ .ip }}/images/vmlinuz
+set initrd-url http://{{ .ip }}/images/initrd.img
+
+# Boot options (customize as needed)
+set boot-options console=tty0 console=ttyS0,115200n8
+
+echo Network configured successfully
+echo IP Address: ${net0/ip}
+echo Netmask: ${net0/netmask}
+echo Gateway: ${net0/gateway}
+echo DNS: ${net0/dns}
+echo
+
+# Menu selection
+:start
+menu iPXE Boot Menu for {{ .hostname }}
+item --gap --             Network Configuration:
+item --gap --             IP: {{ .ip }}
+item --gap --             Gateway: {{ .gateway }}
+item --gap --             DNS: {{ .dns }}
+item --gap --             ------------------------
+item ubuntu                Boot Ubuntu Live
+item centos                Boot CentOS Live
+item memtest               Memory Test
+item --gap --             ------------------------
+item reboot                Reboot
+item exit                  Exit to BIOS
+choose --timeout 30000 --default ubuntu selected || goto cancel
+set menu-timeout 0
+goto ${selected}
+
+:ubuntu
+echo Booting Ubuntu...
+set kernel-url http://archive.ubuntu.com/ubuntu/dists/jammy/main/installer-amd64/current/legacy-images/netboot/ubuntu-installer/amd64/linux
+set initrd-url http://archive.ubuntu.com/ubuntu/dists/jammy/main/installer-amd64/current/legacy-images/netboot/ubuntu-installer/amd64/initrd.gz
+set boot-options ${boot-options} auto=true priority=critical preseed/url=http://{{ .ip }}/preseed.cfg
+goto boot
+
+:centos
+echo Booting CentOS...
+set kernel-url http://mirror.centos.org/centos/8/BaseOS/x86_64/os/images/pxeboot/vmlinuz
+set initrd-url http://mirror.centos.org/centos/8/BaseOS/x86_64/os/images/pxeboot/initrd.img
+set boot-options ${boot-options} inst.ks=http://{{ .ip }}/kickstart.cfg
+goto boot
+
+:memtest
+echo Loading memory test...
+kernel http://boot.ipxe.org/memtest.bin
+boot || goto failed
+
+:boot
+echo Loading kernel from ${kernel-url}...
+kernel ${kernel-url} ${boot-options} || goto failed
+echo Loading initrd from ${initrd-url}...
+initrd ${initrd-url} || goto failed
+echo Booting...
+boot || goto failed
+
+:failed
+echo Boot failed, dropping to shell
+shell
+
+:reboot
+echo Rebooting in 3 seconds...
+sleep 3
+reboot
+
+:cancel
+echo Boot cancelled
+exit
+
+:exit
+echo Exiting to BIOS...
+exit
+
+# Error handler
+:error
+echo An error occurred during boot
+echo Press any key to return to menu...
+prompt
+goto start

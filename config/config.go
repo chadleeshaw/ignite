@@ -210,6 +210,67 @@ func getDefaultOSImageConfig() OSImageConfig {
 					},
 				},
 			},
+			"debian": {
+				DisplayName: "Debian",
+				KernelFile:  "linux",
+				InitrdFile:  "initrd.gz",
+				Versions: map[string]OSVersion{
+					"11": {
+						DisplayName:   "11 (Bullseye)",
+						BaseURL:       "http://deb.debian.org/debian/dists/bullseye/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
+						Architectures: []string{"x86_64"},
+					},
+					"12": {
+						DisplayName:   "12 (Bookworm)",
+						BaseURL:       "http://deb.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
+						Architectures: []string{"x86_64"},
+					},
+				},
+			},
+			"opensuse": {
+				DisplayName: "openSUSE",
+				KernelFile:  "linux",
+				InitrdFile:  "initrd",
+				Versions: map[string]OSVersion{
+					"15.5": {
+						DisplayName:   "Leap 15.5",
+						BaseURL:       "http://download.opensuse.org/distribution/leap/15.5/repo/oss/boot/x86_64/loader/",
+						Architectures: []string{"x86_64"},
+					},
+					"15.6": {
+						DisplayName:   "Leap 15.6",
+						BaseURL:       "http://download.opensuse.org/distribution/leap/15.6/repo/oss/boot/x86_64/loader/",
+						Architectures: []string{"x86_64"},
+					},
+					"tumbleweed": {
+						DisplayName:   "Tumbleweed (Rolling)",
+						BaseURL:       "http://download.opensuse.org/tumbleweed/repo/oss/boot/x86_64/loader/",
+						Architectures: []string{"x86_64"},
+					},
+				},
+			},
+			"fedora": {
+				DisplayName: "Fedora",
+				KernelFile:  "vmlinuz",
+				InitrdFile:  "initrd.img",
+				Versions: map[string]OSVersion{
+					"39": {
+						DisplayName:   "39",
+						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/39/Everything/x86_64/os/images/pxeboot/",
+						Architectures: []string{"x86_64"},
+					},
+					"40": {
+						DisplayName:   "40",
+						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/40/Everything/x86_64/os/images/pxeboot/",
+						Architectures: []string{"x86_64"},
+					},
+					"41": {
+						DisplayName:   "41",
+						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Everything/x86_64/os/images/pxeboot/",
+						Architectures: []string{"x86_64"},
+					},
+				},
+			},
 		},
 	}
 }

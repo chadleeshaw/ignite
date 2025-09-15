@@ -32,6 +32,7 @@ func LoadTemplates() map[string]*template.Template {
 
 	return map[string]*template.Template{
 		"index":              template.Must(template.ParseFiles(baseTemplate, "templates/pages/index.templ")),
+		"login":              template.Must(template.ParseFiles("templates/base-login.templ", "templates/pages/login.templ")),
 		"dhcp":               template.Must(template.ParseFiles(baseTemplate, "templates/pages/dhcp.templ")),
 		"tftp":               template.Must(template.ParseFiles(baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ")),
 		"status":             template.Must(template.ParseFiles(baseTemplate, "templates/pages/status.templ")),
@@ -344,19 +345,20 @@ func NewBootModal(w http.ResponseWriter, r *http.Request, container *Container) 
 
 	// Initialize data with basic required fields
 	data := map[string]any{
-		"title":         "Boot Menu",
-		"tftpip":        network,
-		"mac":           mac,
-		"os":            "",
-		"version":       "",
-		"typeSelect":    "",
-		"template_name": "",
-		"hostname":      "",
-		"ip":            "",
-		"subnet":        "",
-		"gateway":       "",
-		"dns":           "",
-		"osImages":      osImages,
+		"title":          "Boot Menu",
+		"tftpip":         network,
+		"mac":            mac,
+		"os":             "",
+		"version":        "",
+		"typeSelect":     "",
+		"template_name":  "",
+		"hostname":       "",
+		"ip":             "",
+		"subnet":         "",
+		"gateway":        "",
+		"dns":            "",
+		"kernel_options": "",
+		"osImages":       osImages,
 	}
 
 	// Try to load existing boot menu data from the lease
@@ -390,6 +392,9 @@ func NewBootModal(w http.ResponseWriter, r *http.Request, container *Container) 
 			}
 			if lease.Menu.DNS != nil {
 				data["dns"] = lease.Menu.DNS.String()
+			}
+			if lease.Menu.KernelOptions != "" {
+				data["kernel_options"] = lease.Menu.KernelOptions
 			}
 		}
 	}
@@ -474,19 +479,6 @@ func NewProvisionNewFileModal() map[string]any {
 	}
 }
 
-// formatFileSize formats file size in bytes to human readable format
-func formatFileSize(bytes int64) string {
-	const unit = 1024
-	if bytes < unit {
-		return fmt.Sprintf("%d B", bytes)
-	}
-	div, exp := int64(unit), 0
-	for n := bytes / unit; n >= unit; n /= unit {
-		div *= unit
-		exp++
-	}
-	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
-}
 
 // ipToInt converts IP to uint32 (helper function for IP calculations)
 func ipToInt(ip net.IP) uint32 {

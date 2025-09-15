@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"ignite/dhcp"
+	"log"
 	"net"
 	"net/http"
 	"os"
@@ -40,22 +41,25 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 	}
 
 	formData := map[string]string{
-		"tftpip":        r.Form.Get("tftpip"),
-		"mac":           r.Form.Get("mac"),
-		"os":            r.Form.Get("os"),
-		"version":       r.Form.Get("version"),
-		"typeSelect":    r.Form.Get("typeSelect"),
-		"template_name": r.Form.Get("template_name"),
-		"hostname":      r.Form.Get("hostname"),
-		"ip":            r.Form.Get("ip"),
-		"subnet":        r.Form.Get("subnet"),
-		"gateway":       r.Form.Get("gateway"),
-		"dns":           r.Form.Get("dns"),
+		"tftpip":         r.Form.Get("tftpip"),
+		"mac":            r.Form.Get("mac"),
+		"os":             r.Form.Get("os"),
+		"version":        r.Form.Get("version"),
+		"typeSelect":     r.Form.Get("typeSelect"),
+		"template_name":  r.Form.Get("template_name"),
+		"hostname":       r.Form.Get("hostname"),
+		"ip":             r.Form.Get("ip"),
+		"subnet":         r.Form.Get("subnet"),
+		"gateway":        r.Form.Get("gateway"),
+		"dns":            r.Form.Get("dns"),
+		"kernel_options": r.Form.Get("kernel_options"),
 	}
 
-	for key, value := range formData {
-		if value == "" {
-			http.Error(w, fmt.Sprintf("Missing required field: %s", key), http.StatusBadRequest)
+	// Check required fields (kernel_options is optional)
+	requiredFields := []string{"tftpip", "mac", "os", "version", "typeSelect", "template_name", "hostname", "ip", "subnet", "gateway", "dns"}
+	for _, field := range requiredFields {
+		if formData[field] == "" {
+			http.Error(w, fmt.Sprintf("Missing required field: %s", field), http.StatusBadRequest)
 			return
 		}
 	}
@@ -74,16 +78,17 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 
 	// Create BootMenu struct
 	bootMenu := dhcp.BootMenu{
-		Filename:     pxefile,
-		OS:           formData["os"],
-		Version:      formData["version"],
-		TemplateType: formData["typeSelect"],
-		TemplateName: formData["template_name"],
-		Hostname:     formData["hostname"],
-		IP:           net.ParseIP(formData["ip"]),
-		Subnet:       net.ParseIP(formData["subnet"]),
-		Gateway:      net.ParseIP(formData["gateway"]),
-		DNS:          net.ParseIP(formData["dns"]),
+		Filename:      pxefile,
+		OS:            formData["os"],
+		Version:       formData["version"],
+		TemplateType:  formData["typeSelect"],
+		TemplateName:  formData["template_name"],
+		Hostname:      formData["hostname"],
+		IP:            net.ParseIP(formData["ip"]),
+		Subnet:        net.ParseIP(formData["subnet"]),
+		Gateway:       net.ParseIP(formData["gateway"]),
+		DNS:           net.ParseIP(formData["dns"]),
+		KernelOptions: formData["kernel_options"],
 	}
 
 	// Build config file paths
@@ -92,8 +97,8 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 	templBuild := fmt.Sprintf("templates/%s/%s", formData["typeSelect"], formData["template_name"])
 	configTempl := filepath.Join(cfg.Provision.Dir, templBuild)
 
-	// Generate boot data
-	pxedata := h.generateBootData(formData, configFile)
+	// Generate boot data (use buildconfig for HTTP URL, configFile for filesystem path)
+	pxedata := h.generateBootData(formData, buildconfig)
 
 	// Ensure directories exist
 	if err := os.MkdirAll(filepath.Dir(pxefile), 0755); err != nil {
@@ -120,7 +125,7 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 
 	// Update DHCP lease
 	if err := h.updateDHCPLease(formData["tftpip"], formData["mac"], bootMenu); err != nil {
-		fmt.Printf("Failed to update DHCP lease: %v\n", err)
+		log.Printf("Failed to update DHCP lease: %v", err)
 	}
 
 	// Redirect to DHCP page
@@ -129,7 +134,7 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 
 // generateBootData constructs the boot configuration data based on provided OS and network details.
 func (h *BootMenuHandlers) generateBootData(formData map[string]string, configFile string) BootMenuData {
-	options := h.getBootOptions(formData["os"], formData["dns"], formData["tftpip"], configFile)
+	options := h.getBootOptions(formData["os"], formData["typeSelect"], formData["dns"], formData["tftpip"], configFile, formData["kernel_options"])
 
 	return BootMenuData{
 		Name:    h.osToName(formData["os"]),
@@ -139,30 +144,76 @@ func (h *BootMenuHandlers) generateBootData(formData map[string]string, configFi
 	}
 }
 
-// getBootOptions returns the appropriate boot options string based on the operating system.
-func (h *BootMenuHandlers) getBootOptions(os, dns, tftpip, configFile string) string {
-	switch os {
-	case "Ubuntu", "NixOS":
-		return fmt.Sprintf(`url=http://%s/%s autoinstall ds=nocloud-net;s=http://%s/ nameserver=%s`,
+// getBootOptions returns the appropriate boot options string based on the operating system and template type.
+func (h *BootMenuHandlers) getBootOptions(os, templateType, dns, tftpip, configFile, kernelOptions string) string {
+	var baseOptions string
+
+	// Determine boot parameters based on template type and OS
+	switch templateType {
+	case "cloud-init":
+		baseOptions = fmt.Sprintf(`url=http://%s/%s autoinstall ds=nocloud-net;s=http://%s/ nameserver=%s`,
 			tftpip, configFile, tftpip, dns)
-	case "Redhat":
-		return fmt.Sprintf(`ks=http://%s/%s nameserver=%s`,
+	case "kickstart":
+		baseOptions = fmt.Sprintf(`ks=http://%s/%s nameserver=%s`,
 			tftpip, configFile, dns)
+	case "preseed":
+		baseOptions = fmt.Sprintf(`url=http://%s/%s auto=true priority=critical nameserver=%s`,
+			tftpip, configFile, dns)
+	case "autoyast":
+		baseOptions = fmt.Sprintf(`autoyast=http://%s/%s nameserver=%s`,
+			tftpip, configFile, dns)
+	case "ipxe":
+		baseOptions = fmt.Sprintf(`initrd=http://%s/%s nameserver=%s`,
+			tftpip, configFile, dns)
+	default:
+		// Fallback to OS-based detection for backward compatibility
+		switch os {
+		case "ubuntu", "Ubuntu", "nixos", "NixOS":
+			baseOptions = fmt.Sprintf(`url=http://%s/%s autoinstall ds=nocloud-net;s=http://%s/ nameserver=%s`,
+				tftpip, configFile, tftpip, dns)
+		case "debian", "Debian":
+			baseOptions = fmt.Sprintf(`url=http://%s/%s auto=true priority=critical nameserver=%s`,
+				tftpip, configFile, dns)
+		case "redhat", "Redhat", "centos", "CentOS", "fedora", "Fedora":
+			baseOptions = fmt.Sprintf(`ks=http://%s/%s nameserver=%s`,
+				tftpip, configFile, dns)
+		case "opensuse", "openSUSE", "suse", "SUSE":
+			baseOptions = fmt.Sprintf(`autoyast=http://%s/%s nameserver=%s`,
+				tftpip, configFile, dns)
+		default:
+			baseOptions = ""
+		}
 	}
-	return ""
+
+	// Add additional kernel options if provided
+	if kernelOptions != "" && baseOptions != "" {
+		return baseOptions + " " + kernelOptions
+	} else if kernelOptions != "" {
+		return kernelOptions
+	}
+
+	return baseOptions
 }
 
 // osToName maps the OS name to a standardized name used in file paths.
 func (h *BootMenuHandlers) osToName(os string) string {
 	switch os {
-	case "Ubuntu":
+	case "ubuntu", "Ubuntu":
 		return "ubuntu"
-	case "NixOS":
+	case "debian", "Debian":
+		return "debian"
+	case "fedora", "Fedora":
+		return "fedora"
+	case "centos", "CentOS":
+		return "centos"
+	case "opensuse", "openSUSE":
+		return "opensuse"
+	case "nixos", "NixOS":
 		return "nixos"
-	case "Redhat":
+	case "redhat", "Redhat":
 		return "redhat"
 	}
-	return ""
+	return strings.ToLower(os)
 }
 
 // osToKernel constructs the kernel file path for the given OS and version.
