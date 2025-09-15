@@ -19,8 +19,11 @@
                         <label class="label"><span class="label-text">Operating System</span></label>
                         <div class="flex flex-wrap gap-4">
                             <label class="cursor-pointer label"><input type="radio" name="os" value="ubuntu" class="radio radio-primary" onchange="updateVersions('ubuntu')" {{ if eq .os "ubuntu" }}checked{{ end }} required><span class="label-text ml-2">Ubuntu</span></label>
-                            <label class="cursor-pointer label"><input type="radio" name="os" value="nixos" class="radio radio-primary" onchange="updateVersions('nixos')" {{ if eq .os "nixos" }}checked{{ end }} required><span class="label-text ml-2">NixOS</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="debian" class="radio radio-primary" onchange="updateVersions('debian')" {{ if eq .os "debian" }}checked{{ end }} required><span class="label-text ml-2">Debian</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="fedora" class="radio radio-primary" onchange="updateVersions('fedora')" {{ if eq .os "fedora" }}checked{{ end }} required><span class="label-text ml-2">Fedora</span></label>
                             <label class="cursor-pointer label"><input type="radio" name="os" value="centos" class="radio radio-primary" onchange="updateVersions('centos')" {{ if eq .os "centos" }}checked{{ end }} required><span class="label-text ml-2">CentOS</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="opensuse" class="radio radio-primary" onchange="updateVersions('opensuse')" {{ if eq .os "opensuse" }}checked{{ end }} required><span class="label-text ml-2">openSUSE</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="os" value="nixos" class="radio radio-primary" onchange="updateVersions('nixos')" {{ if eq .os "nixos" }}checked{{ end }} required><span class="label-text ml-2">NixOS</span></label>
                         </div>
                     </div>
 
@@ -39,6 +42,9 @@
                         <div class="flex flex-wrap gap-4">
                             <label class="cursor-pointer label"><input type="radio" name="typeSelect" value="cloud-init" class="radio radio-secondary" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "cloud-init" }}checked{{ end }} required><span class="label-text ml-2">Cloud-Init</span></label>
                             <label class="cursor-pointer label"><input type="radio" name="typeSelect" value="kickstart" class="radio radio-secondary" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "kickstart" }}checked{{ end }} required><span class="label-text ml-2">Kickstart</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="typeSelect" value="preseed" class="radio radio-secondary" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "preseed" }}checked{{ end }} required><span class="label-text ml-2">Preseed</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="typeSelect" value="autoyast" class="radio radio-secondary" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "autoyast" }}checked{{ end }} required><span class="label-text ml-2">AutoYaST</span></label>
+                            <label class="cursor-pointer label"><input type="radio" name="typeSelect" value="ipxe" class="radio radio-secondary" hx-get="/prov/gettemplates" hx-trigger="change" hx-target="#template_name" {{ if eq .typeSelect "ipxe" }}checked{{ end }} required><span class="label-text ml-2">iPXE</span></label>
                         </div>
                     </div>
 
@@ -80,6 +86,18 @@
                         <label class="label"><span class="label-text">DNS Server</span></label>
                         <input type="text" name="dns" value="{{ .dns }}" placeholder="8.8.8.8" class="input input-bordered" pattern="^((\d{1,3}\.){3}\d{1,3})$" title="Enter a valid IP address (e.g., 8.8.8.8)" required/>
                     </div>
+                </div>
+            </div>
+
+            <!-- Additional Kernel Options -->
+            <div class="form-control mt-6">
+                <label class="label">
+                    <span class="label-text">Additional Kernel Options</span>
+                    <span class="label-text-alt">Optional kernel parameters to add to the boot command</span>
+                </label>
+                <textarea name="kernel_options" class="textarea textarea-bordered h-24" placeholder="saltenv=base salt_master=192.168.1.10 salt.minion.master_type=str" title="Additional kernel parameters separated by spaces">{{ .kernel_options }}</textarea>
+                <div class="label">
+                    <span class="label-text-alt">Examples: saltenv=base, salt_master=192.168.1.10, salt.minion.master_type=str, salt.minion.interface=eth0</span>
                 </div>
             </div>
 

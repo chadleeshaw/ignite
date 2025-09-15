@@ -34,7 +34,11 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 
 	servers, err := h.serverService.GetAllServers(ctx)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get servers: %v", err), http.StatusInternalServerError)
+		appErr := NewInternalError(
+			fmt.Sprintf("Failed to get DHCP servers: %v", err),
+			"Unable to load DHCP servers. Please try again later.",
+		)
+		HandleError(w, r, appErr)
 		return
 	}
 
@@ -43,7 +47,11 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 	for _, server := range servers {
 		leases, err := h.leaseService.GetLeasesByServer(ctx, server.ID)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to get leases: %v", err), http.StatusInternalServerError)
+			appErr := NewInternalError(
+				fmt.Sprintf("Failed to get leases for server %s: %v", server.ID, err),
+				"Unable to load DHCP leases. Please try again later.",
+			)
+			HandleError(w, r, appErr)
 			return
 		}
 
@@ -197,54 +205,39 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 	gatewayStr := r.FormValue("gateway")
 	dnsStr := r.FormValue("dns")
 	startIPStr := r.FormValue("startIP")
-
-	// Always use endIP approach now
 	endIPStr := r.FormValue("endIP")
-	endIP := net.ParseIP(endIPStr)
-	if endIP == nil {
-		http.Error(w, "Invalid end IP", http.StatusBadRequest)
+
+	// Create DHCP configuration validator
+	validator := NewDHCPConfigValidator()
+
+	// Prepare configuration for validation
+	validationConfig := map[string]string{
+		"subnet": networkStr + "/" + getMaskBits(subnetStr), // Convert to CIDR
+		"range":  startIPStr + "-" + endIPStr,
+		"router": gatewayStr,
+		"dns":    dnsStr,
+	}
+
+	// Validate configuration
+	if validationErrors := validator.ValidateDHCPConfig(validationConfig); validationErrors.HasErrors() {
+		SendValidationError(w, r, validationErrors)
 		return
 	}
 
+	// Parse validated IPs
 	startIP := net.ParseIP(startIPStr)
-	if startIP == nil {
-		http.Error(w, "Invalid start IP", http.StatusBadRequest)
-		return
-	}
+	endIP := net.ParseIP(endIPStr)
+	network := net.ParseIP(networkStr)
+	subnet := net.ParseIP(subnetStr)
+	gateway := net.ParseIP(gatewayStr)
 
 	// Calculate numLeases from start and end IP
 	startInt := ipToInt(startIP)
 	endInt := ipToInt(endIP)
-	if endInt < startInt {
-		http.Error(w, "End IP must be greater than start IP", http.StatusBadRequest)
-		return
-	}
 	numLeases := int(endInt - startInt + 1)
 
-	// Validate and parse inputs
-	network := net.ParseIP(networkStr)
-	if network == nil {
-		http.Error(w, "Invalid network IP", http.StatusBadRequest)
-		return
-	}
-
-	subnet := net.ParseIP(subnetStr)
-	if subnet == nil {
-		http.Error(w, "Invalid subnet mask", http.StatusBadRequest)
-		return
-	}
-
-	gateway := net.ParseIP(gatewayStr)
-	if gateway == nil {
-		http.Error(w, "Invalid gateway IP", http.StatusBadRequest)
-		return
-	}
-
+	// Parse DNS (already validated above)
 	dns := net.ParseIP(dnsStr)
-	if dns == nil {
-		http.Error(w, "Invalid DNS IP", http.StatusBadRequest)
-		return
-	}
 
 	// Create server configuration
 	config := dhcp.ServerConfig{
@@ -261,7 +254,11 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		// Update existing server
 		err := h.serverService.UpdateServer(ctx, serverID, config)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to update server: %v", err), http.StatusInternalServerError)
+			appErr := NewInternalError(
+				fmt.Sprintf("Failed to update DHCP server %s: %v", serverID, err),
+				"Unable to update DHCP server. Please try again later.",
+			)
+			HandleError(w, r, appErr)
 			return
 		}
 
@@ -273,7 +270,11 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		// Create new server
 		server, err := h.serverService.CreateServer(ctx, config)
 		if err != nil {
-			http.Error(w, fmt.Sprintf("Failed to create server: %v", err), http.StatusInternalServerError)
+			appErr := NewInternalError(
+				fmt.Sprintf("Failed to create DHCP server: %v", err),
+				"Unable to create DHCP server. Please check your configuration and try again.",
+			)
+			HandleError(w, r, appErr)
 			return
 		}
 
@@ -601,4 +602,31 @@ func renderTemplate(w http.ResponseWriter, templateName string, data interface{}
 	// This is just a placeholder
 	w.Header().Set("Content-Type", "text/html")
 	fmt.Fprintf(w, "Template: %s with data: %+v", templateName, data)
+}
+
+// getMaskBits converts a subnet mask to CIDR bits
+func getMaskBits(mask string) string {
+	ip := net.ParseIP(mask)
+	if ip == nil {
+		return "24" // Default fallback
+	}
+
+	// Convert IPv4 mask to CIDR bits
+	mask4 := ip.To4()
+	if mask4 == nil {
+		return "24" // Default fallback
+	}
+
+	// Count the number of set bits
+	var bits int
+	for _, b := range mask4 {
+		for b != 0 {
+			if b&1 == 1 {
+				bits++
+			}
+			b >>= 1
+		}
+	}
+
+	return fmt.Sprintf("%d", bits)
 }

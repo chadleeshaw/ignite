@@ -30,6 +30,9 @@ Designed for developers, system administrators, and hobbyists, Ignite provides a
   - Red Hat
 - **Redfish API Integration**: Remotely manage servers and initiate PXE boot processes via the Redfish API.
 - **Cloud-Init & Kickstart Templating**: Simplify automated OS installations with dynamic templating for cloud-init and Kickstart configurations.
+- **Advanced File Management**: Template and configuration file browser with delete functionality and clear type distinction.
+- **Enhanced Security**: Path validation, input sanitization, and secure file operations throughout the application.
+- **Comprehensive Error Handling**: Detailed error messages, validation feedback, and graceful error recovery.
 
 ## Screenshots
 
@@ -51,7 +54,7 @@ File browser and management interface for boot files, operating system images, a
 ![TFTP File Management](./public/http/img/tftp_page.png)
 
 ### **Provision Templates**
-Cloud-init and Kickstart template editor with syntax highlighting and template management.
+Cloud-init and Kickstart template editor with syntax highlighting, template management, file deletion, and clear distinction between templates and configs.
 
 ![Provision Templates](./public/http/img/provision_page.png)
 
@@ -182,6 +185,8 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/prov/getconfigs`      | Retrieves configuration options.         |
 | `/prov/loadconfig`      | Loads a configuration file.              |
 | `/prov/getfilename`     | Updates the filename for a template.     |
+| `/provision/load-file`  | Loads file content via API.              |
+| `/provision/gallery`    | Retrieves template gallery items.        |
 
 ### POST Routes
 
@@ -201,6 +206,8 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/pxe/submit_ipmi`        | Submits an IPMI command.                      |
 | `/prov/newtemplate`       | Creates a new provisioning template.          |
 | `/prov/save`              | Saves a provisioning file.                    |
+| `/provision/save-file`    | Saves file content via API.                   |
+| `/provision/delete-file`  | Deletes a file from provision directories.    |
 
 ## Architecture
 
@@ -303,13 +310,31 @@ go mod download
 go run . -mock-data    # Start with sample data
 ```
 
-## To Do
+## Recent Improvements ✅
 
-- Enhanced error handling and user feedback
-- IP address validation for DHCP configurations
-- TFTP directory path security improvements
-- Interface standardization across services
-- Additional OS template support
+- ✅ **Enhanced error handling and user feedback** - Comprehensive error messages and validation throughout the application
+- ✅ **IP address validation for DHCP configurations** - Input sanitization and validation for network configurations
+- ✅ **TFTP directory path security improvements** - Path traversal protection and secure file operations
+- ✅ **Interface standardization across services** - Consistent API patterns and dependency injection
+- ✅ **Additional OS template support** - Extended template gallery with Docker, Kubernetes, and more
+- ✅ **File management enhancements** - Delete functionality and template vs config distinction
+- ✅ **Code optimization** - Removed unused code, optimized performance, fixed deprecated functions
+
+## Security Model
+
+Ignite uses a simple, network-focused security approach suitable for lab and infrastructure environments:
+
+- **Single Admin Authentication**: Shared login credentials (`admin/admin` by default, changeable via web interface)
+- **Network-Level Security**: Designed for deployment on isolated management networks (VLANs, private networks)
+- **Session-Based Access**: Simple session management with HTTP-only cookies
+- **Path Security**: File operations restricted to designated directories with path traversal protection
+
+## Future Enhancements
+
+- **Advanced monitoring** - Metrics collection and alerting for system health
+- **API versioning** - Backward compatibility and gradual migration support
+- **Plugin architecture** - Extensible framework for custom integrations
+- **Configuration templating** - Variable substitution and environment-specific configs
 
 ## Contributing
 
@@ -346,3 +371,5 @@ This project is licensed under the MIT License. See the `LICENSE` file for detai
 
 - Inspired by GoPXE.
 - User interface built with Tailwind CSS and daisyUI.
+- Frontend help from Google Jules
+- Backend help from Claude

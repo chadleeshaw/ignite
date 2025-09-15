@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"ignite/dhcp"
+	"log"
 	"net"
 	"net/http"
 
@@ -46,7 +47,7 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 
 	// Update DHCP lease with IPMI configuration
 	if err := h.updateDHCPLeaseWithIPMI(ctx, tftpip, mac, ip, username, bootConfigChecked, rebootChecked); err != nil {
-		fmt.Printf("Failed to update DHCP lease: %v\n", err)
+		log.Printf("Failed to update DHCP lease: %v", err)
 		// Continue with IPMI operations even if lease update fails
 	}
 

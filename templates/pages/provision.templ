@@ -42,22 +42,37 @@
                 <!-- File list -->
                 <div id="file-browser" class="max-h-96 overflow-y-auto">
                     {{range .Files}}
-                    <div class="file-item flex items-center justify-between p-2 hover:bg-base-300 rounded cursor-pointer" 
-                         data-type="{{.Type}}" 
+                    <div class="file-item flex items-center justify-between p-2 hover:bg-base-300 rounded cursor-pointer"
+                         data-type="{{.Type}}"
                          data-category="{{.Category}}"
                          data-name="{{.Name}}"
-                         onclick="loadFile('{{.Path}}', '{{.Name}}', '{{.Language}}')">
-                        <div class="flex items-center space-x-3">
+                         data-path="{{.Path}}"
+                         data-language="{{.Language}}">
+                        <div class="flex items-center space-x-3 flex-1 min-w-0" onclick="selectFile(this.closest('.file-item'))">
                             <div class="flex-shrink-0">
                                 {{if .IsDir}}
                                     <i class="fas fa-folder text-yellow-500"></i>
                                 {{else}}
-                                    {{if eq .Language "yaml"}}
-                                        <i class="fas fa-file-code text-green-500"></i>
-                                    {{else if eq .Language "kickstart"}}
-                                        <i class="fas fa-cog text-red-500"></i>
-                                    {{else if eq .Language "ini"}}
-                                        <i class="fas fa-file-alt text-blue-500"></i>
+                                    {{if eq .Type "template"}}
+                                        {{if eq .Language "yaml"}}
+                                            <i class="fas fa-file-code text-green-500"></i>
+                                        {{else if eq .Language "kickstart"}}
+                                            <i class="fas fa-file-alt text-red-500"></i>
+                                        {{else if eq .Language "ini"}}
+                                            <i class="fas fa-file-alt text-blue-500"></i>
+                                        {{else}}
+                                            <i class="fas fa-file-code text-purple-500"></i>
+                                        {{end}}
+                                    {{else if eq .Type "config"}}
+                                        {{if eq .Language "yaml"}}
+                                            <i class="fas fa-cogs text-green-600"></i>
+                                        {{else if eq .Language "kickstart"}}
+                                            <i class="fas fa-cogs text-red-600"></i>
+                                        {{else if eq .Language "ini"}}
+                                            <i class="fas fa-sliders-h text-blue-600"></i>
+                                        {{else}}
+                                            <i class="fas fa-cogs text-gray-600"></i>
+                                        {{end}}
                                     {{else}}
                                         <i class="fas fa-file text-gray-500"></i>
                                     {{end}}
@@ -65,12 +80,27 @@
                             </div>
                             <div class="min-w-0 flex-1">
                                 <p class="text-sm font-medium text-base-content truncate">{{.Name}}</p>
-                                <p class="text-xs text-base-content/70">{{.Category}} • {{.Type}}</p>
+                                <div class="flex items-center space-x-2 text-xs">
+                                    <span class="text-base-content/70">{{.Category}}</span>
+                                    <span class="text-base-content/50">•</span>
+                                    {{if eq .Type "template"}}
+                                        <span class="badge badge-xs badge-primary">Template</span>
+                                    {{else if eq .Type "config"}}
+                                        <span class="badge badge-xs badge-secondary">Config</span>
+                                    {{else}}
+                                        <span class="badge badge-xs badge-ghost">{{.Type}}</span>
+                                    {{end}}
+                                </div>
                             </div>
                         </div>
                         <div class="flex items-center space-x-1">
                             {{if not .IsDir}}
                             <span class="badge badge-xs badge-outline">{{.Language}}</span>
+                            <button class="btn btn-ghost btn-xs text-error"
+                                    onclick="deleteFile('{{.Path}}', '{{.Name}}', event)"
+                                    title="Delete file">
+                                <i class="fas fa-trash"></i>
+                            </button>
                             {{end}}
                         </div>
                     </div>
@@ -151,7 +181,16 @@
                 <i id="help-toggle" class="fas fa-chevron-up"></i>
             </button>
         </div>
-        <div id="help-content" class="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+        <div id="help-content" class="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm">
+            <div>
+                <h4 class="font-semibold mb-2 text-primary">Templates vs Configs</h4>
+                <ul class="space-y-1 text-base-content/70">
+                    <li>• <span class="badge badge-xs badge-primary">Templates</span> are reusable starting points</li>
+                    <li>• <span class="badge badge-xs badge-secondary">Configs</span> are rendered, ready-to-use files</li>
+                    <li>• Templates can have placeholders</li>
+                    <li>• Configs are deployed directly</li>
+                </ul>
+            </div>
             <div>
                 <h4 class="font-semibold mb-2">Cloud-Init</h4>
                 <ul class="space-y-1 text-base-content/70">
@@ -171,12 +210,12 @@
                 </ul>
             </div>
             <div>
-                <h4 class="font-semibold mb-2">Boot Menu</h4>
+                <h4 class="font-semibold mb-2">File Operations</h4>
                 <ul class="space-y-1 text-base-content/70">
-                    <li>• PXE boot configuration</li>
-                    <li>• Kernel parameters</li>
-                    <li>• Menu entries and defaults</li>
-                    <li>• Timeouts and labels</li>
+                    <li>• Click file name to edit</li>
+                    <li>• <i class="fas fa-trash text-error"></i> button to delete</li>
+                    <li>• Auto-save on edit</li>
+                    <li>• Syntax highlighting</li>
                 </ul>
             </div>
         </div>
@@ -184,6 +223,8 @@
 </main>
 
 <script>
+// JavaScript is loading properly
+
 // Global state
 let currentFile = null;
 let isModified = false;
@@ -191,13 +232,13 @@ let isModified = false;
 // File operations
 function loadFile(path, name, language) {
     currentFile = { path, name, language };
-    
+
     // Update UI
     document.getElementById('current-filename').textContent = name;
     document.getElementById('current-language').textContent = language;
     document.getElementById('current-language').className = `badge badge-outline badge-${getLanguageColor(language)}`;
     document.getElementById('save-btn').disabled = false;
-    
+
     // Load file content
     fetch(`/provision/load-file?path=${encodeURIComponent(path)}`)
         .then(response => response.text())
@@ -211,6 +252,53 @@ function loadFile(path, name, language) {
             console.error('Error loading file:', error);
             alert('Error loading file: ' + error.message);
         });
+}
+
+function selectFile(fileItem) {
+    const path = fileItem.getAttribute('data-path');
+    const name = fileItem.getAttribute('data-name');
+    const language = fileItem.getAttribute('data-language');
+
+    if (path && name && language) {
+        loadFile(path, name, language);
+    }
+}
+
+function deleteFile(filePath, fileName, event) {
+    // Prevent event bubbling to avoid triggering file selection
+    event.stopPropagation();
+
+    if (!confirm(`Are you sure you want to delete "${fileName}"? This action cannot be undone.`)) {
+        return;
+    }
+
+    const formData = new FormData();
+    formData.append('path', filePath);
+
+    fetch('/provision/delete-file', {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert('File deleted successfully!');
+
+            // Clear editor if the deleted file was currently open
+            if (currentFile && currentFile.path === filePath) {
+                clearEditor();
+            }
+
+            // Refresh the file browser by reloading the page
+            window.location.reload();
+        } else {
+            alert('Error deleting file: ' + data.error);
+        }
+    })
+    .catch(error => {
+        console.error('Error deleting file:', error);
+        alert('Error deleting file: ' + error.message);
+    });
 }
 
 function saveFile() {
@@ -320,7 +408,7 @@ function closePreviewModal() {
 
 function highlightContent(content, language) {
     let highlighted = '';
-    
+
     switch (language) {
         case 'yaml':
             highlighted = highlightYAML(content);
@@ -331,10 +419,19 @@ function highlightContent(content, language) {
         case 'ini':
             highlighted = highlightINI(content);
             break;
+        case 'preseed':
+            highlighted = highlightPreseed(content);
+            break;
+        case 'xml':
+            highlighted = highlightXML(content);
+            break;
+        case 'ipxe':
+            highlighted = highlightIPXE(content);
+            break;
         default:
             highlighted = escapeHtml(content);
     }
-    
+
     return highlighted;
 }
 
@@ -397,6 +494,41 @@ function highlightINI(content) {
         .replace(/=\s*([^'"\s][^\n]*)/g, '=<span class="syntax-value">$1</span>');
 }
 
+function highlightPreseed(content) {
+    return content
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/^(\s*#.*$)/gm, '<span class="syntax-comment">$1</span>')
+        .replace(/^(\s*d-i\s+)([^\s]+)(\s+)([^\s]+)(\s+)(.*$)/gm, '$1<span class="syntax-keyword">$2</span>$3<span class="syntax-property">$4</span>$5<span class="syntax-value">$6</span>')
+        .replace(/\b(true|false|boolean|string|multiselect|select|note)\b/g, '<span class="syntax-keyword">$1</span>')
+        .replace(/\b(password|confirm)\b/g, '<span class="syntax-special">$1</span>');
+}
+
+function highlightXML(content) {
+    return content
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/(&lt;!--[\s\S]*?--&gt;)/g, '<span class="syntax-comment">$1</span>')
+        .replace(/(&lt;\?[\s\S]*?\?&gt;)/g, '<span class="syntax-processing">$1</span>')
+        .replace(/(&lt;!DOCTYPE[\s\S]*?&gt;)/g, '<span class="syntax-doctype">$1</span>')
+        .replace(/(&lt;\/?)([a-zA-Z0-9-_:]+)/g, '$1<span class="syntax-tag">$2</span>')
+        .replace(/\s([a-zA-Z0-9-_:]+)=(['"])(.*?)\2/g, ' <span class="syntax-attribute">$1</span>=<span class="syntax-string">$2$3$2</span>')
+        .replace(/(&gt;)([^&lt;]+)(&lt;)/g, '$1<span class="syntax-text">$2</span>$3');
+}
+
+function highlightIPXE(content) {
+    return content
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/^(\s*#.*$)/gm, '<span class="syntax-comment">$1</span>')
+        .replace(/^(\s*#!ipxe)/gm, '<span class="syntax-shebang">$1</span>')
+        .replace(/^\s*(echo|set|menu|item|choose|goto|kernel|initrd|boot|dhcp|shell|exit|sanboot)\b/gm, '<span class="syntax-command">$&</span>')
+        .replace(/\$\{([^}]+)\}/g, '<span class="syntax-variable">${$1}</span>')
+        .replace(/\b(http|https|ftp|tftp):\/\/[^\s]+/g, '<span class="syntax-url">$&</span>')
+        .replace(/\b(\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3})\b/g, '<span class="syntax-ip">$1</span>')
+        .replace(/^(\s*:)([a-zA-Z0-9_-]+)/gm, '$1<span class="syntax-label">$2</span>');
+}
+
 function escapeHtml(text) {
     return text.replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
@@ -419,6 +551,10 @@ function getLanguageColor(language) {
         case 'yaml': return 'success';
         case 'kickstart': return 'error';
         case 'ini': return 'info';
+        case 'preseed': return 'warning';
+        case 'xml': return 'primary';
+        case 'ipxe': return 'secondary';
+        case 'text': return 'neutral';
         default: return 'neutral';
     }
 }

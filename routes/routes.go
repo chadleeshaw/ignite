@@ -15,6 +15,7 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	setupStaticRoutes(router, staticHandler)
 
 	// Create handler instances with dependencies
+	authHandlers := handlers.NewAuthHandlers(container)
 	dhcpHandlers := handlers.NewDHCPHandlers(container)
 	tftpHandlers := handlers.NewTFTPHandlers(container)
 	provisionHandlers := handlers.NewProvisionHandlers(container)
@@ -27,7 +28,11 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	syslinuxHandlers := handlers.NewSyslinuxHandler(container)
 	ipxeHandlers := handlers.NewIPXEHandlers(container)
 
-	// Setup all routes
+	// Apply authentication middleware to the entire router
+	router.Use(handlers.AuthMiddleware)
+
+	// Setup all routes (middleware will handle auth checks)
+	setupAuthRoutes(router, authHandlers)
 	setupIndexRoutes(router, indexHandlers)
 	setupModalRoutes(router, modalHandlers)
 	setupDHCPRoutes(router, dhcpHandlers)
@@ -115,6 +120,7 @@ func setupProvisionRoutes(router *mux.Router, handlers *handlers.ProvisionHandle
 	router.HandleFunc("/prov/newtemplate", handlers.HandleNewTemplate).Methods("POST").Name("NewTemplate")
 	router.HandleFunc("/prov/save", handlers.HandleSave).Methods("POST").Name("SaveFile")
 	router.HandleFunc("/provision/save-file", handlers.SaveFileContent).Methods("POST").Name("SaveFileContent")
+	router.HandleFunc("/provision/delete-file", handlers.DeleteFile).Methods("POST").Name("DeleteFile")
 }
 
 // setupBootMenuRoutes configures PXE boot menu routes
@@ -165,4 +171,15 @@ func setupIPXERoutes(router *mux.Router, handlers *handlers.IPXEHandlers) {
 
 	// POST routes - for updating config file
 	router.HandleFunc("/ipxe/update", handlers.UpdateConfigFile).Methods("POST").Name("UpdateIPXEConfig")
+}
+
+// setupAuthRoutes configures authentication routes
+func setupAuthRoutes(router *mux.Router, handlers *handlers.AuthHandlers) {
+	// GET routes
+	router.HandleFunc("/login", handlers.LoginPage).Methods("GET").Name("LoginPage")
+
+	// POST routes
+	router.HandleFunc("/auth/login", handlers.Login).Methods("POST").Name("Login")
+	router.HandleFunc("/auth/logout", handlers.Logout).Methods("POST").Name("Logout")
+	router.HandleFunc("/auth/change-password", handlers.ChangePassword).Methods("POST").Name("ChangePassword")
 }

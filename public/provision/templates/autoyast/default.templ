@@ -1,0 +1,147 @@
+<?xml version="1.0"?>
+<!DOCTYPE profile>
+<!-- SUSE/openSUSE AutoYaST Configuration Template -->
+<profile xmlns="http://www.suse.com/1.0/yast2ns" xmlns:config="http://www.suse.com/1.0/configns">
+  <general>
+    <mode>
+      <confirm config:type="boolean">false</confirm>
+      <forceboot config:type="boolean">false</forceboot>
+      <final_reboot config:type="boolean">true</final_reboot>
+    </mode>
+  </general>
+
+  <!-- Network Configuration -->
+  <networking>
+    <interfaces config:type="list">
+      <interface>
+        <device>eth0</device>
+        <bootproto>static</bootproto>
+        <ipaddr>{{ .ip }}</ipaddr>
+        <netmask>{{ .subnet }}</netmask>
+        <startmode>auto</startmode>
+      </interface>
+    </interfaces>
+    <routing>
+      <routes config:type="list">
+        <route>
+          <destination>default</destination>
+          <gateway>{{ .gateway }}</gateway>
+          <netmask>-</netmask>
+          <device>-</device>
+        </route>
+      </routes>
+    </routing>
+    <dns>
+      <hostname>{{ .hostname }}</hostname>
+      <domain>localdomain</domain>
+      <nameservers config:type="list">
+        <nameserver>{{ .dns }}</nameserver>
+      </nameservers>
+    </dns>
+  </networking>
+
+  <!-- Partitioning -->
+  <partitioning config:type="list">
+    <drive>
+      <device>/dev/sda</device>
+      <initialize config:type="boolean">true</initialize>
+      <partitions config:type="list">
+        <partition>
+          <create config:type="boolean">true</create>
+          <filesystem config:type="symbol">ext4</filesystem>
+          <format config:type="boolean">true</format>
+          <mount>/boot</mount>
+          <partition_id config:type="integer">131</partition_id>
+          <size>512M</size>
+        </partition>
+        <partition>
+          <create config:type="boolean">true</create>
+          <filesystem config:type="symbol">swap</filesystem>
+          <format config:type="boolean">true</format>
+          <mount>swap</mount>
+          <partition_id config:type="integer">130</partition_id>
+          <size>2G</size>
+        </partition>
+        <partition>
+          <create config:type="boolean">true</create>
+          <filesystem config:type="symbol">ext4</filesystem>
+          <format config:type="boolean">true</format>
+          <mount>/</mount>
+          <partition_id config:type="integer">131</partition_id>
+          <size>max</size>
+        </partition>
+      </partitions>
+      <use>all</use>
+    </drive>
+  </partitioning>
+
+  <!-- Software Selection -->
+  <software>
+    <patterns config:type="list">
+      <pattern>base</pattern>
+      <pattern>enhanced_base</pattern>
+      <pattern>minimal_base</pattern>
+    </patterns>
+    <packages config:type="list">
+      <package>openssh</package>
+      <package>sudo</package>
+      <package>vim</package>
+      <package>git</package>
+      <package>curl</package>
+      <package>htop</package>
+    </packages>
+  </software>
+
+  <!-- User Configuration -->
+  <users config:type="list">
+    <user>
+      <username>admin</username>
+      <fullname>Administrator</fullname>
+      <encrypted config:type="boolean">false</encrypted>
+      <user_password>changeme</user_password>
+      <shell>/bin/bash</shell>
+      <home>/home/admin</home>
+      <password_settings>
+        <expire></expire>
+        <flag></flag>
+        <inact></inact>
+        <max>99999</max>
+        <min>0</min>
+        <warn>7</warn>
+      </password_settings>
+    </user>
+  </users>
+
+  <!-- Services -->
+  <services-manager>
+    <default_target>multi-user</default_target>
+    <services>
+      <enable config:type="list">
+        <service>sshd</service>
+        <service>network</service>
+      </enable>
+    </services>
+  </services-manager>
+
+  <!-- Timezone -->
+  <timezone>
+    <hwclock>UTC</hwclock>
+    <timezone>UTC</timezone>
+  </timezone>
+
+  <!-- Scripts -->
+  <scripts>
+    <post-scripts config:type="list">
+      <script>
+        <filename>post-install.sh</filename>
+        <interpreter>shell</interpreter>
+        <source><![CDATA[
+#!/bin/bash
+echo 'admin ALL=(ALL) NOPASSWD:ALL' >> /etc/sudoers.d/admin
+systemctl enable sshd
+systemctl start sshd
+]]></source>
+      </script>
+    </post-scripts>
+  </scripts>
+</profile>

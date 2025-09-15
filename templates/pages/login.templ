@@ -1,0 +1,112 @@
+{{ define "content" }}
+<div class="min-h-screen flex items-center justify-center px-4">
+    <div class="max-w-md w-full space-y-8">
+        <!-- Logo and Title -->
+        <div class="text-center">
+            <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-20 mx-auto mb-4">
+            <h1 class="text-4xl font-bold text-primary mb-2">ignite</h1>
+            <p class="text-xl text-base-content/70">Network Boot & Provisioning</p>
+        </div>
+
+        <!-- Login Form -->
+        <div class="card bg-neutral shadow-2xl">
+            <div class="card-body">
+                <form id="login-form" class="space-y-6">
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text text-base-content">Username</span>
+                        </label>
+                        <input
+                            type="text"
+                            id="username"
+                            name="username"
+                            placeholder="Enter username"
+                            class="input input-bordered w-full focus:input-primary"
+                            required
+                            autocomplete="username"
+                        >
+                    </div>
+
+                    <div class="form-control">
+                        <label class="label">
+                            <span class="label-text text-base-content">Password</span>
+                        </label>
+                        <input
+                            type="password"
+                            id="password"
+                            name="password"
+                            placeholder="Enter password"
+                            class="input input-bordered w-full focus:input-primary"
+                            required
+                            autocomplete="current-password"
+                        >
+                    </div>
+
+                    <div class="form-control mt-6">
+                        <button type="submit" class="btn btn-primary w-full">
+                            <i class="fas fa-sign-in-alt mr-2"></i>
+                            Sign In
+                        </button>
+                    </div>
+                </form>
+
+                <!-- Error Message -->
+                <div id="error-message" class="alert alert-error mt-4 hidden">
+                    <i class="fas fa-exclamation-triangle"></i>
+                    <span>Invalid username or password</span>
+                </div>
+            </div>
+        </div>
+
+    </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const form = document.getElementById('login-form');
+    const errorMessage = document.getElementById('error-message');
+
+    form.addEventListener('submit', function(e) {
+        e.preventDefault();
+
+        const username = document.getElementById('username').value;
+        const password = document.getElementById('password').value;
+
+        // Hide any previous error messages
+        errorMessage.classList.add('hidden');
+
+        // Send login request to backend
+        fetch('/auth/login', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+            },
+            body: JSON.stringify({
+                username: username,
+                password: password
+            })
+        })
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                // Redirect to main page
+                window.location.href = '/';
+            } else {
+                // Show error message
+                errorMessage.querySelector('span').textContent = data.message;
+                errorMessage.classList.remove('hidden');
+
+                // Clear password field
+                document.getElementById('password').value = '';
+                document.getElementById('password').focus();
+            }
+        })
+        .catch(error => {
+            console.error('Login error:', error);
+            errorMessage.querySelector('span').textContent = 'An error occurred during login';
+            errorMessage.classList.remove('hidden');
+        });
+    });
+});
+</script>
+{{ end }}

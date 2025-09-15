@@ -31,6 +31,17 @@
                     <a href="/osimages" class="hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
                     <a href="/syslinux" class="hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
                     <a href="/status" class="hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
+
+                    <!-- User Menu -->
+                    <div class="dropdown dropdown-end">
+                        <label tabindex="0" class="btn btn-ghost btn-circle">
+                            <i class="fas fa-user"></i>
+                        </label>
+                        <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-neutral rounded-box w-52">
+                            <li><a onclick="openChangePasswordModal()"><i class="fas fa-key mr-2"></i>Change Password</a></li>
+                            <li><a onclick="logout()"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a></li>
+                        </ul>
+                    </div>
                 </div>
                 <div class="md:hidden">
                     <button id="menu-btn" class="focus:outline-none">
@@ -56,6 +67,37 @@
             <a href="/osimages" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
             <a href="/syslinux" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
             <a href="/status" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
+        </div>
+    </div>
+
+    <!-- Change Password Modal -->
+    <div id="change-password-modal" class="modal">
+        <div class="modal-box">
+            <h3 class="font-bold text-lg mb-4">Change Password</h3>
+            <form id="change-password-form">
+                <div class="form-control mb-4">
+                    <label class="label">
+                        <span class="label-text">Current Password</span>
+                    </label>
+                    <input type="password" id="current-password" class="input input-bordered" required>
+                </div>
+                <div class="form-control mb-4">
+                    <label class="label">
+                        <span class="label-text">New Password</span>
+                    </label>
+                    <input type="password" id="new-password" class="input input-bordered" required>
+                </div>
+                <div class="form-control mb-4">
+                    <label class="label">
+                        <span class="label-text">Confirm New Password</span>
+                    </label>
+                    <input type="password" id="confirm-password" class="input input-bordered" required>
+                </div>
+                <div class="modal-action">
+                    <button type="button" class="btn" onclick="closeChangePasswordModal()">Cancel</button>
+                    <button type="submit" class="btn btn-primary">Change Password</button>
+                </div>
+            </form>
         </div>
     </div>
 
@@ -97,6 +139,104 @@
                     }).showToast();
                 }
             }
+        });
+
+        // Authentication functions
+        function logout() {
+            fetch('/auth/logout', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                }
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    window.location.href = '/login';
+                }
+            })
+            .catch(error => {
+                console.error('Logout error:', error);
+                // Force redirect to login page even if request fails
+                window.location.href = '/login';
+            });
+        }
+
+        function openChangePasswordModal() {
+            document.getElementById('change-password-modal').classList.add('modal-open');
+        }
+
+        function closeChangePasswordModal() {
+            document.getElementById('change-password-modal').classList.remove('modal-open');
+            document.getElementById('change-password-form').reset();
+        }
+
+        // Handle change password form submission
+        document.getElementById('change-password-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+
+            const currentPassword = document.getElementById('current-password').value;
+            const newPassword = document.getElementById('new-password').value;
+            const confirmPassword = document.getElementById('confirm-password').value;
+
+            // Validate passwords match
+            if (newPassword !== confirmPassword) {
+                Toastify({
+                    text: "New passwords do not match",
+                    duration: 3000,
+                    close: true,
+                    gravity: "top",
+                    position: "right",
+                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
+                }).showToast();
+                return;
+            }
+
+            // Send password change request
+            fetch('/auth/change-password', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                },
+                body: JSON.stringify({
+                    current_password: currentPassword,
+                    new_password: newPassword
+                })
+            })
+            .then(response => response.json())
+            .then(data => {
+                if (data.success) {
+                    Toastify({
+                        text: data.message,
+                        duration: 3000,
+                        close: true,
+                        gravity: "top",
+                        position: "right",
+                        backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
+                    }).showToast();
+                    closeChangePasswordModal();
+                } else {
+                    Toastify({
+                        text: data.message,
+                        duration: 3000,
+                        close: true,
+                        gravity: "top",
+                        position: "right",
+                        backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
+                    }).showToast();
+                }
+            })
+            .catch(error => {
+                console.error('Password change error:', error);
+                Toastify({
+                    text: "An error occurred while changing password",
+                    duration: 3000,
+                    close: true,
+                    gravity: "top",
+                    position: "right",
+                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
+                }).showToast();
+            });
         });
     </script>
 </body>

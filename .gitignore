@@ -17,3 +17,5 @@ public/http/css/tailwind.css
 public/tftp/pxelinux.cfg/*
 public/provision/configs/cloud-init/*
 public/provision/configs/kickstart/*
+public/provision/configs/preseed/*
+public/provision/configs/autoyast/*
