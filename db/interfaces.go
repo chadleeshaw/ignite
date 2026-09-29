@@ -2,7 +2,12 @@ package db
 
 import (
 	"context"
+	"errors"
 )
+
+// ErrNotFound is returned when a requested entity does not exist.
+// Use errors.Is to distinguish it from real backend failures.
+var ErrNotFound = errors.New("entity not found")
 
 // Database defines the interface for database operations
 type Database interface {

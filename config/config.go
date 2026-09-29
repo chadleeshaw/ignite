@@ -3,6 +3,7 @@ package config
 import (
 	"fmt"
 	"os"
+	"strconv"
 )
 
 // Config represents the application configuration with immutable design
@@ -13,6 +14,10 @@ type Config struct {
 	HTTP      HTTPConfig
 	Provision ProvisionConfig
 	OSImages  OSImageConfig
+	// ServerIP overrides the IP address advertised to network-boot clients.
+	// Empty means auto-detect; can also be set via the SERVER_IP environment
+	// variable, which takes precedence.
+	ServerIP string
 }
 
 type DBConfig struct {
@@ -51,9 +56,10 @@ type OSDefinition struct {
 }
 
 type OSVersion struct {
-	DisplayName   string   `json:"display_name"`
-	BaseURL       string   `json:"base_url"`
-	Architectures []string `json:"architectures"`
+	DisplayName      string   `json:"display_name"`
+	BaseURL          string   `json:"base_url"`
+	Architectures    []string `json:"architectures"`
+	ExpectedChecksum string   `json:"expected_checksum,omitempty"` // Optional SHA256 hex digest; when set, each downloaded file for this version must match it
 }
 
 // ConfigBuilder provides a builder pattern for configuration
@@ -85,6 +91,7 @@ func NewConfigBuilder() *ConfigBuilder {
 				Dir: getEnv("PROV_DIR", "./public/provision"),
 			},
 			OSImages: getDefaultOSImageConfig(),
+			ServerIP: getEnv("SERVER_IP", ""),
 		},
 	}
 }
@@ -113,9 +120,36 @@ func (cb *ConfigBuilder) Build() (*Config, error) {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Return a copy to maintain immutability
+	// Return a copy to maintain immutability. The OS image catalog holds
+	// nested maps and slices, so it needs a deep copy.
 	config := cb.config
+	config.OSImages = deepCopyOSImageConfig(cb.config.OSImages)
 	return &config, nil
+}
+
+// deepCopyOSImageConfig deep-copies the OS image catalog: sources, nested
+// version maps, and architecture slices.
+func deepCopyOSImageConfig(src OSImageConfig) OSImageConfig {
+	dst := OSImageConfig{
+		Sources: make(map[string]OSDefinition, len(src.Sources)),
+	}
+	for osName, def := range src.Sources {
+		defCopy := OSDefinition{
+			DisplayName: def.DisplayName,
+			KernelFile:  def.KernelFile,
+			InitrdFile:  def.InitrdFile,
+			Versions:    make(map[string]OSVersion, len(def.Versions)),
+		}
+		for ver, v := range def.Versions {
+			vCopy := v
+			if v.Architectures != nil {
+				vCopy.Architectures = append([]string(nil), v.Architectures...)
+			}
+			defCopy.Versions[ver] = vCopy
+		}
+		dst.Sources[osName] = defCopy
+	}
+	return dst
 }
 
 // validate ensures the configuration is valid
@@ -128,6 +162,18 @@ func (cb *ConfigBuilder) validate() error {
 	}
 	if cb.config.DB.Bucket == "" {
 		return fmt.Errorf("database bucket cannot be empty")
+	}
+	if port, err := strconv.Atoi(cb.config.HTTP.Port); err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("HTTP port must be a number between 1 and 65535, got %q", cb.config.HTTP.Port)
+	}
+	if cb.config.TFTP.Dir == "" {
+		return fmt.Errorf("TFTP directory cannot be empty")
+	}
+	if cb.config.HTTP.Dir == "" {
+		return fmt.Errorf("HTTP directory cannot be empty")
+	}
+	if cb.config.Provision.Dir == "" {
+		return fmt.Errorf("provision directory cannot be empty")
 	}
 	return nil
 }

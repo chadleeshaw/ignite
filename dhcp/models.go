@@ -1,6 +1,7 @@
 package dhcp
 
 import (
+	"fmt"
 	"net"
 	"time"
 )
@@ -36,7 +37,7 @@ type Lease struct {
 	ServerID       string            `json:"server_id"`
 	Menu           BootMenu          `json:"menu"`
 	IPMI           IPMI              `json:"ipmi"`
-	State          string            `json:"state"`
+	State          LeaseState        `json:"state"`
 	StateUpdatedAt time.Time         `json:"state_updated_at"`
 	LastSeen       time.Time         `json:"last_seen"`
 	StateHistory   []StateTransition `json:"state_history"`
@@ -44,50 +45,31 @@ type Lease struct {
 
 // StateTransition represents a state change event
 type StateTransition struct {
-	FromState string    `json:"from_state"`
-	ToState   string    `json:"to_state"`
-	Timestamp time.Time `json:"timestamp"`
-	Source    string    `json:"source"` // "dhcp", "pxe", "imaging", "manual", "heartbeat"
+	FromState LeaseState `json:"from_state"`
+	ToState   LeaseState `json:"to_state"`
+	Timestamp time.Time  `json:"timestamp"`
+	Source    string     `json:"source"` // "dhcp", "pxe", "imaging", "manual", "heartbeat"
 }
+
+// LeaseState is the provisioning state of a lease.
+type LeaseState string
 
 // LeaseState constants
 const (
-	StateAssigned     = "assigned"      // DHCP lease created, waiting for PXE request
-	StatePXERequested = "pxe_requested" // Machine requested PXE boot configuration
-	StateBooting      = "booting"       // PXE config delivered, machine is booting
-	StateImaging      = "imaging"       // OS installation/imaging in progress
-	StateImaged       = "imaged"        // OS imaging completed successfully
-	StateConfiguring  = "configuring"   // Post-install configuration running
-	StateComplete     = "complete"      // Machine fully provisioned and operational
-	StateFailed       = "failed"        // Error occurred in any stage
-	StateOffline      = "offline"       // Machine hasn't checked in recently
+	StateAssigned     LeaseState = "assigned"      // DHCP lease created, waiting for PXE request
+	StatePXERequested LeaseState = "pxe_requested" // Machine requested PXE boot configuration
+	StateBooting      LeaseState = "booting"       // PXE config delivered, machine is booting
+	StateImaging      LeaseState = "imaging"       // OS installation/imaging in progress
+	StateImaged       LeaseState = "imaged"        // OS imaging completed successfully
+	StateConfiguring  LeaseState = "configuring"   // Post-install configuration running
+	StateComplete     LeaseState = "complete"      // Machine fully provisioned and operational
+	StateFailed       LeaseState = "failed"        // Error occurred in any stage
+	StateOffline      LeaseState = "offline"       // Machine hasn't checked in recently
 )
 
-// GetStateBadgeClass returns the CSS class for state display
-func (l *Lease) GetStateBadgeClass() string {
-	switch l.State {
-	case StateAssigned:
-		return "badge-info"
-	case StatePXERequested:
-		return "badge-warning"
-	case StateBooting:
-		return "badge-warning"
-	case StateImaging:
-		return "badge-accent"
-	case StateImaged:
-		return "badge-success"
-	case StateConfiguring:
-		return "badge-accent"
-	case StateComplete:
-		return "badge-success"
-	case StateFailed:
-		return "badge-error"
-	case StateOffline:
-		return "badge-ghost"
-	default:
-		return "badge-neutral"
-	}
-}
+// NOTE: GetStateBadgeClass (CSS classes for state display) was removed from
+// this package — presentation belongs in handlers, not in the dhcp domain
+// model. handlers/dhcp.go must carry its own copy (integration item).
 
 // GetStateDisplayName returns a human-readable state name
 func (l *Lease) GetStateDisplayName() string {
@@ -116,25 +98,28 @@ func (l *Lease) GetStateDisplayName() string {
 }
 
 // UpdateState transitions the lease to a new state and records the transition
-func (l *Lease) UpdateState(newState, source string) {
+func (l *Lease) UpdateState(newState LeaseState, source string) {
+	now := time.Now()
 	if l.State != newState {
 		transition := StateTransition{
 			FromState: l.State,
 			ToState:   newState,
-			Timestamp: time.Now(),
+			Timestamp: now,
 			Source:    source,
 		}
 
 		l.StateHistory = append(l.StateHistory, transition)
 		l.State = newState
-		l.StateUpdatedAt = time.Now()
+		l.StateUpdatedAt = now
 	}
-	l.LastSeen = time.Now()
+	l.LastSeen = now
 }
 
-// IsActive returns true if the lease is in an active state
+// IsActive returns true if the lease is in an active state.
+// A fully provisioned machine (StateComplete) is not "active" for the
+// purposes of heartbeat/offline tracking.
 func (l *Lease) IsActive() bool {
-	return l.State != StateOffline && l.State != StateFailed
+	return l.State != StateOffline && l.State != StateFailed && l.State != StateComplete
 }
 
 // BootMenu contains PXE boot configuration
@@ -173,26 +158,45 @@ func (l *Lease) Extend(duration time.Duration) {
 
 // GetNetworkAddress returns the network address for the server
 func (s *Server) GetNetworkAddress() net.IP {
-	return s.IP.Mask(net.IPMask(s.Options.SubnetMask))
+	ip4 := s.IP.To4()
+	mask := net.IPMask(s.Options.SubnetMask.To4())
+	if ip4 == nil || mask == nil {
+		return nil
+	}
+	return ip4.Mask(mask)
 }
 
 // IsInRange checks if an IP is within the server's lease range
 func (s *Server) IsInRange(ip net.IP) bool {
-	if s.IPStart == nil || len(s.IPStart) != len(ip) {
+	start := s.IPStart.To4()
+	ip4 := ip.To4()
+	if start == nil || ip4 == nil {
 		return false
 	}
 
-	startInt := ipToInt(s.IPStart)
-	ipInt := ipToInt(ip)
-	endInt := startInt + uint32(s.LeaseRange)
+	startInt, err := ipToInt(start)
+	if err != nil {
+		return false
+	}
+	ipInt, err := ipToInt(ip4)
+	if err != nil {
+		return false
+	}
+	if s.LeaseRange <= 0 {
+		return false
+	}
 
-	return ipInt >= startInt && ipInt < endInt
+	// Use 64-bit math so a large LeaseRange can't wrap past 255.255.255.255.
+	end := uint64(startInt) + uint64(s.LeaseRange)
+	return uint64(ipInt) >= uint64(startInt) && uint64(ipInt) < end
 }
 
-// Helper function to convert IP to uint32
-func ipToInt(ip net.IP) uint32 {
-	if len(ip) == 16 {
-		ip = ip[12:16] // Convert IPv6 to IPv4 if needed
+// ipToInt converts an IPv4 address to a uint32.
+// It returns an error instead of panicking on unexpected input.
+func ipToInt(ip net.IP) (uint32, error) {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return 0, fmt.Errorf("not an IPv4 address")
 	}
-	return uint32(ip[0])<<24 + uint32(ip[1])<<16 + uint32(ip[2])<<8 + uint32(ip[3])
+	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3]), nil
 }

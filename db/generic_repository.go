@@ -4,7 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
 )
 
 // GenericRepository provides a generic repository implementation
@@ -41,7 +40,7 @@ func (r *GenericRepository[T]) Get(ctx context.Context, key string) (T, error) {
 	}
 
 	if data == nil {
-		return entity, fmt.Errorf("entity not found")
+		return entity, fmt.Errorf("%w: key %q", ErrNotFound, key)
 	}
 
 	if err := json.Unmarshal(data, &entity); err != nil {
@@ -62,8 +61,7 @@ func (r *GenericRepository[T]) GetAll(ctx context.Context) (map[string]T, error)
 	for key, value := range data {
 		var entity T
 		if err := json.Unmarshal(value, &entity); err != nil {
-			log.Printf("Failed to unmarshal entity for key %s: %v", key, err)
-			continue
+			return nil, fmt.Errorf("failed to unmarshal entity for key %q: %w", key, err)
 		}
 		result[key] = entity
 	}
