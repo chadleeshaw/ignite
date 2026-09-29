@@ -10,8 +10,7 @@ import (
 
 func TestCompleteLoginLogoutFlow(t *testing.T) {
 	// Reset to default credentials for test
-	defaultUsername = "admin"
-	defaultPassword = "admin"
+	resetTestCredentials()
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
@@ -133,11 +132,8 @@ func TestCompleteLoginLogoutFlow(t *testing.T) {
 
 func TestCompletePasswordChangeFlow(t *testing.T) {
 	// Reset to default credentials for test
-	defaultUsername = "admin"
-	defaultPassword = "admin"
-	defer func() {
-		defaultPassword = "admin" // Reset after test
-	}()
+	resetTestCredentials()
+	defer resetTestCredentials() // Reset after test
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
@@ -248,19 +244,14 @@ func TestCompletePasswordChangeFlow(t *testing.T) {
 
 func TestPasswordChangeSecurityChecks(t *testing.T) {
 	// Reset to default credentials for test
-	defaultPassword = "admin"
-	defer func() {
-		defaultPassword = "admin" // Reset after test
-	}()
+	resetTestCredentials()
+	defer resetTestCredentials() // Reset after test
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
 
 	// Create valid session cookie
-	sessionCookie := &http.Cookie{
-		Name:  "ignite_session",
-		Value: "admin_12345",
-	}
+	sessionCookie := testSessionCookie(t)
 
 	tests := []struct {
 		name           string
@@ -299,7 +290,7 @@ func TestPasswordChangeSecurityChecks(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Reset password for each test
-			defaultPassword = "admin"
+			resetTestCredentials()
 
 			changeReq := ChangePasswordRequest{
 				CurrentPassword: tt.currentPass,
@@ -339,8 +330,7 @@ func TestPasswordChangeSecurityChecks(t *testing.T) {
 
 func TestSessionPersistence(t *testing.T) {
 	// Reset to default credentials for test
-	defaultUsername = "admin"
-	defaultPassword = "admin"
+	resetTestCredentials()
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
