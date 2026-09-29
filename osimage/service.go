@@ -3,37 +3,61 @@ package osimage
 import (
 	"context"
 	"crypto/sha256"
+	"encoding/hex"
+	"errors"
 	"fmt"
 	"ignite/config"
+	"ignite/dlstatus"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
 )
 
-// OSImageServiceImpl provides business logic for OS image management
-type OSImageServiceImpl struct {
-	repo            OSImageRepository
-	downloadRepo    DownloadStatusRepository
-	config          *config.Config
-	downloadChan    chan OSImageConfig
-	activeDownloads map[string]*DownloadStatus
+// errDownloadTerminal is returned when a worker tries to persist progress for
+// a download whose stored row has already reached a terminal state.
+var errDownloadTerminal = errors.New("download already in terminal state")
+
+// downloadRequest is a unit of work for the background download worker.
+type downloadRequest struct {
+	ctx         context.Context
+	id          string
+	osConfig    OSImageConfig
+	versionInfo config.OSVersion
+}
+
+// osImageServiceImpl provides business logic for OS image management.
+// The struct is unexported; callers use the OSImageService interface.
+type osImageServiceImpl struct {
+	repo         OSImageRepository
+	downloadRepo DownloadStatusRepository
+	config       *config.Config
+	httpClient   *http.Client
+	downloadChan chan downloadRequest
+
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc // download ID -> cancel func
 }
 
 // NewOSImageService creates a new OS image service
 func NewOSImageService(repo OSImageRepository, downloadRepo DownloadStatusRepository, cfg *config.Config) OSImageService {
-	service := &OSImageServiceImpl{
-		repo:            repo,
-		downloadRepo:    downloadRepo,
-		config:          cfg,
-		downloadChan:    make(chan OSImageConfig, 10),
-		activeDownloads: make(map[string]*DownloadStatus),
+	service := &osImageServiceImpl{
+		repo:         repo,
+		downloadRepo: downloadRepo,
+		config:       cfg,
+		httpClient: &http.Client{
+			Timeout: 30 * time.Minute,
+		},
+		downloadChan: make(chan downloadRequest, 10),
+		cancels:      make(map[string]context.CancelFunc),
 	}
 
 	// Start background download worker
@@ -43,127 +67,149 @@ func NewOSImageService(repo OSImageRepository, downloadRepo DownloadStatusReposi
 }
 
 // GetAllOSImages retrieves all OS images
-func (s *OSImageServiceImpl) GetAllOSImages(ctx context.Context) ([]*OSImage, error) {
+func (s *osImageServiceImpl) GetAllOSImages(ctx context.Context) ([]*OSImage, error) {
 	return s.repo.GetAll(ctx)
 }
 
 // GetOSImagesByOS retrieves all images for a specific operating system
-func (s *OSImageServiceImpl) GetOSImagesByOS(ctx context.Context, os string) ([]*OSImage, error) {
-	return s.repo.GetByOS(ctx, os)
+func (s *osImageServiceImpl) GetOSImagesByOS(ctx context.Context, osName string) ([]*OSImage, error) {
+	return s.repo.GetByOS(ctx, osName)
 }
 
 // GetOSImage retrieves an OS image by ID
-func (s *OSImageServiceImpl) GetOSImage(ctx context.Context, id string) (*OSImage, error) {
+func (s *osImageServiceImpl) GetOSImage(ctx context.Context, id string) (*OSImage, error) {
 	return s.repo.Get(ctx, id)
 }
 
 // GetDefaultVersion retrieves the default version for an OS
-func (s *OSImageServiceImpl) GetDefaultVersion(ctx context.Context, os string) (*OSImage, error) {
-	return s.repo.GetDefaultVersion(ctx, os)
+func (s *osImageServiceImpl) GetDefaultVersion(ctx context.Context, osName string) (*OSImage, error) {
+	return s.repo.GetDefaultVersion(ctx, osName)
 }
 
-// SetDefaultVersion sets an OS image as the default for its OS type
-func (s *OSImageServiceImpl) SetDefaultVersion(ctx context.Context, id string) error {
+// SetDefaultVersion sets the default version for an OS
+func (s *osImageServiceImpl) SetDefaultVersion(ctx context.Context, id string) error {
 	return s.repo.SetDefault(ctx, id)
 }
 
-// DeleteOSImage removes an OS image and its files
-func (s *OSImageServiceImpl) DeleteOSImage(ctx context.Context, id string) error {
-	// Get the image to find file paths
-	image, err := s.repo.Get(ctx, id)
-	if err != nil {
-		return err
-	}
-
-	// Remove files from filesystem
-	kernelPath := filepath.Join(s.config.TFTP.Dir, image.KernelPath)
-	initrdPath := filepath.Join(s.config.TFTP.Dir, image.InitrdPath)
-
-	if err := os.Remove(kernelPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove kernel file: %w", err)
-	}
-
-	if err := os.Remove(initrdPath); err != nil && !os.IsNotExist(err) {
-		return fmt.Errorf("failed to remove initrd file: %w", err)
-	}
-
-	// Remove from database
+// DeleteOSImage deletes an OS image
+func (s *osImageServiceImpl) DeleteOSImage(ctx context.Context, id string) error {
 	return s.repo.Delete(ctx, id)
 }
 
-// DownloadOSImage starts downloading an OS image
-func (s *OSImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSImageConfig) (*DownloadStatus, error) {
-	// Validate OS and version
+// GetDownloadStatus retrieves the status of a download.
+// The returned struct is a copy; the worker never shares its live struct.
+func (s *osImageServiceImpl) GetDownloadStatus(ctx context.Context, id string) (*DownloadStatus, error) {
+	status, err := s.downloadRepo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	statusCopy := *status
+	return &statusCopy, nil
+}
+
+// GetActiveDownloads retrieves all active downloads
+func (s *osImageServiceImpl) GetActiveDownloads(ctx context.Context) ([]*DownloadStatus, error) {
+	return s.downloadRepo.GetActive(ctx)
+}
+
+// removeCancel drops the cancel func for a download ID. It is called when a
+// download finishes, fails, is cancelled, or is dequeued by the worker.
+func (s *osImageServiceImpl) removeCancel(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cancels, id)
+}
+
+// DownloadOSImage initiates a download of an OS image.
+// It returns a copy of the queued status; the worker mutates only its own
+// re-read copy afterwards.
+func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSImageConfig) (*DownloadStatus, error) {
+	// Validate OS/version combination
 	if !s.isValidOSVersion(osConfig.OS, osConfig.Version) {
 		return nil, fmt.Errorf("unsupported OS/version combination: %s %s", osConfig.OS, osConfig.Version)
 	}
 
-	// Check if already exists
+	// Check if image already exists
 	existing, err := s.repo.GetByOSAndVersion(ctx, osConfig.OS, osConfig.Version)
 	if err == nil && existing != nil {
 		return nil, fmt.Errorf("OS image already exists: %s %s", osConfig.OS, osConfig.Version)
 	}
 
-	// Create download status
+	versionInfo := s.config.OSImages.Sources[osConfig.OS].Versions[osConfig.Version]
+
 	status := &DownloadStatus{
 		ID:        uuid.New().String(),
 		OS:        osConfig.OS,
 		Version:   osConfig.Version,
-		Status:    "queued",
+		Status:    dlstatus.StatusQueued,
 		Progress:  0,
 		StartedAt: time.Now(),
 	}
 
-	if err := s.downloadRepo.Save(ctx, status); err != nil {
-		return nil, err
+	// Each download gets its own cancellable context, tracked by download ID.
+	dlCtx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.cancels[status.ID] = cancel
+	s.mu.Unlock()
+
+	req := downloadRequest{
+		ctx:         dlCtx,
+		id:          status.ID,
+		osConfig:    osConfig,
+		versionInfo: versionInfo,
 	}
 
-	// Update status to downloading BEFORE queuing to prevent race condition
-	status.Status = "downloading"
+	// Persist the queued status BEFORE enqueueing so the worker can never
+	// observe a request without its row.
 	if err := s.downloadRepo.Save(ctx, status); err != nil {
-		return nil, err
+		cancel()
+		s.removeCancel(status.ID)
+		return nil, fmt.Errorf("failed to save download status: %w", err)
 	}
 
-	// Queue for download
 	select {
-	case s.downloadChan <- osConfig:
-		// Successfully queued
+	case s.downloadChan <- req:
 	default:
-		status.Status = "failed"
-		status.ErrorMessage = "download queue is full"
-		s.downloadRepo.Save(ctx, status)
-		return status, fmt.Errorf("download queue is full")
+		cancel()
+		s.removeCancel(status.ID)
+		status.Status = dlstatus.StatusFailed
+		status.ErrorMessage = "download queue is full, try again later"
+		now := time.Now()
+		status.CompletedAt = &now
+		if err := s.downloadRepo.Save(ctx, status); err != nil {
+			return nil, fmt.Errorf("download queue is full (failed to record status: %w)", err)
+		}
+		return nil, fmt.Errorf("download queue is full, try again later")
 	}
 
-	return status, nil
+	// Return a copy so HTTP callers never observe worker-mutated state.
+	statusCopy := *status
+	return &statusCopy, nil
 }
 
-// GetDownloadStatus retrieves the status of a download
-func (s *OSImageServiceImpl) GetDownloadStatus(ctx context.Context, id string) (*DownloadStatus, error) {
-	return s.downloadRepo.Get(ctx, id)
-}
+// CancelDownload cancels an active download. It signals the worker via the
+// download's context and marks the row cancelled in the same critical
+// section used by worker saves, so the two can never overwrite each other.
+func (s *osImageServiceImpl) CancelDownload(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-// GetActiveDownloads retrieves all active downloads
-func (s *OSImageServiceImpl) GetActiveDownloads(ctx context.Context) ([]*DownloadStatus, error) {
-	return s.downloadRepo.GetActive(ctx)
-}
-
-// CancelDownload cancels an active download and cleans up partial files
-func (s *OSImageServiceImpl) CancelDownload(ctx context.Context, id string) error {
-	// Get the download status
 	status, err := s.downloadRepo.Get(ctx, id)
 	if err != nil {
-		return fmt.Errorf("failed to get download status: %w", err)
+		return fmt.Errorf("download not found: %s", id)
 	}
 
-	// Only allow canceling downloads that are still in progress
-	if status.Status != "downloading" && status.Status != "queued" {
-		return fmt.Errorf("cannot cancel download with status: %s", status.Status)
+	if !status.Status.Active() {
+		return fmt.Errorf("cannot cancel download with status %s", status.Status)
 	}
 
-	// Mark as cancelled
+	if cancel, ok := s.cancels[id]; ok {
+		delete(s.cancels, id)
+		cancel()
+	}
+
 	now := time.Now()
-	status.Status = "cancelled"
+	status.Status = dlstatus.StatusCancelled
 	status.Progress = 0
 	status.ErrorMessage = "Download cancelled by user"
 	status.CompletedAt = &now
@@ -171,206 +217,242 @@ func (s *OSImageServiceImpl) CancelDownload(ctx context.Context, id string) erro
 	if err := s.downloadRepo.Save(ctx, status); err != nil {
 		return fmt.Errorf("failed to save cancelled status: %w", err)
 	}
-
-	// Clean up any partially downloaded files
-	osDir := filepath.Join(s.config.TFTP.Dir, status.OS, status.Version)
-	kernelPath := filepath.Join(osDir, "vmlinuz")
-	initrdPath := filepath.Join(osDir, "initrd.img")
-
-	// Remove partial files (ignore errors as files might not exist)
-	os.Remove(kernelPath)
-	os.Remove(initrdPath)
-
-	// Try to remove the directory if it's empty
-	os.Remove(osDir)
-
 	return nil
 }
 
-// isValidOSVersion checks if the OS and version combination is supported
-func (s *OSImageServiceImpl) isValidOSVersion(os, version string) bool {
-	osDef, exists := s.config.OSImages.Sources[os]
-	if !exists {
-		return false
-	}
-
-	_, versionExists := osDef.Versions[version]
-	return versionExists
-}
-
-// downloadWorker processes download requests in the background
-func (s *OSImageServiceImpl) downloadWorker() {
-	for osConfig := range s.downloadChan {
-		s.processDownload(osConfig)
+// downloadWorker processes download requests sequentially
+func (s *osImageServiceImpl) downloadWorker() {
+	for req := range s.downloadChan {
+		s.processDownload(req)
 	}
 }
 
-// processDownload handles the actual download process
-func (s *OSImageServiceImpl) processDownload(osConfig OSImageConfig) {
-	ctx := context.Background()
+// saveStatusChecked persists status only if the stored row has not reached a
+// terminal state. It re-reads the row under the service mutex (the same
+// mutex CancelDownload uses), so a concurrent cancellation is never
+// overwritten with stale worker data.
+func (s *osImageServiceImpl) saveStatusChecked(ctx context.Context, status *DownloadStatus) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
-	// Find download status
-	var status *DownloadStatus
-	downloads, err := s.downloadRepo.GetActive(ctx)
+	current, err := s.downloadRepo.Get(ctx, status.ID)
 	if err != nil {
+		return err
+	}
+	if current.Status.Terminal() {
+		return errDownloadTerminal
+	}
+	return s.downloadRepo.Save(ctx, status)
+}
+
+// failDownload records a terminal failure for the download unless the row was
+// already cancelled or failed concurrently.
+func (s *osImageServiceImpl) failDownload(ctx context.Context, status *DownloadStatus, err error) {
+	status.Status = dlstatus.StatusFailed
+	status.ErrorMessage = err.Error()
+	now := time.Now()
+	status.CompletedAt = &now
+	if saveErr := s.saveStatusChecked(ctx, status); saveErr != nil {
+		log.Printf("Download %s failed (%v); could not persist failure: %v", status.ID, err, saveErr)
+		return
+	}
+	log.Printf("Download %s failed: %v", status.ID, err)
+}
+
+// processDownload handles the actual download of OS image files
+func (s *osImageServiceImpl) processDownload(req downloadRequest) {
+	defer s.removeCancel(req.id)
+
+	ctx := req.ctx
+
+	// Re-read the row: the download may have been cancelled while queued.
+	status, err := s.downloadRepo.Get(ctx, req.id)
+	if err != nil {
+		log.Printf("Download %s: status not found, aborting: %v", req.id, err)
+		return
+	}
+	if status.Status.Terminal() {
 		return
 	}
 
-	for _, d := range downloads {
-		if d.OS == osConfig.OS && d.Version == osConfig.Version {
-			status = d
-			break
+	status.Status = dlstatus.StatusDownloading
+	status.Progress = 5
+	if err := s.saveStatusChecked(ctx, status); err != nil {
+		return
+	}
+
+	osConfig := req.osConfig
+	versionInfo := req.versionInfo
+
+	arch := osConfig.Architecture
+	if arch == "" {
+		if len(versionInfo.Architectures) > 0 {
+			arch = versionInfo.Architectures[0]
+		} else {
+			arch = "x86_64"
 		}
 	}
 
-	if status == nil {
-		return // Status not found
-	}
+	baseURL := strings.TrimSuffix(versionInfo.BaseURL, "/")
+	kernelURL := fmt.Sprintf("%s/%s/vmlinuz", baseURL, arch)
+	initrdURL := fmt.Sprintf("%s/%s/initrd.img", baseURL, arch)
 
-	// Get OS definition from config
-	osDef, exists := s.config.OSImages.Sources[osConfig.OS]
-	if !exists {
-		s.markDownloadFailed(ctx, status, "unsupported OS")
+	tftpDir := s.config.TFTP.Dir
+	downloadDir := filepath.Join(tftpDir, "os-images", osConfig.OS, osConfig.Version)
+	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+		s.failDownload(ctx, status, fmt.Errorf("failed to create download directory: %w", err))
 		return
 	}
 
-	// Get version info from config
-	versionInfo, versionExists := osDef.Versions[osConfig.Version]
-	if !versionExists {
-		s.markDownloadFailed(ctx, status, "unsupported version for this OS")
-		return
+	kernelPath := filepath.Join(downloadDir, "vmlinuz")
+	initrdPath := filepath.Join(downloadDir, "initrd.img")
+
+	if err := ctx.Err(); err != nil {
+		return // cancelled; CancelDownload already marked the row
 	}
-
-	baseURL := versionInfo.BaseURL
-	if baseURL == "" {
-		s.markDownloadFailed(ctx, status, "no download URL found for this version")
-		return
-	}
-
-	// Create directory structure
-	osDir := filepath.Join(s.config.TFTP.Dir, osConfig.OS, osConfig.Version)
-	if err := os.MkdirAll(osDir, 0755); err != nil {
-		s.markDownloadFailed(ctx, status, fmt.Sprintf("failed to create directory: %v", err))
-		return
-	}
-
-	// Get filenames from config
-	kernelFile := osDef.KernelFile
-	initrdFile := osDef.InitrdFile
-
-	kernelURL := strings.TrimSuffix(baseURL, "/") + "/" + kernelFile
-	initrdURL := strings.TrimSuffix(baseURL, "/") + "/" + initrdFile
-
-	kernelPath := filepath.Join(osDir, "vmlinuz")
-	initrdPath := filepath.Join(osDir, "initrd.img")
 
 	// Download kernel
-	status.Progress = 10
-	s.downloadRepo.Save(ctx, status)
-
-	// Check if cancelled before starting kernel download
-	if status, err := s.downloadRepo.Get(ctx, status.ID); err != nil || status.Status == "cancelled" {
+	kernelSize, kernelChecksum, err := s.downloadFile(ctx, kernelURL, kernelPath, versionInfo.ExpectedChecksum)
+	if err != nil {
+		s.failDownload(ctx, status, fmt.Errorf("failed to download kernel: %w", err))
 		return
 	}
 
-	kernelSize, kernelChecksum, err := s.downloadFile(kernelURL, kernelPath)
-	if err != nil {
-		s.markDownloadFailed(ctx, status, fmt.Sprintf("failed to download kernel: %v", err))
+	status.Progress = 50
+	if err := s.saveStatusChecked(ctx, status); err != nil {
+		_ = os.Remove(kernelPath)
+		return
+	}
+
+	if err := ctx.Err(); err != nil {
+		_ = os.Remove(kernelPath)
 		return
 	}
 
 	// Download initrd
-	status.Progress = 60
-	s.downloadRepo.Save(ctx, status)
-
-	// Check if cancelled before starting initrd download
-	if status, err := s.downloadRepo.Get(ctx, status.ID); err != nil || status.Status == "cancelled" {
+	initrdSize, initrdChecksum, err := s.downloadFile(ctx, initrdURL, initrdPath, versionInfo.ExpectedChecksum)
+	if err != nil {
+		_ = os.Remove(kernelPath)
+		s.failDownload(ctx, status, fmt.Errorf("failed to download initrd: %w", err))
 		return
 	}
 
-	initrdSize, initrdChecksum, err := s.downloadFile(initrdURL, initrdPath)
-	if err != nil {
-		s.markDownloadFailed(ctx, status, fmt.Sprintf("failed to download initrd: %v", err))
+	if err := ctx.Err(); err != nil {
+		_ = os.Remove(kernelPath)
+		_ = os.Remove(initrdPath)
 		return
 	}
 
 	// Create OS image record
-	status.Progress = 90
-	s.downloadRepo.Save(ctx, status)
-
-	osImage := &OSImage{
+	now := time.Now()
+	image := &OSImage{
+		ID:           uuid.New().String(),
 		OS:           osConfig.OS,
 		Version:      osConfig.Version,
-		Architecture: "x86_64", // Default to x86_64
-		KernelPath:   fmt.Sprintf("%s/%s/vmlinuz", osConfig.OS, osConfig.Version),
-		InitrdPath:   fmt.Sprintf("%s/%s/initrd.img", osConfig.OS, osConfig.Version),
+		Architecture: arch,
+		KernelPath:   kernelPath,
+		InitrdPath:   initrdPath,
 		KernelSize:   kernelSize,
 		InitrdSize:   initrdSize,
 		Checksum:     kernelChecksum + ":" + initrdChecksum,
-		Active:       false,   // Don't automatically set as default
-		DownloadURL:  baseURL, // Store the base URL where files were downloaded from
+		Active:       false,
+		DownloadURL:  versionInfo.BaseURL,
+		CreatedAt:    now,
+		UpdatedAt:    now,
 	}
 
-	if err := s.repo.Save(ctx, osImage); err != nil {
-		s.markDownloadFailed(ctx, status, fmt.Sprintf("failed to save OS image: %v", err))
+	if err := s.repo.Save(ctx, image); err != nil {
+		_ = os.Remove(kernelPath)
+		_ = os.Remove(initrdPath)
+		s.failDownload(ctx, status, fmt.Errorf("failed to save OS image record: %w", err))
 		return
 	}
 
 	// Mark download as completed
-	now := time.Now()
-	status.Status = "completed"
+	status.Status = dlstatus.StatusCompleted
 	status.Progress = 100
-	status.CompletedAt = &now
-	s.downloadRepo.Save(ctx, status)
+	completed := time.Now()
+	status.CompletedAt = &completed
+	if err := s.saveStatusChecked(ctx, status); err != nil {
+		// The row went terminal concurrently (e.g. cancelled): roll back the
+		// image record and files rather than leaving an orphan.
+		_ = s.repo.Delete(ctx, image.ID)
+		_ = os.Remove(kernelPath)
+		_ = os.Remove(initrdPath)
+		return
+	}
+
+	log.Printf("Successfully downloaded OS image: %s %s", osConfig.OS, osConfig.Version)
 }
 
-// downloadFile downloads a file and returns its size and checksum
-func (s *OSImageServiceImpl) downloadFile(url, filepath string) (int64, string, error) {
-	resp, err := http.Get(url)
+// downloadFile downloads a file from URL to destPath. The data is streamed to
+// a temp file in the destination directory and renamed into place only on
+// success, so a failed or cancelled download never leaves a partial file at
+// destPath. It returns the size and SHA256 hex digest of the downloaded file.
+// When expectedSHA256 is non-empty, the digest must match or an error is
+// returned.
+func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath, expectedSHA256 string) (int64, string, error) {
+	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
+		return 0, "", fmt.Errorf("failed to create destination directory: %w", err)
+	}
+
+	tmp, err := os.CreateTemp(filepath.Dir(destPath), ".download-*")
 	if err != nil {
-		log.Printf("HTTP GET failed for %s: %v", url, err)
-		return 0, "", err
+		return 0, "", fmt.Errorf("failed to create temp file: %w", err)
+	}
+	tmpName := tmp.Name()
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			_ = os.Remove(tmpName)
+		}
+	}()
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		_ = tmp.Close()
+		return 0, "", fmt.Errorf("failed to create request: %w", err)
+	}
+
+	resp, err := s.httpClient.Do(req)
+	if err != nil {
+		_ = tmp.Close()
+		return 0, "", fmt.Errorf("failed to download %s: %w", url, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		log.Printf("Download failed with status %s for %s", resp.Status, url)
-		return 0, "", fmt.Errorf("download failed: %s", resp.Status)
+		_ = tmp.Close()
+		return 0, "", fmt.Errorf("failed to download %s: HTTP %s", url, resp.Status)
 	}
 
-	file, err := os.Create(filepath)
-	if err != nil {
-		return 0, "", err
-	}
-	defer file.Close()
-
-	// Create hash writer
 	hash := sha256.New()
-
-	// Copy with hash calculation
-	size, err := io.Copy(io.MultiWriter(file, hash), resp.Body)
+	size, err := io.Copy(io.MultiWriter(tmp, hash), resp.Body)
+	closeErr := tmp.Close()
 	if err != nil {
-		return 0, "", err
+		return 0, "", fmt.Errorf("failed to write download %s: %w", url, err)
+	}
+	if closeErr != nil {
+		return 0, "", fmt.Errorf("failed to close temp file for %s: %w", url, closeErr)
 	}
 
-	checksum := fmt.Sprintf("%x", hash.Sum(nil))
+	checksum := hex.EncodeToString(hash.Sum(nil))
+	if expectedSHA256 != "" && !strings.EqualFold(checksum, expectedSHA256) {
+		return 0, "", fmt.Errorf("checksum mismatch for %s: expected %s, got %s", url, expectedSHA256, checksum)
+	}
+
+	if err := os.Rename(tmpName, destPath); err != nil {
+		return 0, "", fmt.Errorf("failed to finalize %s: %w", destPath, err)
+	}
+	succeeded = true
 	return size, checksum, nil
 }
 
-// markDownloadFailed marks a download as failed with an error message
-func (s *OSImageServiceImpl) markDownloadFailed(ctx context.Context, status *DownloadStatus, errorMsg string) {
-	status.Status = "failed"
-	status.ErrorMessage = errorMsg
-	now := time.Now()
-	status.CompletedAt = &now
-	s.downloadRepo.Save(ctx, status)
-}
-
-// GetAvailableVersions returns available versions for a given OS
-func (s *OSImageServiceImpl) GetAvailableVersions(ctx context.Context, os string) ([]string, error) {
-	osDef, exists := s.config.OSImages.Sources[os]
+// GetAvailableVersions returns available versions for an OS
+func (s *osImageServiceImpl) GetAvailableVersions(ctx context.Context, osName string) ([]string, error) {
+	osDef, exists := s.config.OSImages.Sources[osName]
 	if !exists {
-		return nil, fmt.Errorf("unsupported OS: %s", os)
+		return nil, fmt.Errorf("unsupported OS: %s", osName)
 	}
 
 	var versions []string
@@ -378,6 +460,65 @@ func (s *OSImageServiceImpl) GetAvailableVersions(ctx context.Context, os string
 		versions = append(versions, version)
 	}
 
-	sort.Strings(versions)
+	sort.Slice(versions, func(i, j int) bool {
+		return compareVersions(versions[i], versions[j]) < 0
+	})
 	return versions, nil
+}
+
+// compareVersions compares dot-separated version strings numerically,
+// segment by segment, falling back to lexical comparison for non-numeric
+// segments ("9" < "10", "6.03" < "6.10").
+func compareVersions(a, b string) int {
+	as := strings.Split(a, ".")
+	bs := strings.Split(b, ".")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		ai, aerr := strconv.Atoi(as[i])
+		bi, berr := strconv.Atoi(bs[i])
+		switch {
+		case aerr == nil && berr == nil:
+			if ai != bi {
+				if ai < bi {
+					return -1
+				}
+				return 1
+			}
+		default:
+			if as[i] != bs[i] {
+				if as[i] < bs[i] {
+					return -1
+				}
+				return 1
+			}
+		}
+	}
+	switch {
+	case len(as) < len(bs):
+		return -1
+	case len(as) > len(bs):
+		return 1
+	default:
+		return 0
+	}
+}
+
+// GetSupportedOSes returns list of supported operating systems
+func (s *osImageServiceImpl) GetSupportedOSes() []string {
+	var oses []string
+	for osName := range s.config.OSImages.Sources {
+		oses = append(oses, osName)
+	}
+	sort.Strings(oses)
+	return oses
+}
+
+// isValidOSVersion checks if the OS/version combination is valid
+func (s *osImageServiceImpl) isValidOSVersion(osName, version string) bool {
+	osDef, exists := s.config.OSImages.Sources[osName]
+	if !exists {
+		return false
+	}
+
+	_, exists = osDef.Versions[version]
+	return exists
 }
