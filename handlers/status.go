@@ -93,34 +93,40 @@ func NewStatusHandlers(container *Container) *StatusHandlers {
 
 // ServiceStatus represents the status of a service
 type ServiceStatus struct {
-	Name    string `json:"name"`
-	Status  string `json:"status"`
-	Details string `json:"details"`
-	Port    int    `json:"port"`
+	Name        string    `json:"name"`
+	Status      string    `json:"status"`
+	Description string    `json:"description"`
+	Details     string    `json:"details"`
+	Port        int       `json:"port"`
+	LastCheck   time.Time `json:"last_check"`
 }
 
 // DHCPServerStatus represents DHCP server status for the status page
 type DHCPServerStatus struct {
-	ID       string `json:"id"`
-	Network  string `json:"network"`
-	Status   string `json:"status"`
-	LeaseNum int    `json:"lease_num"`
+	ID          string    `json:"id"`
+	IP          string    `json:"ip"`
+	Status      string    `json:"status"`
+	Description string    `json:"description"`
+	LeaseCount  int       `json:"lease_count"`
+	LastCheck   time.Time `json:"last_check"`
 }
 
 // StatusPageData represents data for the status page
 type StatusPageData struct {
-	Title       string             `json:"title"`
-	HTTPServer  ServiceStatus      `json:"http_server"`
-	TFTPServer  ServiceStatus      `json:"tftp_server"`
-	DHCPServers []DHCPServerStatus `json:"dhcp_servers"`
-	LastUpdated string             `json:"last_updated"`
-	AutoRefresh bool               `json:"auto_refresh"`
-	RefreshSecs int                `json:"refresh_secs"`
+	Title         string             `json:"title"`
+	HTTPServer    ServiceStatus      `json:"http_server"`
+	TFTPServer    ServiceStatus      `json:"tftp_server"`
+	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
+	LastUpdated   string             `json:"last_updated"`
+	OverallStatus string             `json:"overall_status"`
+	AutoRefresh   bool               `json:"auto_refresh"`
+	RefreshSecs   int                `json:"refresh_secs"`
 }
 
 // getStatusData builds the status page data from tracked runtime state.
 func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error) {
 	ctx := r.Context()
+	now := time.Now()
 
 	// HTTP server status — a TCP dial to our own listener as a smoke check.
 	// The configured port is a string; an unparseable value fails the check.
@@ -129,10 +135,12 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 
 	// TFTP server status — tracked runtime state, never a UDP guess.
 	tftpStatus := ServiceStatus{
-		Name:    "TFTP Server",
-		Status:  tftpStatusString(),
-		Details: fmt.Sprintf("Port %d", tftpPort),
-		Port:    tftpPort,
+		Name:        "TFTP Server",
+		Status:      tftpStatusString(),
+		Description: "Network boot file server for PXE clients",
+		Details:     fmt.Sprintf("Port %d", tftpPort),
+		Port:        tftpPort,
+		LastCheck:   now,
 	}
 
 	// DHCP servers status — from the tracked running state, falling back to
@@ -152,21 +160,41 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 		}
 
 		dhcpServers = append(dhcpServers, DHCPServerStatus{
-			ID:       server.ID,
-			Network:  server.IP.String(),
-			Status:   status,
-			LeaseNum: len(leases),
+			ID:          server.ID,
+			IP:          server.IP.String(),
+			Status:      status,
+			Description: "Dynamic IP assignment for network boot clients",
+			LeaseCount:  len(leases),
+			LastCheck:   now,
 		})
 	}
 
+	// Overall status: the page itself is served over HTTP, so a failed HTTP
+	// check means something is seriously wrong; anything else degraded is
+	// "partial".
+	overallStatus := "healthy"
+	if httpStatus.Status != "running" {
+		overallStatus = "down"
+	} else if tftpStatus.Status != "running" {
+		overallStatus = "partial"
+	} else {
+		for _, s := range dhcpServers {
+			if s.Status != "running" {
+				overallStatus = "partial"
+				break
+			}
+		}
+	}
+
 	return &StatusPageData{
-		Title:       "System Status",
-		HTTPServer:  httpStatus,
-		TFTPServer:  tftpStatus,
-		DHCPServers: dhcpServers,
-		LastUpdated: time.Now().Format("2006-01-02 15:04:05"),
-		AutoRefresh: true,
-		RefreshSecs: 5,
+		Title:         "System Status",
+		HTTPServer:    httpStatus,
+		TFTPServer:    tftpStatus,
+		DHCPServers:   dhcpServers,
+		LastUpdated:   now.Format("2006-01-02 15:04:05"),
+		OverallStatus: overallStatus,
+		AutoRefresh:   true,
+		RefreshSecs:   5,
 	}, nil
 }
 
@@ -210,10 +238,12 @@ func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Requ
 // own TCP listener — a smoke check that the port accepts connections.
 func checkHTTPServerStatus(port int) ServiceStatus {
 	status := ServiceStatus{
-		Name:    "HTTP Server",
-		Status:  "stopped",
-		Details: fmt.Sprintf("Port %d", port),
-		Port:    port,
+		Name:        "HTTP Server",
+		Status:      "stopped",
+		Description: "Web interface and REST API",
+		Details:     fmt.Sprintf("Port %d", port),
+		Port:        port,
+		LastCheck:   time.Now(),
 	}
 
 	conn, err := net.DialTimeout("tcp", fmt.Sprintf("localhost:%d", port), 2*time.Second)
