@@ -5,6 +5,8 @@ import (
 	"testing"
 	"time"
 
+	"ignite/dlstatus"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -180,7 +182,7 @@ func TestDownloadStatus(t *testing.T) {
 	status := &DownloadStatus{
 		ID:           "download-123",
 		Version:      "6.03",
-		Status:       "completed",
+		Status:       dlstatus.StatusCompleted,
 		Progress:     100,
 		ErrorMessage: "",
 		StartedAt:    now,
@@ -189,7 +191,7 @@ func TestDownloadStatus(t *testing.T) {
 
 	assert.Equal(t, "download-123", status.ID)
 	assert.Equal(t, "6.03", status.Version)
-	assert.Equal(t, "completed", status.Status)
+	assert.Equal(t, dlstatus.StatusCompleted, status.Status)
 	assert.Equal(t, 100, status.Progress)
 	assert.Empty(t, status.ErrorMessage)
 	assert.NotNil(t, status.CompletedAt)
@@ -319,7 +321,7 @@ func TestParseVersionFromFilename(t *testing.T) {
 		// Invalid cases
 		{"invalid-file.tar.gz", ""},
 		{"syslinux-.tar.gz", ""},
-		{"syslinux-6.03.zip", "6"},       // Wrong extension, but still parses (implementation quirk)
+		{"syslinux-6.03.zip", ""},        // Wrong extension is rejected
 		{"notasyslinux-6.03.tar.gz", ""}, // Wrong prefix
 		{"syslinux", ""},                 // No extension
 		{"", ""},                         // Empty string
@@ -520,7 +522,7 @@ func TestMockRepository_DownloadStatusOperations(t *testing.T) {
 	status := &DownloadStatus{
 		ID:      "download-123",
 		Version: "6.03",
-		Status:  "downloading",
+		Status:  dlstatus.StatusDownloading,
 	}
 
 	// Test SaveDownloadStatus
@@ -559,7 +561,7 @@ func TestGetBootTypeFromVersion_Boundary(t *testing.T) {
 	assert.Equal(t, []string{"bios"}, GetBootTypeFromVersion("3.99"))
 
 	// Test string comparison behavior
-	assert.Equal(t, []string{"bios"}, GetBootTypeFromVersion("3.999")) // String comparison
+	assert.Equal(t, []string{"bios"}, GetBootTypeFromVersion("3.999")) // Numeric comparison
 }
 
 // Test configuration validation
@@ -585,4 +587,71 @@ func TestSyslinuxConfig_Validation(t *testing.T) {
 	// URL validation
 	assert.Contains(t, config.BaseURL, "https://")
 	assert.Contains(t, config.BaseURL, "syslinux")
+}
+
+// Test that CancelDownload signals the worker context and marks cancelled
+func TestCancelDownload(t *testing.T) {
+	repo := &MockRepository{}
+	ctx := context.Background()
+	svc := NewService(repo, GetDefaultConfig()).(*service)
+
+	id := "download-123"
+	dlCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	svc.mu.Lock()
+	svc.cancels[id] = cancel
+	svc.mu.Unlock()
+
+	status := &DownloadStatus{
+		ID:        id,
+		Version:   "6.03",
+		Status:    dlstatus.StatusDownloading,
+		StartedAt: time.Now(),
+	}
+
+	repo.On("GetDownloadStatus", ctx, id).Return(status, nil)
+	repo.On("SaveDownloadStatus", ctx, mock.MatchedBy(func(s *DownloadStatus) bool {
+		return s.Status == dlstatus.StatusCancelled && s.CompletedAt != nil
+	})).Return(nil)
+
+	err := svc.CancelDownload(ctx, id)
+	assert.NoError(t, err)
+	assert.Error(t, dlCtx.Err(), "worker context should have been cancelled")
+	repo.AssertExpectations(t)
+}
+
+// Test that CancelDownload refuses downloads in a terminal state
+func TestCancelDownload_Terminal(t *testing.T) {
+	repo := &MockRepository{}
+	ctx := context.Background()
+	svc := NewService(repo, GetDefaultConfig()).(*service)
+
+	status := &DownloadStatus{ID: "download-123", Status: dlstatus.StatusCompleted}
+	repo.On("GetDownloadStatus", ctx, "download-123").Return(status, nil)
+
+	err := svc.CancelDownload(ctx, "download-123")
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "cannot cancel")
+	repo.AssertExpectations(t)
+}
+
+// Test that worker status updates never overwrite a terminal row
+func TestUpdateStatus_TerminalGuard(t *testing.T) {
+	repo := &MockRepository{}
+	ctx := context.Background()
+	svc := NewService(repo, GetDefaultConfig()).(*service)
+
+	stored := &DownloadStatus{ID: "d1", Status: dlstatus.StatusCancelled}
+	repo.On("GetDownloadStatus", ctx, "d1").Return(stored, nil)
+	// SaveDownloadStatus must NOT be called for a terminal row
+
+	ok := svc.updateStatus(ctx, "d1", dlstatus.StatusDownloading, 50, "")
+	assert.False(t, ok)
+	repo.AssertExpectations(t)
+}
+
+// Test numeric boot-type comparison: 10.x is newer than 4.x
+func TestGetBootTypeFromVersion_Numeric(t *testing.T) {
+	assert.Equal(t, []string{"bios", "efi"}, GetBootTypeFromVersion("10.00"))
+	assert.Equal(t, []string{"bios"}, GetBootTypeFromVersion("3.86"))
 }

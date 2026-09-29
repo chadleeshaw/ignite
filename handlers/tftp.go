@@ -3,11 +3,15 @@ package handlers
 import (
 	"fmt"
 	"io"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
 )
+
+// maxUploadBytes caps TFTP upload request bodies (512 MB).
+const maxUploadBytes = 512 << 20
 
 // TFTPHandlers handles TFTP-related requests
 type TFTPHandlers struct {
@@ -21,7 +25,6 @@ func NewTFTPHandlers(container *Container) *TFTPHandlers {
 
 // HandleTFTPPage serves the TFTP management page
 func (h *TFTPHandlers) HandleTFTPPage(w http.ResponseWriter, r *http.Request) {
-	templates := LoadTemplates()
 	var data *TFTPData
 	var err error
 
@@ -32,74 +35,47 @@ func (h *TFTPHandlers) HandleTFTPPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("failed to list TFTP directory: %v", err),
+			"Unable to list the TFTP directory",
+		))
 		return
 	}
 
-	data.ServerDirectory = strings.TrimPrefix(strings.TrimPrefix(data.ServerDirectory, TFTPDir), string(filepath.Separator))
-	data.PrevDirectory = removeLastDir(TFTPDir, data.ServerDirectory)
-	if err := templates["tftp"].Execute(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	renderCachedTemplate(w, r, "tftp", data, "Unable to render the TFTP page")
 }
 
 // HandleDownload handles file downloads
 func (h *TFTPHandlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 	fileName := r.URL.Query().Get("file")
 	if fileName == "" {
-		appErr := NewValidationError("Missing file parameter", "File parameter is required")
-		HandleError(w, r, appErr)
+		HandleError(w, r, NewValidationError("Missing file parameter", "File parameter is required"))
 		return
 	}
 
-	// Create security validator
-	validator := NewTFTPSecurityValidator(TFTPDir)
-
-	// Validate the file path
-	if err := validator.ValidateTFTPPath(fileName); err != nil {
-		appErr := NewValidationError(
+	// Join-then-check: resolve the user-supplied name inside the TFTP root
+	// and reject anything that escapes it.
+	filePath, err := safeJoin(TFTPDir, fileName)
+	if err != nil {
+		HandleError(w, r, NewValidationError(
 			fmt.Sprintf("Invalid file path: %v", err),
 			"The requested file path is not allowed",
-		)
-		HandleError(w, r, appErr)
-		return
-	}
-
-	// Get safe file path
-	filePath, err := validator.GetSafePath(TFTPDir, fileName)
-	if err != nil {
-		appErr := NewValidationError(
-			fmt.Sprintf("Cannot resolve safe path: %v", err),
-			"The requested file path is not allowed",
-		)
-		HandleError(w, r, appErr)
-		return
-	}
-
-	// Validate file size
-	if err := validator.pathValidator.ValidateFileSize(filePath); err != nil {
-		appErr := NewValidationError(
-			fmt.Sprintf("File validation failed: %v", err),
-			"The requested file is too large or invalid",
-		)
-		HandleError(w, r, appErr)
+		))
 		return
 	}
 
 	file, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			appErr := NewNotFoundError(
+			HandleError(w, r, NewNotFoundError(
 				fmt.Sprintf("File not found: %s", fileName),
 				"The requested file does not exist",
-			)
-			HandleError(w, r, appErr)
+			))
 		} else {
-			appErr := NewInternalError(
+			HandleError(w, r, NewInternalError(
 				fmt.Sprintf("Error opening file %s: %v", fileName, err),
 				"Unable to open the requested file",
-			)
-			HandleError(w, r, appErr)
+			))
 		}
 		return
 	}
@@ -107,16 +83,21 @@ func (h *TFTPHandlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		http.Error(w, "Error getting file info", http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Error getting file info", "Unable to read the requested file"))
+		return
+	}
+	if fileInfo.IsDir() {
+		HandleError(w, r, NewValidationError("Path is a directory", "The requested path is a directory, not a file"))
 		return
 	}
 
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", filepath.Base(fileName)))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=\"%s\"", sanitizeDispositionFilename(fileName)))
 	w.Header().Set("Content-Type", "application/octet-stream")
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", fileInfo.Size()))
 
 	if _, err := io.Copy(w, file); err != nil {
-		http.Error(w, "Error serving file", http.StatusInternalServerError)
+		// Response already started; log only.
+		log.Printf("Error serving file %s: %v", fileName, err)
 	}
 }
 
@@ -124,17 +105,32 @@ func (h *TFTPHandlers) HandleDownload(w http.ResponseWriter, r *http.Request) {
 func (h *TFTPHandlers) ViewFile(w http.ResponseWriter, r *http.Request) {
 	fileName := r.URL.Query().Get("file")
 	if fileName == "" {
-		http.Error(w, "File parameter is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing file parameter", "File parameter is required"))
 		return
 	}
 
-	filePath := filepath.Join(TFTPDir, fileName)
+	// Join-then-check: keep the resolved path inside the TFTP root.
+	filePath, err := safeJoin(TFTPDir, fileName)
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid file path: %v", err),
+			"The requested file path is not allowed",
+		))
+		return
+	}
+
 	file, err := os.Open(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "File not found", http.StatusNotFound)
+			HandleError(w, r, NewNotFoundError(
+				fmt.Sprintf("File not found: %s", fileName),
+				"The requested file does not exist",
+			))
 		} else {
-			http.Error(w, "Error opening file", http.StatusInternalServerError)
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Error opening file %s: %v", fileName, err),
+				"Unable to open the requested file",
+			))
 		}
 		return
 	}
@@ -142,20 +138,20 @@ func (h *TFTPHandlers) ViewFile(w http.ResponseWriter, r *http.Request) {
 
 	fileInfo, err := file.Stat()
 	if err != nil {
-		http.Error(w, "Error getting file info", http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Error getting file info", "Unable to read the requested file"))
 		return
 	}
 
 	if fileInfo.IsDir() {
-		http.Error(w, "Cannot view directory", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Cannot view directory", "Directories cannot be previewed"))
 		return
 	}
 
 	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", filepath.Base(fileName)))
+	w.Header().Set("Content-Disposition", fmt.Sprintf("inline; filename=\"%s\"", sanitizeDispositionFilename(fileName)))
 
 	if _, err := io.Copy(w, file); err != nil {
-		http.Error(w, "Error reading file", http.StatusInternalServerError)
+		log.Printf("Error streaming file %s: %v", fileName, err)
 	}
 }
 
@@ -168,16 +164,31 @@ func (h *TFTPHandlers) ServeFile(w http.ResponseWriter, r *http.Request) {
 func (h *TFTPHandlers) HandleDelete(w http.ResponseWriter, r *http.Request) {
 	fileName := r.URL.Query().Get("file")
 	if fileName == "" {
-		http.Error(w, "File parameter is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing file parameter", "File parameter is required"))
 		return
 	}
 
-	filePath := filepath.Join(TFTPDir, fileName)
+	// Join-then-check: the deleted path must stay inside the TFTP root.
+	filePath, err := safeJoin(TFTPDir, fileName)
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid file path: %v", err),
+			"The requested file path is not allowed",
+		))
+		return
+	}
+
 	if err := os.Remove(filePath); err != nil {
 		if os.IsNotExist(err) {
-			http.Error(w, "File not found", http.StatusNotFound)
+			HandleError(w, r, NewNotFoundError(
+				fmt.Sprintf("File not found: %s", fileName),
+				"The requested file does not exist",
+			))
 		} else {
-			http.Error(w, "Error deleting file", http.StatusInternalServerError)
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Error deleting file %s: %v", fileName, err),
+				"Unable to delete the requested file",
+			))
 		}
 		return
 	}
@@ -193,19 +204,38 @@ func (h *TFTPHandlers) HandleDelete(w http.ResponseWriter, r *http.Request) {
 
 // HandleUpload handles file uploads
 func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
+
+	// Hard cap on the upload body before parsing the multipart form.
+	r.Body = http.MaxBytesReader(w, r.Body, maxUploadBytes)
+
 	// Parse multipart form with 32MB max memory
-	err := r.ParseMultipartForm(32 << 20)
-	if err != nil {
-		http.Error(w, "Failed to parse upload form", http.StatusBadRequest)
+	if err := r.ParseMultipartForm(32 << 20); err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Failed to parse upload form: %v", err),
+			"The upload was rejected (too large or malformed)",
+		))
 		return
 	}
 
 	file, handler, err := r.FormFile("file")
 	if err != nil {
-		http.Error(w, "Failed to get uploaded file", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing file in upload", "No file was included in the upload"))
 		return
 	}
 	defer file.Close()
+
+	// Validate the upload against the TFTP security policy.
+	validator := NewTFTPSecurityValidator(TFTPDir)
+	if err := validator.ValidateTFTPUpload(handler.Filename, handler.Size); err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Upload rejected: %v", err),
+			"The uploaded file is not allowed",
+		))
+		return
+	}
 
 	// Create the uploads directory if it doesn't exist
 	tftpDir := h.container.Config.TFTP.Dir
@@ -214,22 +244,40 @@ func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := os.MkdirAll(tftpDir, 0755); err != nil {
-		http.Error(w, "Failed to create upload directory", http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to create upload directory: %v", err),
+			"Unable to prepare the upload directory",
+		))
+		return
+	}
+
+	// Resolve the destination inside the TFTP root (join-then-check).
+	dstPath, err := safeJoin(tftpDir, handler.Filename)
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid upload filename: %v", err),
+			"The uploaded file name is not allowed",
+		))
 		return
 	}
 
 	// Create the destination file
-	dst, err := os.Create(filepath.Join(tftpDir, handler.Filename))
+	dst, err := os.Create(dstPath)
 	if err != nil {
-		http.Error(w, "Failed to create destination file", http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to create destination file: %v", err),
+			"Unable to save the uploaded file",
+		))
 		return
 	}
 	defer dst.Close()
 
 	// Copy the uploaded file to the destination
-	_, err = io.Copy(dst, file)
-	if err != nil {
-		http.Error(w, "Failed to save uploaded file", http.StatusInternalServerError)
+	if _, err := io.Copy(dst, file); err != nil {
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to save uploaded file: %v", err),
+			"Unable to save the uploaded file",
+		))
 		return
 	}
 
@@ -266,10 +314,25 @@ func (h *TFTPHandlers) getTFTPDir(dir string) (*TFTPData, error) {
 }
 
 // getFileInfo reads the directory and returns file information for display.
+// The requested directory is resolved inside the TFTP root (join-then-check).
 func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
-	entries, err := os.ReadDir(filepath.Join(TFTPDir, dir))
+	fullDir, err := safeJoin(TFTPDir, dir)
 	if err != nil {
 		return nil, err
+	}
+
+	entries, err := os.ReadDir(fullDir)
+	if err != nil {
+		return nil, err
+	}
+
+	// Path of the listed directory relative to the TFTP root ("" for root).
+	relDir, err := filepath.Rel(mustAbs(TFTPDir), fullDir)
+	if err != nil {
+		return nil, err
+	}
+	if relDir == "." {
+		relDir = ""
 	}
 
 	var fileInfos []FileInfo
@@ -280,10 +343,8 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		}
 
 		relativePath := entry.Name()
-		if dir != "." && dir != "./" {
-			subDirPath := strings.TrimPrefix(dir, TFTPDir)
-			subDirPath = strings.TrimPrefix(subDirPath, string(filepath.Separator))
-			relativePath = subDirPath + string(filepath.Separator) + entry.Name()
+		if relDir != "" {
+			relativePath = relDir + string(filepath.Separator) + entry.Name()
 		}
 
 		fileInfos = append(fileInfos, FileInfo{
@@ -294,15 +355,22 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		})
 	}
 
-	currentDir := strings.TrimPrefix(strings.TrimPrefix(dir, TFTPDir), string(filepath.Separator))
-
 	return &TFTPData{
 		Title:           "TFTP Server Management",
-		ServerRunning:   true,
-		ServerDirectory: currentDir,
-		PrevDirectory:   removeLastDir(TFTPDir, dir),
+		ServerRunning:   isTFTPRunning(),
+		ServerDirectory: relDir,
+		PrevDirectory:   removeLastDir(relDir),
 		Files:           fileInfos,
 	}, nil
+}
+
+// mustAbs returns the absolute form of p, falling back to p itself on error.
+func mustAbs(p string) string {
+	abs, err := filepath.Abs(p)
+	if err != nil {
+		return p
+	}
+	return abs
 }
 
 // humanReadableSize converts bytes to a human-readable format.
@@ -319,18 +387,18 @@ func humanReadableSize(bytes int64) string {
 	return fmt.Sprintf("%.1f %cB", float64(bytes)/float64(div), "KMGTPE"[exp])
 }
 
-// removeLastDir removes the last directory from a path.
-func removeLastDir(base, path string) string {
-	if !strings.HasPrefix(path, base) {
+// removeLastDir removes the last directory from a base-relative path,
+// e.g. "a/b" -> "a", "a" -> "". It accepts paths with or without the TFTP
+// root prefix still attached.
+func removeLastDir(path string) string {
+	// Tolerate callers that pass a full path: strip the TFTP root first.
+	path = strings.TrimPrefix(path, TFTPDir)
+	path = strings.Trim(path, string(filepath.Separator))
+	if path == "" || path == "." {
 		return ""
 	}
 
-	relPath := strings.TrimPrefix(path, base)
-	if relPath == "" || relPath == string(filepath.Separator) {
-		return ""
-	}
-
-	parts := strings.Split(strings.Trim(relPath, string(filepath.Separator)), string(filepath.Separator))
+	parts := strings.Split(path, string(filepath.Separator))
 	if len(parts) <= 1 {
 		return ""
 	}

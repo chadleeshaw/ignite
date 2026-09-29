@@ -1,6 +1,8 @@
 package handlers
 
 import (
+	"bytes"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -108,10 +110,7 @@ func TestAuthMiddleware_ProtectedPaths_Authenticated(t *testing.T) {
 		t.Run("Protected path authenticated: "+path, func(t *testing.T) {
 			req := httptest.NewRequest("GET", path, nil)
 			// Add valid session cookie
-			req.AddCookie(&http.Cookie{
-				Name:  "ignite_session",
-				Value: "admin_12345",
-			})
+			req.AddCookie(testSessionCookie(t))
 			w := httptest.NewRecorder()
 
 			middlewareHandler.ServeHTTP(w, req)
@@ -233,10 +232,7 @@ func TestAuthMiddleware_POSTRequests(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", tt.path, nil)
 			if tt.authenticated {
-				req.AddCookie(&http.Cookie{
-					Name:  "ignite_session",
-					Value: "admin_12345",
-				})
+				req.AddCookie(testSessionCookie(t))
 			}
 			w := httptest.NewRecorder()
 
@@ -276,10 +272,7 @@ func TestAuthMiddleware_ChainedMiddleware(t *testing.T) {
 
 	t.Run("Chained middleware with authentication", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/dhcp", nil)
-		req.AddCookie(&http.Cookie{
-			Name:  "ignite_session",
-			Value: "admin_12345",
-		})
+		req.AddCookie(testSessionCookie(t))
 		w := httptest.NewRecorder()
 
 		chainedHandler.ServeHTTP(w, req)
@@ -316,4 +309,94 @@ func TestAuthMiddleware_ChainedMiddleware(t *testing.T) {
 			t.Errorf("Expected redirect to /login, got %s", location)
 		}
 	})
+}
+
+func TestAuthMiddleware_APIRequestsGetJSON401(t *testing.T) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	middlewareHandler := AuthMiddleware(testHandler)
+
+	cases := []struct {
+		name   string
+		path   string
+		accept string
+	}{
+		{"API path", "/api/servers", ""},
+		{"JSON Accept header", "/dhcp", "application/json"},
+	}
+
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			req := httptest.NewRequest("GET", tc.path, nil)
+			if tc.accept != "" {
+				req.Header.Set("Accept", tc.accept)
+			}
+			w := httptest.NewRecorder()
+
+			middlewareHandler.ServeHTTP(w, req)
+
+			if w.Code != http.StatusUnauthorized {
+				t.Errorf("Expected status code %d, got %d", http.StatusUnauthorized, w.Code)
+			}
+			if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+				t.Errorf("Expected Content-Type application/json, got %s", ct)
+			}
+			if loc := w.Header().Get("Location"); loc != "" {
+				t.Errorf("Expected no redirect for API request, got Location: %s", loc)
+			}
+		})
+	}
+}
+
+func TestAuthMiddleware_BrowserGetsLoginRedirect(t *testing.T) {
+	testHandler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+	middlewareHandler := AuthMiddleware(testHandler)
+
+	req := httptest.NewRequest("GET", "/dhcp", nil)
+	req.Header.Set("Accept", "text/html")
+	w := httptest.NewRecorder()
+
+	middlewareHandler.ServeHTTP(w, req)
+
+	if w.Code != http.StatusFound {
+		t.Errorf("Expected status code %d, got %d", http.StatusFound, w.Code)
+	}
+	if location := w.Header().Get("Location"); location != "/login" {
+		t.Errorf("Expected redirect to /login, got %s", location)
+	}
+}
+
+func TestSessionCookie_SecureFlags(t *testing.T) {
+	resetTestCredentials()
+	authHandlers := NewAuthHandlers(&Container{})
+
+	loginReq := LoginRequest{Username: "admin", Password: "admin"}
+	jsonData, _ := json.Marshal(loginReq)
+	req := httptest.NewRequest("POST", "/auth/login", bytes.NewBuffer(jsonData))
+	req.Header.Set("Content-Type", "application/json")
+	w := httptest.NewRecorder()
+
+	authHandlers.Login(w, req)
+
+	var sessionCookie *http.Cookie
+	for _, c := range w.Result().Cookies() {
+		if c.Name == "ignite_session" {
+			sessionCookie = c
+		}
+	}
+	if sessionCookie == nil {
+		t.Fatal("Expected session cookie to be set")
+	}
+	if !sessionCookie.HttpOnly {
+		t.Error("Expected session cookie to be HttpOnly")
+	}
+	if !sessionCookie.Secure {
+		t.Error("Expected session cookie to be Secure")
+	}
+	if sessionCookie.SameSite != http.SameSiteLaxMode {
+		t.Errorf("Expected SameSite=Lax, got %v", sessionCookie.SameSite)
+	}
 }

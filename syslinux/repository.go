@@ -4,14 +4,10 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"ignite/db"
+	"ignite/dlstatus"
 	"time"
-
-	"go.etcd.io/bbolt"
 )
-
-type boltRepository struct {
-	db *bbolt.DB
-}
 
 // Repository bucket names
 const (
@@ -21,411 +17,298 @@ const (
 	ConfigBucket         = "syslinux_config"
 )
 
-// NewBoltRepository creates a new Bolt-based repository
-func NewBoltRepository(db *bbolt.DB) (Repository, error) {
-	repo := &boltRepository{db: db}
+type boltRepository struct {
+	db db.Database
+}
+
+// NewBoltRepository creates a new Bolt-based repository backed by the shared
+// db.Database abstraction (no direct *bbolt.DB dependency).
+func NewBoltRepository(database db.Database) (Repository, error) {
+	repo := &boltRepository{db: database}
 
 	// Initialize buckets
-	err := db.Update(func(tx *bbolt.Tx) error {
-		buckets := []string{
-			VersionsBucket,
-			BootFilesBucket,
-			DownloadStatusBucket,
-			ConfigBucket,
+	for _, bucket := range []string{
+		VersionsBucket,
+		BootFilesBucket,
+		DownloadStatusBucket,
+		ConfigBucket,
+	} {
+		if err := database.GetOrCreateBucket(context.Background(), bucket); err != nil {
+			return nil, fmt.Errorf("failed to create bucket %s: %w", bucket, err)
 		}
+	}
 
-		for _, bucket := range buckets {
-			if _, err := tx.CreateBucketIfNotExists([]byte(bucket)); err != nil {
-				return fmt.Errorf("failed to create bucket %s: %w", bucket, err)
-			}
+	return repo, nil
+}
+
+// putJSON marshals value and stores it under key in bucket.
+func (r *boltRepository) putJSON(ctx context.Context, bucket, key string, value interface{}) error {
+	data, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("failed to marshal value: %w", err)
+	}
+	return r.db.PutKV(ctx, bucket, []byte(key), data)
+}
+
+// getJSON fetches key from bucket and unmarshals it into value.
+func (r *boltRepository) getJSON(ctx context.Context, bucket, key string, value interface{}) error {
+	data, err := r.db.GetKV(ctx, bucket, []byte(key))
+	if err != nil {
+		return err
+	}
+	if data == nil {
+		return fmt.Errorf("key %q not found in bucket %q", key, bucket)
+	}
+	return json.Unmarshal(data, value)
+}
+
+// allJSON returns every value in bucket unmarshalled into a slice.
+func (r *boltRepository) allJSON(ctx context.Context, bucket string, newValue func() interface{}) ([]interface{}, error) {
+	raw, err := r.db.GetAllKV(ctx, bucket)
+	if err != nil {
+		return nil, err
+	}
+	values := make([]interface{}, 0, len(raw))
+	for _, data := range raw {
+		v := newValue()
+		if err := json.Unmarshal(data, v); err != nil {
+			continue
 		}
-		return nil
-	})
-
-	return repo, err
+		values = append(values, v)
+	}
+	return values, nil
 }
 
 // Version management
 
 func (r *boltRepository) SaveVersion(ctx context.Context, version *SyslinuxVersion) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(VersionsBucket))
-		version.UpdatedAt = time.Now()
-
-		data, err := json.Marshal(version)
-		if err != nil {
-			return fmt.Errorf("failed to marshal version: %w", err)
-		}
-
-		return b.Put([]byte(version.ID), data)
-	})
+	// Copy before stamping so the caller's struct is never mutated.
+	versionCopy := *version
+	versionCopy.UpdatedAt = time.Now()
+	return r.putJSON(ctx, VersionsBucket, versionCopy.ID, &versionCopy)
 }
 
 func (r *boltRepository) GetVersion(ctx context.Context, id string) (*SyslinuxVersion, error) {
-	var version *SyslinuxVersion
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(VersionsBucket))
-		data := b.Get([]byte(id))
-
-		if data == nil {
-			return fmt.Errorf("version not found")
-		}
-
-		version = &SyslinuxVersion{}
-		return json.Unmarshal(data, version)
-	})
-
-	return version, err
+	version := &SyslinuxVersion{}
+	if err := r.getJSON(ctx, VersionsBucket, id, version); err != nil {
+		return nil, fmt.Errorf("version not found: %w", err)
+	}
+	return version, nil
 }
 
 func (r *boltRepository) GetVersionByNumber(ctx context.Context, versionNumber string) (*SyslinuxVersion, error) {
-	var foundVersion *SyslinuxVersion
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(VersionsBucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var version SyslinuxVersion
-			if err := json.Unmarshal(v, &version); err != nil {
-				continue
-			}
-
-			if version.Version == versionNumber {
-				foundVersion = &version
-				break
-			}
+	versions, err := r.ListVersions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, version := range versions {
+		if version.Version == versionNumber {
+			return version, nil
 		}
-
-		if foundVersion == nil {
-			return fmt.Errorf("version %s not found", versionNumber)
-		}
-
-		return nil
-	})
-
-	return foundVersion, err
+	}
+	return nil, fmt.Errorf("version %s not found", versionNumber)
 }
 
 func (r *boltRepository) ListVersions(ctx context.Context) ([]*SyslinuxVersion, error) {
-	var versions []*SyslinuxVersion
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(VersionsBucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var version SyslinuxVersion
-			if err := json.Unmarshal(v, &version); err != nil {
-				continue
-			}
-			versions = append(versions, &version)
-		}
-
-		return nil
-	})
-
-	return versions, err
+	raw, err := r.allJSON(ctx, VersionsBucket, func() interface{} { return &SyslinuxVersion{} })
+	if err != nil {
+		return nil, err
+	}
+	versions := make([]*SyslinuxVersion, 0, len(raw))
+	for _, v := range raw {
+		versions = append(versions, v.(*SyslinuxVersion))
+	}
+	return versions, nil
 }
 
 func (r *boltRepository) DeleteVersion(ctx context.Context, id string) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(VersionsBucket))
-		return b.Delete([]byte(id))
-	})
+	return r.db.DeleteKV(ctx, VersionsBucket, []byte(id))
 }
 
 func (r *boltRepository) SetActiveVersion(ctx context.Context, version string) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(VersionsBucket))
-		c := b.Cursor()
+	versions, err := r.ListVersions(ctx)
+	if err != nil {
+		return err
+	}
 
-		// First, set all versions to inactive
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var ver SyslinuxVersion
-			if err := json.Unmarshal(v, &ver); err != nil {
-				continue
-			}
-
-			if ver.Active {
-				ver.Active = false
-				ver.UpdatedAt = time.Now()
-				data, _ := json.Marshal(&ver)
-				b.Put(k, data)
-			}
+	now := time.Now()
+	updates := make(map[string][]byte)
+	found := false
+	for _, ver := range versions {
+		updated := *ver
+		changed := false
+		if updated.Active {
+			updated.Active = false
+			updated.UpdatedAt = now
+			changed = true
 		}
-
-		// Then set the specified version to active
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var ver SyslinuxVersion
-			if err := json.Unmarshal(v, &ver); err != nil {
-				continue
-			}
-
-			if ver.Version == version {
-				ver.Active = true
-				ver.UpdatedAt = time.Now()
-				data, _ := json.Marshal(&ver)
-				b.Put(k, data)
-			}
+		if updated.Version == version {
+			updated.Active = true
+			updated.UpdatedAt = now
+			changed = true
+			found = true
 		}
+		if changed {
+			data, err := json.Marshal(&updated)
+			if err != nil {
+				return fmt.Errorf("failed to marshal version %q: %w", updated.ID, err)
+			}
+			updates[updated.ID] = data
+		}
+	}
 
-		return nil
-	})
+	if !found {
+		return fmt.Errorf("version %s not found", version)
+	}
+
+	// Apply the deactivation/activation atomically in a single batch when the
+	// database supports it; otherwise fall back to sequential writes.
+	if bp, ok := r.db.(batchPutter); ok {
+		return bp.BatchPut(ctx, VersionsBucket, updates)
+	}
+	for key, data := range updates {
+		if err := r.db.PutKV(ctx, VersionsBucket, []byte(key), data); err != nil {
+			return fmt.Errorf("failed to save version %q: %w", key, err)
+		}
+	}
+	return nil
+}
+
+// batchPutter is implemented by *db.BoltDB (see db/bolt.go). The repository
+// asserts it via this local interface so it keeps depending only on
+// db.Database while still getting atomic batch writes when available.
+type batchPutter interface {
+	BatchPut(ctx context.Context, bucket string, kvs map[string][]byte) error
 }
 
 func (r *boltRepository) GetActiveVersion(ctx context.Context) (*SyslinuxVersion, error) {
-	var activeVersion *SyslinuxVersion
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(VersionsBucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var version SyslinuxVersion
-			if err := json.Unmarshal(v, &version); err != nil {
-				continue
-			}
-
-			if version.Active {
-				activeVersion = &version
-				break
-			}
-		}
-
-		return nil
-	})
-
-	if activeVersion == nil {
-		return nil, fmt.Errorf("no active version found")
+	versions, err := r.ListVersions(ctx)
+	if err != nil {
+		return nil, err
 	}
-
-	return activeVersion, err
+	for _, version := range versions {
+		if version.Active {
+			return version, nil
+		}
+	}
+	return nil, fmt.Errorf("no active version found")
 }
 
 // Boot file management
 
 func (r *boltRepository) SaveBootFile(ctx context.Context, bootFile *SyslinuxBootFile) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(BootFilesBucket))
-		bootFile.UpdatedAt = time.Now()
-
-		data, err := json.Marshal(bootFile)
-		if err != nil {
-			return fmt.Errorf("failed to marshal boot file: %w", err)
-		}
-
-		return b.Put([]byte(bootFile.ID), data)
-	})
+	// Copy before stamping so the caller's struct is never mutated.
+	bootFileCopy := *bootFile
+	bootFileCopy.UpdatedAt = time.Now()
+	return r.putJSON(ctx, BootFilesBucket, bootFileCopy.ID, &bootFileCopy)
 }
 
 func (r *boltRepository) GetBootFile(ctx context.Context, id string) (*SyslinuxBootFile, error) {
-	var bootFile *SyslinuxBootFile
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(BootFilesBucket))
-		data := b.Get([]byte(id))
-
-		if data == nil {
-			return fmt.Errorf("boot file not found")
-		}
-
-		bootFile = &SyslinuxBootFile{}
-		return json.Unmarshal(data, bootFile)
-	})
-
-	return bootFile, err
+	bootFile := &SyslinuxBootFile{}
+	if err := r.getJSON(ctx, BootFilesBucket, id, bootFile); err != nil {
+		return nil, fmt.Errorf("boot file not found: %w", err)
+	}
+	return bootFile, nil
 }
 
 func (r *boltRepository) ListBootFiles(ctx context.Context, version, bootType string) ([]*SyslinuxBootFile, error) {
+	raw, err := r.allJSON(ctx, BootFilesBucket, func() interface{} { return &SyslinuxBootFile{} })
+	if err != nil {
+		return nil, err
+	}
 	var bootFiles []*SyslinuxBootFile
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(BootFilesBucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var bootFile SyslinuxBootFile
-			if err := json.Unmarshal(v, &bootFile); err != nil {
-				continue
-			}
-
-			// Filter by version and/or boot type if specified
-			if version != "" && bootFile.Version != version {
-				continue
-			}
-			if bootType != "" && bootFile.BootType != bootType {
-				continue
-			}
-
-			bootFiles = append(bootFiles, &bootFile)
+	for _, v := range raw {
+		bootFile := v.(*SyslinuxBootFile)
+		// Filter by version and/or boot type if specified
+		if version != "" && bootFile.Version != version {
+			continue
 		}
-
-		return nil
-	})
-
-	return bootFiles, err
+		if bootType != "" && bootFile.BootType != bootType {
+			continue
+		}
+		bootFiles = append(bootFiles, bootFile)
+	}
+	return bootFiles, nil
 }
 
 func (r *boltRepository) UpdateBootFileStatus(ctx context.Context, id string, installed bool) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(BootFilesBucket))
-		data := b.Get([]byte(id))
-
-		if data == nil {
-			return fmt.Errorf("boot file not found")
-		}
-
-		var bootFile SyslinuxBootFile
-		if err := json.Unmarshal(data, &bootFile); err != nil {
-			return err
-		}
-
-		bootFile.Installed = installed
-		bootFile.UpdatedAt = time.Now()
-
-		updatedData, err := json.Marshal(&bootFile)
-		if err != nil {
-			return err
-		}
-
-		return b.Put([]byte(id), updatedData)
-	})
+	bootFile, err := r.GetBootFile(ctx, id)
+	if err != nil {
+		return err
+	}
+	bootFile.Installed = installed
+	return r.SaveBootFile(ctx, bootFile)
 }
 
 func (r *boltRepository) DeleteBootFile(ctx context.Context, id string) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(BootFilesBucket))
-		return b.Delete([]byte(id))
-	})
+	return r.db.DeleteKV(ctx, BootFilesBucket, []byte(id))
 }
 
 // Download status tracking
 
 func (r *boltRepository) SaveDownloadStatus(ctx context.Context, status *DownloadStatus) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(DownloadStatusBucket))
-
-		data, err := json.Marshal(status)
-		if err != nil {
-			return fmt.Errorf("failed to marshal download status: %w", err)
-		}
-
-		return b.Put([]byte(status.ID), data)
-	})
+	return r.putJSON(ctx, DownloadStatusBucket, status.ID, status)
 }
 
 func (r *boltRepository) GetDownloadStatus(ctx context.Context, id string) (*DownloadStatus, error) {
-	var status *DownloadStatus
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(DownloadStatusBucket))
-		data := b.Get([]byte(id))
-
-		if data == nil {
-			return fmt.Errorf("download status not found")
-		}
-
-		status = &DownloadStatus{}
-		return json.Unmarshal(data, status)
-	})
-
-	return status, err
+	status := &DownloadStatus{}
+	if err := r.getJSON(ctx, DownloadStatusBucket, id, status); err != nil {
+		return nil, fmt.Errorf("download status not found: %w", err)
+	}
+	return status, nil
 }
 
 func (r *boltRepository) ListDownloadStatuses(ctx context.Context) ([]*DownloadStatus, error) {
-	var statuses []*DownloadStatus
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(DownloadStatusBucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var status DownloadStatus
-			if err := json.Unmarshal(v, &status); err != nil {
-				continue
-			}
-			statuses = append(statuses, &status)
-		}
-
-		return nil
-	})
-
-	return statuses, err
+	raw, err := r.allJSON(ctx, DownloadStatusBucket, func() interface{} { return &DownloadStatus{} })
+	if err != nil {
+		return nil, err
+	}
+	statuses := make([]*DownloadStatus, 0, len(raw))
+	for _, v := range raw {
+		statuses = append(statuses, v.(*DownloadStatus))
+	}
+	return statuses, nil
 }
 
 func (r *boltRepository) DeleteDownloadStatus(ctx context.Context, id string) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(DownloadStatusBucket))
-		return b.Delete([]byte(id))
-	})
+	return r.db.DeleteKV(ctx, DownloadStatusBucket, []byte(id))
 }
 
 // Configuration management
 
 func (r *boltRepository) SaveConfig(ctx context.Context, config *SyslinuxConfig) error {
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(ConfigBucket))
-
-		data, err := json.Marshal(config)
-		if err != nil {
-			return fmt.Errorf("failed to marshal config: %w", err)
-		}
-
-		return b.Put([]byte("current"), data)
-	})
+	return r.putJSON(ctx, ConfigBucket, "current", config)
 }
 
 func (r *boltRepository) GetConfig(ctx context.Context) (*SyslinuxConfig, error) {
-	var config *SyslinuxConfig
-
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(ConfigBucket))
-		data := b.Get([]byte("current"))
-
-		if data == nil {
-			// Return default config if none exists
-			defaultConfig := GetDefaultConfig()
-			config = &defaultConfig
-			return nil
-		}
-
-		config = &SyslinuxConfig{}
-		return json.Unmarshal(data, config)
-	})
-
-	return config, err
+	config := &SyslinuxConfig{}
+	if err := r.getJSON(ctx, ConfigBucket, "current", config); err != nil {
+		// Return default config if none exists
+		defaultConfig := GetDefaultConfig()
+		return &defaultConfig, nil
+	}
+	return config, nil
 }
 
 // Cleanup old download statuses
 func (r *boltRepository) CleanupOldDownloadStatuses(ctx context.Context, olderThan time.Duration) error {
 	cutoff := time.Now().Add(-olderThan)
 
-	return r.db.Update(func(tx *bbolt.Tx) error {
-		b := tx.Bucket([]byte(DownloadStatusBucket))
-		c := b.Cursor()
+	statuses, err := r.ListDownloadStatuses(ctx)
+	if err != nil {
+		return err
+	}
 
-		var toDelete [][]byte
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var status DownloadStatus
-			if err := json.Unmarshal(v, &status); err != nil {
-				continue
-			}
-
-			// Delete completed or failed downloads older than cutoff
-			if status.CompletedAt != nil && status.CompletedAt.Before(cutoff) {
-				toDelete = append(toDelete, append([]byte(nil), k...))
+	for _, status := range statuses {
+		// Delete completed or failed downloads older than cutoff
+		if status.CompletedAt != nil && status.CompletedAt.Before(cutoff) {
+			if err := r.DeleteDownloadStatus(ctx, status.ID); err != nil {
+				return err
 			}
 		}
+	}
 
-		for _, key := range toDelete {
-			b.Delete(key)
-		}
-
-		return nil
-	})
+	return nil
 }
 
 // Helper methods for statistics and maintenance
@@ -433,39 +316,34 @@ func (r *boltRepository) CleanupOldDownloadStatuses(ctx context.Context, olderTh
 func (r *boltRepository) GetStatistics(ctx context.Context) (*RepositoryStatistics, error) {
 	var stats RepositoryStatistics
 
-	err := r.db.View(func(tx *bbolt.Tx) error {
-		// Count versions
-		versionsBucket := tx.Bucket([]byte(VersionsBucket))
-		stats.TotalVersions = versionsBucket.Stats().KeyN
+	versions, err := r.ListVersions(ctx)
+	if err != nil {
+		return nil, err
+	}
+	stats.TotalVersions = len(versions)
 
-		// Count boot files
-		bootFilesBucket := tx.Bucket([]byte(BootFilesBucket))
-		stats.TotalBootFiles = bootFilesBucket.Stats().KeyN
+	bootFiles, err := r.ListBootFiles(ctx, "", "")
+	if err != nil {
+		return nil, err
+	}
+	stats.TotalBootFiles = len(bootFiles)
 
-		// Count active downloads
-		downloadsBucket := tx.Bucket([]byte(DownloadStatusBucket))
-		c := downloadsBucket.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			var status DownloadStatus
-			if err := json.Unmarshal(v, &status); err != nil {
-				continue
-			}
-
-			switch status.Status {
-			case "downloading", "extracting":
-				stats.ActiveDownloads++
-			case "completed":
-				stats.CompletedDownloads++
-			case "failed", "cancelled":
-				stats.FailedDownloads++
-			}
+	statuses, err := r.ListDownloadStatuses(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, status := range statuses {
+		switch {
+		case status.Status.Active():
+			stats.ActiveDownloads++
+		case status.Status == dlstatus.StatusCompleted:
+			stats.CompletedDownloads++
+		case status.Status.Terminal():
+			stats.FailedDownloads++
 		}
+	}
 
-		return nil
-	})
-
-	return &stats, err
+	return &stats, nil
 }
 
 // RepositoryStatistics provides repository usage statistics

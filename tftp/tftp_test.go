@@ -98,3 +98,51 @@ func TestTFTPServerCreation(t *testing.T) {
 }
 
 // Removed mock types as we're now testing public interface only
+
+func TestResolvePathTraversal(t *testing.T) {
+	serveDir := "./testdata-resolve"
+	if err := os.MkdirAll(serveDir, 0755); err != nil {
+		t.Fatalf("Failed to create test directory: %v", err)
+	}
+	defer os.RemoveAll(serveDir)
+
+	server := NewServer(serveDir)
+
+	// Legitimate relative paths, including subdirectories, must resolve.
+	for _, name := range []string{"pxelinux.0", "boot/pxelinux.0", "a/../b.cfg"} {
+		if _, err := server.resolvePath(name); err != nil {
+			t.Errorf("resolvePath(%q) unexpectedly rejected: %v", name, err)
+		}
+	}
+
+	// Traversal and absolute paths must be rejected.
+	for _, name := range []string{
+		"/etc/passwd",
+		"../escape.txt",
+		"../../escape.txt",
+		"boot/../../../escape.txt",
+		"..",
+		"",
+	} {
+		if _, err := server.resolvePath(name); err == nil {
+			t.Errorf("resolvePath(%q) should have been rejected", name)
+		}
+	}
+}
+
+func TestServerDoubleStart(t *testing.T) {
+	// Skip this test if not running as root (TFTP requires port 69)
+	if os.Getuid() != 0 {
+		t.Skip("Skipping TFTP server test - requires root privileges for port 69")
+	}
+
+	server := NewServer("./testdata-double")
+	if err := server.Start(); err != nil {
+		t.Fatalf("Failed to start server: %v", err)
+	}
+	defer server.Stop()
+
+	if err := server.Start(); err == nil {
+		t.Error("Expected error on double Start, got nil")
+	}
+}

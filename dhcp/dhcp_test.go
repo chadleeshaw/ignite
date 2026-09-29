@@ -6,6 +6,8 @@ import (
 	"testing"
 	"time"
 
+	"ignite/db"
+
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
 )
@@ -114,8 +116,8 @@ func TestDHCPServerService_CreateServer(t *testing.T) {
 		LeaseDuration: 2 * time.Hour,
 	}
 
-	// Mock expectations
-	mockServerRepo.On("GetByIP", ctx, config.IP).Return(nil, assert.AnError)
+	// Mock expectations - no existing server with this IP
+	mockServerRepo.On("GetByIP", ctx, config.IP).Return(nil, db.ErrNotFound)
 	mockServerRepo.On("Save", ctx, mock.AnythingOfType("*dhcp.Server")).Return(nil)
 
 	// Execute
@@ -128,6 +130,34 @@ func TestDHCPServerService_CreateServer(t *testing.T) {
 	assert.Equal(t, config.LeaseRange, server.LeaseRange)
 	assert.False(t, server.Started)
 
+	mockServerRepo.AssertExpectations(t)
+}
+
+func TestDHCPServerService_CreateServer_GetByIPFailure(t *testing.T) {
+	// A real backend failure from GetByIP must propagate rather than being
+	// misread as "no existing server".
+	ctx := context.Background()
+	mockServerRepo := &MockServerRepository{}
+	mockLeaseRepo := &MockLeaseRepository{}
+
+	service := NewDHCPServerService(mockServerRepo, mockLeaseRepo)
+
+	config := ServerConfig{
+		IP:            net.ParseIP("192.168.1.10"),
+		SubnetMask:    net.ParseIP("255.255.255.0"),
+		Gateway:       net.ParseIP("192.168.1.1"),
+		DNS:           net.ParseIP("8.8.8.8"),
+		StartIP:       net.ParseIP("192.168.1.100"),
+		LeaseRange:    50,
+		LeaseDuration: 2 * time.Hour,
+	}
+
+	mockServerRepo.On("GetByIP", ctx, config.IP).Return(nil, assert.AnError)
+
+	server, err := service.CreateServer(ctx, config)
+
+	assert.Error(t, err)
+	assert.Nil(t, server)
 	mockServerRepo.AssertExpectations(t)
 }
 
@@ -190,7 +220,7 @@ func TestDHCPLeaseService_AssignLease(t *testing.T) {
 
 	// Mock expectations
 	mockServerRepo.On("Get", ctx, serverID).Return(server, nil)
-	mockLeaseRepo.On("GetByMAC", ctx, mac).Return(nil, assert.AnError)       // No existing lease
+	mockLeaseRepo.On("GetByMAC", ctx, mac).Return(nil, db.ErrNotFound)       // No existing lease
 	mockLeaseRepo.On("GetByServerID", ctx, serverID).Return([]*Lease{}, nil) // No existing leases
 	mockLeaseRepo.On("Save", ctx, mock.AnythingOfType("*dhcp.Lease")).Return(nil)
 
@@ -201,7 +231,7 @@ func TestDHCPLeaseService_AssignLease(t *testing.T) {
 	assert.NoError(t, err)
 	assert.NotNil(t, lease)
 	assert.Equal(t, mac, lease.MAC)
-	assert.Equal(t, requestedIP, lease.IP)
+	assert.True(t, lease.IP.Equal(requestedIP), "expected %v, got %v", requestedIP, lease.IP)
 	assert.Equal(t, serverID, lease.ServerID)
 	assert.False(t, lease.Reserved)
 

@@ -5,7 +5,7 @@ import (
 	"embed"
 	"flag"
 	"ignite/app"
-	"ignite/testdata"
+	"ignite/cli"
 	"log"
 	"os"
 	"testing"
@@ -43,7 +43,7 @@ func TestMainIntegration(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"ignite"}
 
-	config := testdata.ParseFlags()
+	config := cli.ParseFlags()
 	assert.NotNil(t, config)
 
 	// Test that app package is accessible (compilation test)
@@ -60,12 +60,12 @@ func TestCLIFlags(t *testing.T) {
 	tests := []struct {
 		name     string
 		args     []string
-		expected testdata.Config
+		expected cli.Config
 	}{
 		{
 			name: "no flags",
 			args: []string{"ignite"},
-			expected: testdata.Config{
+			expected: cli.Config{
 				MockData:  false,
 				ClearData: false,
 			},
@@ -73,7 +73,7 @@ func TestCLIFlags(t *testing.T) {
 		{
 			name: "mock data flag",
 			args: []string{"ignite", "-mock-data"},
-			expected: testdata.Config{
+			expected: cli.Config{
 				MockData:  true,
 				ClearData: false,
 			},
@@ -81,7 +81,7 @@ func TestCLIFlags(t *testing.T) {
 		{
 			name: "clear data flag",
 			args: []string{"ignite", "-clear-data"},
-			expected: testdata.Config{
+			expected: cli.Config{
 				MockData:  false,
 				ClearData: true,
 			},
@@ -89,7 +89,7 @@ func TestCLIFlags(t *testing.T) {
 		{
 			name: "both flags",
 			args: []string{"ignite", "-mock-data", "-clear-data"},
-			expected: testdata.Config{
+			expected: cli.Config{
 				MockData:  true,
 				ClearData: true,
 			},
@@ -105,7 +105,7 @@ func TestCLIFlags(t *testing.T) {
 			os.Args = test.args
 
 			// Parse flags
-			config := testdata.ParseFlags()
+			config := cli.ParseFlags()
 
 			assert.Equal(t, test.expected.MockData, config.MockData)
 			assert.Equal(t, test.expected.ClearData, config.ClearData)
@@ -121,14 +121,14 @@ func TestDataOperationsHandling(t *testing.T) {
 
 	tests := []struct {
 		name           string
-		config         testdata.Config
+		config         cli.Config
 		additionalArgs []string
 		shouldContinue bool
 		description    string
 	}{
 		{
 			name: "no data operations",
-			config: testdata.Config{
+			config: cli.Config{
 				MockData:  false,
 				ClearData: false,
 			},
@@ -220,7 +220,7 @@ func TestMainFunctionBehavior(t *testing.T) {
 			flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 			os.Args = test.args
 
-			config := testdata.ParseFlags()
+			config := cli.ParseFlags()
 			assert.NotNil(t, config)
 
 			// Verify flags are parsed correctly
@@ -253,7 +253,7 @@ func TestCompleteIntegrationFlow(t *testing.T) {
 	flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 	os.Args = []string{"ignite"}
 
-	config := testdata.ParseFlags()
+	config := cli.ParseFlags()
 	assert.NotNil(t, config)
 	assert.False(t, config.MockData)
 	assert.False(t, config.ClearData)
@@ -262,7 +262,7 @@ func TestCompleteIntegrationFlow(t *testing.T) {
 	// without needing a real application
 	if !config.MockData && !config.ClearData {
 		// This should return true without needing an application
-		// We'll test this logic by examining the testdata.HandleDataOperations function
+		// We'll test this logic by examining the cli.HandleDataOperations function
 		assert.False(t, config.MockData)
 		assert.False(t, config.ClearData)
 	}
@@ -298,8 +298,8 @@ func TestPackageLevelFunctionality(t *testing.T) {
 	// Test that the app package is importable
 	assert.NotNil(t, &app.Application{})
 
-	// Test that testdata package is importable
-	assert.NotNil(t, &testdata.Config{})
+	// Test that cli package is importable
+	assert.NotNil(t, &cli.Config{})
 }
 
 // Benchmark flag parsing
@@ -311,7 +311,7 @@ func BenchmarkFlagParsing(b *testing.B) {
 		flag.CommandLine = flag.NewFlagSet(os.Args[0], flag.ExitOnError)
 		os.Args = []string{"ignite", "-mock-data"}
 
-		config := testdata.ParseFlags()
+		config := cli.ParseFlags()
 		_ = config // Use the result
 	}
 }
@@ -339,7 +339,7 @@ func TestCLIEdgeCases(t *testing.T) {
 				os.Args = []string{"ignite", "-unknown-flag"}
 
 				// This should handle unknown flags gracefully
-				config := testdata.ParseFlags()
+				config := cli.ParseFlags()
 				assert.NotNil(t, config)
 			},
 		},
@@ -361,7 +361,7 @@ func TestCLIEdgeCases(t *testing.T) {
 				// This would normally print help and exit
 				// We'll just test that the flag parsing doesn't crash
 				assert.NotPanics(t, func() {
-					testdata.ParseFlags()
+					cli.ParseFlags()
 				})
 			},
 		},

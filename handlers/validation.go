@@ -249,10 +249,10 @@ func (v *DHCPConfigValidator) ValidateDHCPConfig(config map[string]string) Valid
 		}
 	}
 
-	// Validate lease time if provided
+	// Validate lease time if provided (the UI submits it in hours)
 	if leaseTime, ok := config["lease_time"]; ok && leaseTime != "" {
 		if _, err := strconv.Atoi(leaseTime); err != nil {
-			errors.Add("lease_time", "lease time must be a valid number (seconds)")
+			errors.Add("lease_time", "lease time must be a valid number (hours)")
 		}
 	}
 
@@ -274,10 +274,21 @@ func (v *DHCPConfigValidator) ValidateReservation(ip, mac string) ValidationErro
 	return errors
 }
 
-// Helper function to compare IPv4 addresses
+// Helper function to compare IPv4 addresses. Nil-safe: a nil IP sorts before
+// any valid IP, and two nil IPs compare equal.
 func compareIPs(ip1, ip2 net.IP) int {
 	ip1 = ip1.To4()
 	ip2 = ip2.To4()
+
+	if ip1 == nil && ip2 == nil {
+		return 0
+	}
+	if ip1 == nil {
+		return -1
+	}
+	if ip2 == nil {
+		return 1
+	}
 
 	for i := 0; i < 4; i++ {
 		if ip1[i] < ip2[i] {

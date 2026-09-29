@@ -66,24 +66,44 @@ func (r *BoltServerRepository) GetByIP(ctx context.Context, ip net.IP) (*Server,
 		}
 	}
 
-	return nil, fmt.Errorf("server with IP %s not found", ip.String())
+	return nil, fmt.Errorf("%w: server with IP %s", db.ErrNotFound, ip.String())
 }
 
 // BoltLeaseRepository implements LeaseRepository using BoltDB
 type BoltLeaseRepository struct {
-	repo *db.GenericRepository[*Lease]
+	repo   *db.GenericRepository[*Lease]
+	db     db.Database
+	bucket string
 }
 
 // NewBoltLeaseRepository creates a new BoltDB lease repository
 func NewBoltLeaseRepository(database db.Database, bucket string) *BoltLeaseRepository {
 	return &BoltLeaseRepository{
-		repo: db.NewGenericRepository[*Lease](database, bucket),
+		repo:   db.NewGenericRepository[*Lease](database, bucket),
+		db:     database,
+		bucket: bucket,
 	}
 }
 
-// Save saves a lease to the repository
+// macIndexBucket returns the bucket holding the MAC -> lease ID secondary index.
+// It is created on demand by PutKV, so readers must tolerate it being absent.
+func (r *BoltLeaseRepository) macIndexBucket() string {
+	return r.bucket + "_by_mac"
+}
+
+// Save saves a lease to the repository and maintains the MAC index
 func (r *BoltLeaseRepository) Save(ctx context.Context, lease *Lease) error {
-	return r.repo.Save(ctx, lease.ID, lease)
+	// Drop any stale index entry if the lease's MAC changed since it was stored.
+	if existing, err := r.Get(ctx, lease.ID); err == nil && existing != nil && existing.MAC != lease.MAC {
+		_ = r.db.DeleteKV(ctx, r.macIndexBucket(), []byte(existing.MAC))
+	}
+	if err := r.repo.Save(ctx, lease.ID, lease); err != nil {
+		return err
+	}
+	if err := r.db.PutKV(ctx, r.macIndexBucket(), []byte(lease.MAC), []byte(lease.ID)); err != nil {
+		return fmt.Errorf("failed to update MAC index: %w", err)
+	}
+	return nil
 }
 
 // Get retrieves a lease by ID
@@ -91,8 +111,17 @@ func (r *BoltLeaseRepository) Get(ctx context.Context, id string) (*Lease, error
 	return r.repo.Get(ctx, id)
 }
 
-// GetByMAC retrieves a lease by MAC address
+// GetByMAC retrieves a lease by MAC address, using the secondary index.
+// Falls back to a full scan (which repairs the index) when the index
+// misses — e.g. for leases written before the index existed.
 func (r *BoltLeaseRepository) GetByMAC(ctx context.Context, mac string) (*Lease, error) {
+	if id, err := r.db.GetKV(ctx, r.macIndexBucket(), []byte(mac)); err == nil && len(id) > 0 {
+		if lease, gerr := r.Get(ctx, string(id)); gerr == nil && lease != nil && lease.MAC == mac {
+			return lease, nil
+		}
+		// Stale index entry: fall through to the full scan below.
+	}
+
 	leases, err := r.GetAll(ctx)
 	if err != nil {
 		return nil, err
@@ -100,11 +129,13 @@ func (r *BoltLeaseRepository) GetByMAC(ctx context.Context, mac string) (*Lease,
 
 	for _, lease := range leases {
 		if lease.MAC == mac {
+			// Repair the index for next time (best effort).
+			_ = r.db.PutKV(ctx, r.macIndexBucket(), []byte(mac), []byte(lease.ID))
 			return lease, nil
 		}
 	}
 
-	return nil, fmt.Errorf("lease for MAC %s not found", mac)
+	return nil, fmt.Errorf("%w: lease for MAC %s", db.ErrNotFound, mac)
 }
 
 // GetByServerID retrieves all leases for a specific server
@@ -139,8 +170,11 @@ func (r *BoltLeaseRepository) GetAll(ctx context.Context) ([]*Lease, error) {
 	return leases, nil
 }
 
-// Delete removes a lease by ID
+// Delete removes a lease by ID and cleans up its MAC index entry
 func (r *BoltLeaseRepository) Delete(ctx context.Context, id string) error {
+	if existing, err := r.Get(ctx, id); err == nil && existing != nil {
+		_ = r.db.DeleteKV(ctx, r.macIndexBucket(), []byte(existing.MAC))
+	}
 	return r.repo.Delete(ctx, id)
 }
 

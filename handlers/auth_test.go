@@ -16,10 +16,29 @@ func TestAuthHandlers_LoginPage(t *testing.T) {
 	t.Skip("Template rendering test requires running from project root")
 }
 
-func TestAuthHandlers_Login_Success(t *testing.T) {
-	// Reset to default credentials for test
+// resetTestCredentials restores the default admin/admin credentials under lock.
+func resetTestCredentials() {
+	credentialMu.Lock()
 	defaultUsername = "admin"
 	defaultPassword = "admin"
+	credentialMu.Unlock()
+}
+
+// testSessionCookie creates a real server-side session and returns a cookie
+// carrying it. The session is destroyed when the test finishes.
+func testSessionCookie(t *testing.T) *http.Cookie {
+	t.Helper()
+	token, err := createSession()
+	if err != nil {
+		t.Fatalf("failed to create test session: %v", err)
+	}
+	t.Cleanup(func() { destroySession(token) })
+	return &http.Cookie{Name: "ignite_session", Value: token}
+}
+
+func TestAuthHandlers_Login_Success(t *testing.T) {
+	// Reset to default credentials for test
+	resetTestCredentials()
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
@@ -80,8 +99,7 @@ func TestAuthHandlers_Login_Success(t *testing.T) {
 
 func TestAuthHandlers_Login_InvalidCredentials(t *testing.T) {
 	// Reset to default credentials for test
-	defaultUsername = "admin"
-	defaultPassword = "admin"
+	resetTestCredentials()
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
@@ -146,13 +164,25 @@ func TestAuthHandlers_Logout(t *testing.T) {
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
 
+	// Log in to get a real session
+	token, err := createSession()
+	if err != nil {
+		t.Fatalf("failed to create session: %v", err)
+	}
+
 	req := httptest.NewRequest("POST", "/auth/logout", nil)
+	req.AddCookie(&http.Cookie{Name: "ignite_session", Value: token})
 	w := httptest.NewRecorder()
 
 	authHandlers.Logout(w, req)
 
 	if w.Code != http.StatusOK {
 		t.Errorf("Expected status code %d, got %d", http.StatusOK, w.Code)
+	}
+
+	// The server-side session must be destroyed, not just the cookie expired
+	if validSession(token) {
+		t.Error("Expected server-side session to be destroyed on logout")
 	}
 
 	// Check if session cookie is cleared
@@ -182,18 +212,14 @@ func TestAuthHandlers_Logout(t *testing.T) {
 
 func TestAuthHandlers_ChangePassword_Success(t *testing.T) {
 	// Reset to default credentials for test
-	defaultUsername = "admin"
-	defaultPassword = "admin"
+	resetTestCredentials()
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
 
 	// Create a request with valid session cookie
 	req := httptest.NewRequest("POST", "/auth/change-password", nil)
-	req.AddCookie(&http.Cookie{
-		Name:  "ignite_session",
-		Value: "admin_12345",
-	})
+	req.AddCookie(testSessionCookie(t))
 
 	changeReq := ChangePasswordRequest{
 		CurrentPassword: "admin",
@@ -203,10 +229,7 @@ func TestAuthHandlers_ChangePassword_Success(t *testing.T) {
 	jsonData, _ := json.Marshal(changeReq)
 	req = httptest.NewRequest("POST", "/auth/change-password", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{
-		Name:  "ignite_session",
-		Value: "admin_12345",
-	})
+	req.AddCookie(testSessionCookie(t))
 
 	w := httptest.NewRecorder()
 
@@ -227,12 +250,15 @@ func TestAuthHandlers_ChangePassword_Success(t *testing.T) {
 	}
 
 	// Verify password was actually changed
-	if defaultPassword != "newpassword123" {
+	credentialMu.RLock()
+	changed := defaultPassword == "newpassword123"
+	credentialMu.RUnlock()
+	if !changed {
 		t.Error("Expected password to be updated")
 	}
 
 	// Reset for other tests
-	defaultPassword = "admin"
+	resetTestCredentials()
 }
 
 func TestAuthHandlers_ChangePassword_NotAuthenticated(t *testing.T) {
@@ -259,7 +285,7 @@ func TestAuthHandlers_ChangePassword_NotAuthenticated(t *testing.T) {
 
 func TestAuthHandlers_ChangePassword_WrongCurrentPassword(t *testing.T) {
 	// Reset to default credentials for test
-	defaultPassword = "admin"
+	resetTestCredentials()
 
 	container := &Container{}
 	authHandlers := NewAuthHandlers(container)
@@ -272,10 +298,7 @@ func TestAuthHandlers_ChangePassword_WrongCurrentPassword(t *testing.T) {
 	jsonData, _ := json.Marshal(changeReq)
 	req := httptest.NewRequest("POST", "/auth/change-password", bytes.NewBuffer(jsonData))
 	req.Header.Set("Content-Type", "application/json")
-	req.AddCookie(&http.Cookie{
-		Name:  "ignite_session",
-		Value: "admin_12345",
-	})
+	req.AddCookie(testSessionCookie(t))
 
 	w := httptest.NewRecorder()
 
@@ -293,11 +316,8 @@ func TestIsAuthenticated(t *testing.T) {
 		expectedResult bool
 	}{
 		{
-			name: "Valid session cookie",
-			cookie: &http.Cookie{
-				Name:  "ignite_session",
-				Value: "admin_12345",
-			},
+			name:           "Valid session cookie",
+			cookie:         nil, // filled in below with a real session
 			expectedResult: true,
 		},
 		{
@@ -318,7 +338,9 @@ func TestIsAuthenticated(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("GET", "/", nil)
-			if tt.cookie != nil {
+			if tt.name == "Valid session cookie" {
+				req.AddCookie(testSessionCookie(t))
+			} else if tt.cookie != nil {
 				req.AddCookie(tt.cookie)
 			}
 
@@ -330,34 +352,46 @@ func TestIsAuthenticated(t *testing.T) {
 	}
 }
 
-func TestGenerateSimpleToken(t *testing.T) {
-	username := "testuser"
-	token := generateSimpleToken(username)
+func TestGenerateSessionToken(t *testing.T) {
+	token, err := generateSessionToken()
+	if err != nil {
+		t.Fatalf("generateSessionToken returned error: %v", err)
+	}
 
 	if token == "" {
 		t.Error("Expected token to be generated")
 	}
 
-	if !strings.Contains(token, username) {
-		t.Error("Expected token to contain username")
+	// 32 random bytes hex-encoded = 64 chars
+	if len(token) != 64 {
+		t.Errorf("Expected 64-char hex token, got %d chars", len(token))
 	}
 
-	// Test that token contains a timestamp (should have format username_YYYYMMDDHHMMSS)
-	parts := strings.Split(token, "_")
-	if len(parts) != 2 {
-		t.Error("Expected token to have format username_timestamp")
+	// Tokens must be unique and unpredictable
+	token2, err := generateSessionToken()
+	if err != nil {
+		t.Fatalf("generateSessionToken returned error: %v", err)
 	}
-
-	// Check that timestamp part looks like a date (14 digits for YYYYMMDDHHMMSS)
-	timestamp := parts[1]
-	if len(timestamp) != 14 {
-		t.Error("Expected timestamp to be 14 digits (YYYYMMDDHHMMSS)")
-	}
-
-	// Test with different username should produce different token even at same time
-	token2 := generateSimpleToken("different_user")
-
 	if token == token2 {
-		t.Error("Expected tokens with different usernames to be different")
+		t.Error("Expected tokens to be unique")
+	}
+
+	// A minted session must validate server-side
+	token3, err := createSession()
+	if err != nil {
+		t.Fatalf("createSession returned error: %v", err)
+	}
+	defer destroySession(token3)
+	if !validSession(token3) {
+		t.Error("Expected freshly created session to be valid")
+	}
+	if validSession(token) {
+		t.Error("Expected unregistered token to be invalid")
+	}
+
+	// Destroyed sessions must stop validating
+	destroySession(token3)
+	if validSession(token3) {
+		t.Error("Expected destroyed session to be invalid")
 	}
 }

@@ -77,7 +77,9 @@ type ErrorResponse struct {
 	Error   AppError `json:"error"`
 }
 
-// SendError sends a structured error response
+// SendError sends a structured error response.
+// The internal Message is logged server-side only; the response carries the
+// generic UserMessage so internal details never leak to clients.
 func SendError(w http.ResponseWriter, r *http.Request, err *AppError) {
 	// Log the internal error message
 	log.Printf("Error [%s] %s: %s", r.Method, r.URL.Path, err.Message)
@@ -89,10 +91,16 @@ func SendError(w http.ResponseWriter, r *http.Request, err *AppError) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(err.StatusCode)
 
-	// Create error response
+	// Create error response — expose only the user-facing message
 	response := ErrorResponse{
 		Success: false,
-		Error:   *err,
+		Error: AppError{
+			Type:        err.Type,
+			Message:     err.UserMessage,
+			UserMessage: err.UserMessage,
+			Code:        err.Code,
+			StatusCode:  err.StatusCode,
+		},
 	}
 
 	// Send JSON response
@@ -159,12 +167,16 @@ func SendValidationError(w http.ResponseWriter, r *http.Request, errors Validati
 	}
 }
 
-// IsHTMLRequest checks if the request expects HTML response
+// IsHTMLRequest checks if the request expects HTML response.
+// A wildcard Accept of */* (curl/fetch default) does NOT count as HTML —
+// only an explicit text/html or application/xhtml+xml does.
 func IsHTMLRequest(r *http.Request) bool {
 	accept := r.Header.Get("Accept")
-	return accept != "" && (contains(accept, "text/html") ||
-		contains(accept, "application/xhtml+xml") ||
-		contains(accept, "*/*"))
+	if accept == "" {
+		return true // Default to HTML for browser-like requests
+	}
+	return contains(accept, "text/html") ||
+		contains(accept, "application/xhtml+xml")
 }
 
 // contains checks if a string contains a substring (case-insensitive)
@@ -172,13 +184,27 @@ func contains(s, substr string) bool {
 	return strings.Contains(strings.ToLower(s), strings.ToLower(substr))
 }
 
-// HandleError is a utility function that automatically chooses between JSON and HTML error responses
+// HandleError is a utility function that automatically chooses between JSON and HTML error responses.
+// API paths and explicit application/json clients always get JSON; HTML only
+// when the Accept header actually asks for it.
 func HandleError(w http.ResponseWriter, r *http.Request, err *AppError) {
+	if wantsJSONResponse(r) {
+		SendError(w, r, err)
+		return
+	}
 	if IsHTMLRequest(r) && r.Header.Get("HX-Request") == "" { // Not an HTMX request
 		SendHTMLError(w, r, err)
 	} else {
 		SendError(w, r, err)
 	}
+}
+
+// wantsJSONResponse reports whether the request should get a JSON error body.
+func wantsJSONResponse(r *http.Request) bool {
+	if strings.HasPrefix(r.URL.Path, "/api/") {
+		return true
+	}
+	return contains(r.Header.Get("Accept"), "application/json")
 }
 
 // Common error messages

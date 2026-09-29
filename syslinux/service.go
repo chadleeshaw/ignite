@@ -11,10 +11,15 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
+	"ignite/dlstatus"
+
+	"github.com/google/uuid"
 	"golang.org/x/net/html"
 )
 
@@ -22,20 +27,76 @@ type service struct {
 	repo   Repository
 	config SyslinuxConfig
 	client *http.Client
+
+	mu      sync.Mutex
+	cancels map[string]context.CancelFunc // download ID -> cancel func
 }
 
 // NewService creates a new Syslinux service
 func NewService(repo Repository, config SyslinuxConfig) Service {
 	return &service{
-		repo:   repo,
-		config: config,
-		client: &http.Client{Timeout: 30 * time.Second},
+		repo:    repo,
+		config:  config,
+		client:  &http.Client{Timeout: 30 * time.Second},
+		cancels: make(map[string]context.CancelFunc),
 	}
+}
+
+// removeCancel drops the cancel func for a download ID.
+func (s *service) removeCancel(id string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	delete(s.cancels, id)
+}
+
+// updateStatus re-reads the download row and applies the new state only if it
+// has not reached a terminal state. It runs under the service mutex (the same
+// mutex CancelDownload uses), so a concurrent cancellation is never
+// overwritten with stale worker data. It returns false when the row is
+// missing or already terminal.
+func (s *service) updateStatus(ctx context.Context, id string, status dlstatus.Status, progress int, errMsg string) bool {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	current, err := s.repo.GetDownloadStatus(ctx, id)
+	if err != nil {
+		return false
+	}
+	if current.Status.Terminal() {
+		return false
+	}
+	current.Status = status
+	current.Progress = progress
+	if errMsg != "" {
+		current.ErrorMessage = errMsg
+	}
+	if status.Terminal() {
+		now := time.Now()
+		current.CompletedAt = &now
+	}
+	if err := s.repo.SaveDownloadStatus(ctx, current); err != nil {
+		log.Printf("syslinux: failed to save download status %s: %v", id, err)
+		return false
+	}
+	return true
+}
+
+// failStatus records a terminal failure unless the row already went terminal.
+func (s *service) failStatus(ctx context.Context, id, errMsg string) {
+	if !s.updateStatus(ctx, id, dlstatus.StatusFailed, 0, errMsg) {
+		log.Printf("syslinux: download %s failed (%s); status already terminal", id, errMsg)
+		return
+	}
+	log.Printf("syslinux: download %s failed: %s", id, errMsg)
 }
 
 // ScanMirror scans the kernel.org mirror for available Syslinux versions
 func (s *service) ScanMirror(ctx context.Context) ([]*SyslinuxMirror, error) {
-	resp, err := s.client.Get(s.config.BaseURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, s.config.BaseURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create mirror request: %w", err)
+	}
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("failed to fetch mirror page: %w", err)
 	}
@@ -224,7 +285,6 @@ func (s *service) RefreshAvailableVersions(ctx context.Context) error {
 			existing.DownloadURL = mirror.DownloadURL
 			existing.FileName = mirror.FileName
 			existing.Size = mirror.Size
-			existing.UpdatedAt = time.Now()
 			if err := s.repo.SaveVersion(ctx, existing); err != nil {
 				return fmt.Errorf("failed to update version %s: %w", mirror.Version, err)
 			}
@@ -257,7 +317,9 @@ func (s *service) GetAvailableVersions(ctx context.Context) ([]*SyslinuxVersion,
 	return s.repo.ListVersions(ctx)
 }
 
-// DownloadVersion downloads a specific version
+// DownloadVersion downloads a specific version in the background.
+// It returns a copy of the queued status; the worker only ever mutates
+// re-read copies afterwards.
 func (s *service) DownloadVersion(ctx context.Context, version string) (*DownloadStatus, error) {
 	// Get version info
 	sysVersion, err := s.repo.GetVersionByNumber(ctx, version)
@@ -265,11 +327,11 @@ func (s *service) DownloadVersion(ctx context.Context, version string) (*Downloa
 		return nil, fmt.Errorf("version not found: %w", err)
 	}
 
-	// Create download status
+	// Create download status with a collision-resistant ID
 	status := &DownloadStatus{
-		ID:        fmt.Sprintf("download-%s-%d", version, time.Now().Unix()),
+		ID:        uuid.New().String(),
 		Version:   version,
-		Status:    "downloading",
+		Status:    dlstatus.StatusQueued,
 		Progress:  0,
 		StartedAt: time.Now(),
 	}
@@ -278,68 +340,150 @@ func (s *service) DownloadVersion(ctx context.Context, version string) (*Downloa
 		return nil, fmt.Errorf("failed to save download status: %w", err)
 	}
 
+	dlCtx, cancel := context.WithCancel(context.Background())
+	s.mu.Lock()
+	s.cancels[status.ID] = cancel
+	s.mu.Unlock()
+
 	// Start download in background
-	go func() {
-		defer func() {
-			if r := recover(); r != nil {
-				status.Status = "failed"
-				status.ErrorMessage = fmt.Sprintf("panic: %v", r)
-				now := time.Now()
-				status.CompletedAt = &now
-				s.repo.SaveDownloadStatus(ctx, status)
-			}
-		}()
+	go s.downloadAndInstall(dlCtx, status.ID, sysVersion)
 
-		// Step 1: Clean up any existing active version
-		if err := s.cleanupActiveVersion(ctx); err != nil {
-			status.Status = "failed"
-			status.ErrorMessage = "Failed to cleanup previous version: " + err.Error()
-		} else if err := s.downloadFile(ctx, sysVersion, status); err != nil {
-			status.Status = "failed"
-			status.ErrorMessage = err.Error()
-		} else {
-			// Step 2: Install boot files automatically after extraction
-			status.Status = "installing"
-			s.repo.SaveDownloadStatus(ctx, status)
-
-			// Install both BIOS and EFI boot files
-			if err := s.InstallBootFiles(ctx, sysVersion.Version, "bios"); err != nil {
-				status.Status = "failed"
-				status.ErrorMessage = "Failed to install BIOS boot files: " + err.Error()
-			} else if err := s.InstallBootFiles(ctx, sysVersion.Version, "efi"); err != nil {
-				status.Status = "failed"
-				status.ErrorMessage = "Failed to install EFI boot files: " + err.Error()
-			} else {
-				// Step 3: Mark as downloaded and active
-				status.Status = "completed"
-				status.Progress = 100
-
-				sysVersion.Downloaded = true
-				sysVersion.Active = true
-				now := time.Now()
-				sysVersion.DownloadedAt = &now
-				sysVersion.UpdatedAt = now
-				s.repo.SaveVersion(ctx, sysVersion)
-			}
-		}
-
-		now := time.Now()
-		status.CompletedAt = &now
-		s.repo.SaveDownloadStatus(ctx, status)
-	}()
-
-	return status, nil
+	// Return a copy so the HTTP caller never sees worker-mutated state.
+	statusCopy := *status
+	return &statusCopy, nil
 }
 
-// downloadFile handles the actual file download
-func (s *service) downloadFile(ctx context.Context, version *SyslinuxVersion, status *DownloadStatus) error {
+// downloadAndInstall runs the download pipeline in the background:
+// download -> extract -> verify, and only then clean up the old active
+// version and swap to the new one. A cancelled context aborts promptly and
+// leaves the previously active version untouched.
+func (s *service) downloadAndInstall(ctx context.Context, statusID string, sysVersion *SyslinuxVersion) {
+	defer s.removeCancel(statusID)
+
+	defer func() {
+		if r := recover(); r != nil {
+			s.failStatus(context.Background(), statusID, fmt.Sprintf("panic: %v", r))
+		}
+	}()
+
+	bg := context.Background()
+
+	if !s.updateStatus(ctx, statusID, dlstatus.StatusDownloading, 0, "") {
+		return // cancelled while queued
+	}
+
+	// Step 1: download the archive (temp file + rename on success)
+	if err := s.downloadFile(ctx, statusID, sysVersion); err != nil {
+		if ctx.Err() != nil {
+			s.markCancelled(bg, statusID)
+		} else {
+			s.failStatus(bg, statusID, err.Error())
+		}
+		return
+	}
+
+	if ctx.Err() != nil {
+		s.markCancelled(bg, statusID)
+		return
+	}
+
+	// Step 2: extract
+	if !s.updateStatus(ctx, statusID, dlstatus.StatusExtracting, 90, "") {
+		return
+	}
+	if err := s.ExtractBootFiles(ctx, sysVersion.Version); err != nil {
+		if ctx.Err() != nil {
+			s.markCancelled(bg, statusID)
+		} else {
+			s.failStatus(bg, statusID, fmt.Sprintf("failed to extract boot files: %v", err))
+		}
+		return
+	}
+
+	if ctx.Err() != nil {
+		s.markCancelled(bg, statusID)
+		return
+	}
+
+	// Step 3: verify the extracted files before touching the active version
+	if err := s.verifyExtractedFiles(sysVersion.Version); err != nil {
+		s.failStatus(bg, statusID, err.Error())
+		return
+	}
+
+	if ctx.Err() != nil {
+		s.markCancelled(bg, statusID)
+		return
+	}
+
+	// Step 4: only now clean up the old active version and swap to the new one
+	if err := s.cleanupActiveVersion(bg); err != nil {
+		s.failStatus(bg, statusID, "failed to cleanup previous version: "+err.Error())
+		return
+	}
+
+	now := time.Now()
+	sysVersion.Downloaded = true
+	sysVersion.Active = true
+	sysVersion.DownloadedAt = &now
+	if err := s.repo.SaveVersion(bg, sysVersion); err != nil {
+		s.failStatus(bg, statusID, "failed to save version: "+err.Error())
+		return
+	}
+	if err := s.repo.SetActiveVersion(bg, sysVersion.Version); err != nil {
+		s.failStatus(bg, statusID, "failed to activate version: "+err.Error())
+		return
+	}
+
+	s.updateStatus(bg, statusID, dlstatus.StatusCompleted, 100, "")
+	log.Printf("syslinux: successfully downloaded and activated version %s", sysVersion.Version)
+}
+
+// markCancelled records cancellation unless the row already went terminal.
+func (s *service) markCancelled(ctx context.Context, id string) {
+	s.updateStatus(ctx, id, dlstatus.StatusCancelled, 0, "Download cancelled by user")
+}
+
+// throttledProgress forwards progress updates at most every 500ms or when the
+// whole percentage changes, so a download doesn't write to the DB per chunk.
+type throttledProgress struct {
+	update   func(pct int)
+	mu       sync.Mutex
+	lastPct  int
+	lastTime time.Time
+}
+
+func (t *throttledProgress) onProgress(current, total int64) {
+	if total <= 0 {
+		return
+	}
+	pct := int(float64(current) / float64(total) * 100)
+	if pct > 100 {
+		pct = 100
+	}
+	t.mu.Lock()
+	defer t.mu.Unlock()
+	if pct == t.lastPct && time.Since(t.lastTime) < 500*time.Millisecond {
+		return
+	}
+	t.lastPct = pct
+	t.lastTime = time.Now()
+	t.update(pct)
+}
+
+// downloadFile downloads the version archive to the temp directory via a temp
+// file that is renamed into place only on success.
+func (s *service) downloadFile(ctx context.Context, statusID string, version *SyslinuxVersion) error {
 	// Ensure temp directory exists
 	if err := os.MkdirAll(s.config.TempDir, 0755); err != nil {
 		return fmt.Errorf("failed to create temp directory: %w", err)
 	}
 
-	// Download file
-	resp, err := s.client.Get(version.DownloadURL)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, version.DownloadURL, nil)
+	if err != nil {
+		return fmt.Errorf("failed to create download request: %w", err)
+	}
+	resp, err := s.client.Do(req)
 	if err != nil {
 		return fmt.Errorf("failed to start download: %w", err)
 	}
@@ -349,47 +493,49 @@ func (s *service) downloadFile(ctx context.Context, version *SyslinuxVersion, st
 		return fmt.Errorf("download failed with status %d", resp.StatusCode)
 	}
 
-	// Create destination file
-	filePath := filepath.Join(s.config.TempDir, version.FileName)
-	file, err := os.Create(filePath)
+	tmp, err := os.CreateTemp(s.config.TempDir, ".download-*")
 	if err != nil {
-		return fmt.Errorf("failed to create file: %w", err)
+		return fmt.Errorf("failed to create temp file: %w", err)
 	}
-	defer file.Close()
+	tmpName := tmp.Name()
+	succeeded := false
+	defer func() {
+		if !succeeded {
+			_ = os.Remove(tmpName)
+		}
+	}()
 
-	// Copy with progress tracking
+	// Copy with throttled progress tracking
 	contentLength := resp.ContentLength
 	if contentLength <= 0 {
 		contentLength = version.Size
 	}
 
-	reader := &progressReader{
-		reader: resp.Body,
-		total:  contentLength,
-		onProgress: func(current, total int64) {
-			if total > 0 {
-				progress := int(float64(current) / float64(total) * 100)
-				status.Progress = progress
-				s.repo.SaveDownloadStatus(ctx, status)
-			}
+	progress := &throttledProgress{
+		update: func(pct int) {
+			s.updateStatus(ctx, statusID, dlstatus.StatusDownloading, pct, "")
 		},
 	}
 
-	_, err = io.Copy(file, reader)
-	if err != nil {
+	reader := &progressReader{
+		reader:     resp.Body,
+		total:      contentLength,
+		onProgress: progress.onProgress,
+	}
+
+	if _, err := io.Copy(tmp, reader); err != nil {
+		_ = tmp.Close()
 		return fmt.Errorf("failed to download file: %w", err)
 	}
-
-	// Auto-extract if configured
-	if s.config.AutoExtract {
-		status.Status = "extracting"
-		s.repo.SaveDownloadStatus(ctx, status)
-
-		if err := s.ExtractBootFiles(ctx, version.Version); err != nil {
-			return fmt.Errorf("failed to extract boot files: %w", err)
-		}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("failed to close temp file: %w", err)
 	}
 
+	filePath := filepath.Join(s.config.TempDir, version.FileName)
+	if err := os.Rename(tmpName, filePath); err != nil {
+		return fmt.Errorf("failed to finalize download: %w", err)
+	}
+	succeeded = true
 	return nil
 }
 
@@ -414,6 +560,10 @@ func (s *service) ExtractBootFiles(ctx context.Context, version string) error {
 
 	// Extract relevant files
 	for {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+
 		header, err := tr.Next()
 		if err == io.EOF {
 			break
@@ -428,7 +578,7 @@ func (s *service) ExtractBootFiles(ctx context.Context, version string) error {
 
 		// Check if this is a boot file we need
 		if s.shouldExtractFile(header.Name, version) {
-			if err := s.extractSingleFile(tr, header, version); err != nil {
+			if err := s.extractSingleFile(ctx, tr, header, version); err != nil {
 				return fmt.Errorf("failed to extract %s: %w", header.Name, err)
 			}
 		}
@@ -474,8 +624,9 @@ func (s *service) shouldExtractFile(filePath, version string) bool {
 	return false
 }
 
-// extractSingleFile extracts a single file from the archive
-func (s *service) extractSingleFile(tr *tar.Reader, header *tar.Header, version string) error {
+// extractSingleFile extracts a single file from the archive using the
+// caller's context for repository writes.
+func (s *service) extractSingleFile(ctx context.Context, tr *tar.Reader, header *tar.Header, version string) error {
 	// Determine boot type and target directory
 	var bootType, targetDir string
 
@@ -532,7 +683,7 @@ func (s *service) extractSingleFile(tr *tar.Reader, header *tar.Header, version 
 		UpdatedAt:   time.Now(),
 	}
 
-	return s.repo.SaveBootFile(context.Background(), bootFile)
+	return s.repo.SaveBootFile(ctx, bootFile)
 }
 
 // getFileDescription returns a description for a boot file
@@ -561,27 +712,44 @@ func (s *service) isRequiredFile(bootType, fileName string) bool {
 	return false
 }
 
-// GetDownloadStatus retrieves download status
+// GetDownloadStatus retrieves download status.
+// The returned struct is a copy; the worker never shares its live struct.
 func (s *service) GetDownloadStatus(ctx context.Context, id string) (*DownloadStatus, error) {
-	return s.repo.GetDownloadStatus(ctx, id)
+	status, err := s.repo.GetDownloadStatus(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	statusCopy := *status
+	return &statusCopy, nil
 }
 
-// CancelDownload cancels an ongoing download
+// CancelDownload cancels an ongoing download: it signals the worker via the
+// download's context and marks the row cancelled under the same mutex the
+// worker uses for status updates, so the two can never overwrite each other.
 func (s *service) CancelDownload(ctx context.Context, id string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
 	status, err := s.repo.GetDownloadStatus(ctx, id)
 	if err != nil {
 		return err
 	}
 
-	status.Status = "cancelled"
+	if !status.Status.Active() {
+		return fmt.Errorf("cannot cancel download with status %s", status.Status)
+	}
+
+	if cancel, ok := s.cancels[id]; ok {
+		delete(s.cancels, id)
+		cancel()
+	}
+
 	now := time.Now()
+	status.Status = dlstatus.StatusCancelled
 	status.CompletedAt = &now
 
 	return s.repo.SaveDownloadStatus(ctx, status)
 }
-
-// Additional service methods would continue here...
-// (InstallBootFiles, ListInstalledBootFiles, RemoveBootFiles, etc.)
 
 // progressReader tracks download progress
 type progressReader struct {
@@ -600,9 +768,97 @@ func (pr *progressReader) Read(p []byte) (int, error) {
 	return n, err
 }
 
-// Implement remaining Service interface methods...
+// verifyExtractedFiles checks that every required BIOS and EFI boot file for
+// the version exists in the configured TFTP directories.
+func (s *service) verifyExtractedFiles(version string) error {
+	bootTypes := map[string]map[string]string{
+		"bios": GetRequiredBiosFiles(),
+		"efi":  GetRequiredEfiFiles(),
+	}
+	for bootType, files := range bootTypes {
+		var dir string
+		switch bootType {
+		case "bios":
+			dir = filepath.Join(s.config.TFTPDir, s.config.BiosDir)
+		case "efi":
+			dir = filepath.Join(s.config.TFTPDir, s.config.EfiDir)
+		}
+		var missing []string
+		for fileName := range files {
+			if _, err := os.Stat(filepath.Join(dir, fileName)); err != nil {
+				missing = append(missing, fileName)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return fmt.Errorf("missing %s boot files for version %s: %s",
+				bootType, version, strings.Join(missing, ", "))
+		}
+	}
+	return nil
+}
+
+// InstallBootFiles ensures the boot files for version/bootType are installed:
+// every required file must exist in the configured TFTP boot directory, and
+// its boot-file record is created or marked installed. It returns an error
+// listing any missing files instead of silently succeeding.
 func (s *service) InstallBootFiles(ctx context.Context, version, bootType string) error {
-	// Implementation for installing boot files
+	var required map[string]string
+	var targetDir string
+	switch bootType {
+	case "bios":
+		required = GetRequiredBiosFiles()
+		targetDir = filepath.Join(s.config.TFTPDir, s.config.BiosDir)
+	case "efi":
+		required = GetRequiredEfiFiles()
+		targetDir = filepath.Join(s.config.TFTPDir, s.config.EfiDir)
+	default:
+		return fmt.Errorf("unsupported boot type: %s", bootType)
+	}
+
+	sysVersion, err := s.repo.GetVersionByNumber(ctx, version)
+	if err != nil {
+		return fmt.Errorf("version not found: %w", err)
+	}
+	if !sysVersion.Downloaded {
+		return fmt.Errorf("version %s has not been downloaded", version)
+	}
+
+	var missing []string
+	for fileName, description := range required {
+		targetPath := filepath.Join(targetDir, fileName)
+		fi, err := os.Stat(targetPath)
+		if err != nil {
+			missing = append(missing, fileName)
+			continue
+		}
+
+		id := fmt.Sprintf("%s-%s-%s", version, bootType, fileName)
+		bootFile, err := s.repo.GetBootFile(ctx, id)
+		if err != nil {
+			bootFile = &SyslinuxBootFile{
+				ID:          id,
+				Version:     version,
+				BootType:    bootType,
+				FileName:    fileName,
+				Description: description,
+				Required:    true,
+				CreatedAt:   time.Now(),
+			}
+		}
+		bootFile.FilePath = targetPath
+		bootFile.Size = fi.Size()
+		bootFile.Installed = true
+		if err := s.repo.SaveBootFile(ctx, bootFile); err != nil {
+			return fmt.Errorf("failed to record boot file %s: %w", fileName, err)
+		}
+	}
+
+	if len(missing) > 0 {
+		sort.Strings(missing)
+		return fmt.Errorf("missing %s boot files for version %s: %s",
+			bootType, version, strings.Join(missing, ", "))
+	}
 	return nil
 }
 
@@ -611,16 +867,16 @@ func (s *service) ListInstalledBootFiles(ctx context.Context, bootType string) (
 }
 
 func (s *service) RemoveBootFiles(ctx context.Context, version, bootType string) error {
-	// Get the appropriate boot directory
+	// Get the appropriate boot directory from configuration
 	var bootDir string
 	var requiredFiles map[string]string
 
 	switch bootType {
 	case "bios":
-		bootDir = filepath.Join(s.config.TFTPDir, "boot-bios")
+		bootDir = filepath.Join(s.config.TFTPDir, s.config.BiosDir)
 		requiredFiles = GetRequiredBiosFiles()
 	case "efi":
-		bootDir = filepath.Join(s.config.TFTPDir, "boot-efi")
+		bootDir = filepath.Join(s.config.TFTPDir, s.config.EfiDir)
 		requiredFiles = GetRequiredEfiFiles()
 	default:
 		return fmt.Errorf("unsupported boot type: %s", bootType)
@@ -668,7 +924,9 @@ func (s *service) CheckDiskSpace(ctx context.Context) (*DiskSpaceInfo, error) {
 	return &DiskSpaceInfo{}, nil
 }
 
-// cleanupActiveVersion removes any currently active version and cleans up files
+// cleanupActiveVersion removes any currently active version and cleans up files.
+// It is only called after the new version has been fully downloaded,
+// extracted, and verified.
 func (s *service) cleanupActiveVersion(ctx context.Context) error {
 	versions, err := s.repo.ListVersions(ctx)
 	if err != nil {

@@ -163,10 +163,10 @@ func (v *PathSecurityValidator) ValidateFileType(filename string, allowedExtensi
 	ext := strings.ToLower(filepath.Ext(filename))
 	baseFilename := strings.ToLower(filepath.Base(filename))
 
-	// Known extensionless files that should be allowed
+	// Known extensionless files that should be allowed (exact basename match only)
 	knownFiles := []string{"vmlinuz", "initrd", "kernel", "boot"}
 	for _, known := range knownFiles {
-		if baseFilename == known || strings.Contains(baseFilename, known) {
+		if baseFilename == known {
 			return nil
 		}
 	}
@@ -200,6 +200,47 @@ func (v *PathSecurityValidator) SanitizePath(path string) string {
 	}
 
 	return strings.Join(safeParts, string(filepath.Separator))
+}
+
+// safeJoin joins a user-supplied relative name onto a base directory and
+// guarantees the result stays inside the base directory. It rejects empty,
+// absolute, and NUL-containing input, cleans the path, and verifies
+// containment with filepath.Rel so ".." escapes can never break out.
+// Use this at every file endpoint that turns user input into a filesystem path.
+func safeJoin(baseDir, userName string) (string, error) {
+	if strings.TrimSpace(userName) == "" {
+		return "", fmt.Errorf("file name is required")
+	}
+	if strings.ContainsRune(userName, 0) {
+		return "", fmt.Errorf("invalid file name")
+	}
+	cleaned := filepath.Clean(userName)
+	if filepath.IsAbs(cleaned) {
+		return "", fmt.Errorf("absolute paths are not allowed")
+	}
+	absBase, err := filepath.Abs(baseDir)
+	if err != nil {
+		return "", fmt.Errorf("invalid base directory: %v", err)
+	}
+	full := filepath.Join(absBase, cleaned)
+	rel, err := filepath.Rel(absBase, full)
+	if err != nil {
+		return "", fmt.Errorf("invalid path: %v", err)
+	}
+	if rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator)) {
+		return "", fmt.Errorf("path escapes base directory")
+	}
+	return full, nil
+}
+
+// sanitizeDispositionFilename strips characters that could break out of a
+// Content-Disposition header value (quotes, CR, LF).
+func sanitizeDispositionFilename(name string) string {
+	name = filepath.Base(name)
+	name = strings.ReplaceAll(name, `"`, "")
+	name = strings.ReplaceAll(name, "\r", "")
+	name = strings.ReplaceAll(name, "\n", "")
+	return name
 }
 
 // TFTPSecurityValidator provides TFTP-specific security validation

@@ -2,7 +2,6 @@ package syslinux
 
 import (
 	"context"
-	"io"
 )
 
 // Repository interface for Syslinux data persistence
@@ -61,41 +60,6 @@ type Service interface {
 	CheckDiskSpace(ctx context.Context) (*DiskSpaceInfo, error)
 }
 
-// Downloader interface for handling file downloads
-type Downloader interface {
-	Download(ctx context.Context, url, destination string, progress chan<- int) error
-	GetFileSize(ctx context.Context, url string) (int64, error)
-	VerifyChecksum(filePath, expectedChecksum string) error
-}
-
-// Extractor interface for handling archive extraction
-type Extractor interface {
-	Extract(ctx context.Context, archivePath, destination string, progress chan<- int) error
-	ListContents(archivePath string) ([]string, error)
-	ExtractFile(archivePath, fileName, destination string) error
-}
-
-// MirrorScanner interface for scanning the kernel.org mirror
-type MirrorScanner interface {
-	ScanVersions(ctx context.Context, baseURL string) ([]*SyslinuxMirror, error)
-	GetFileInfo(ctx context.Context, url string) (*FileInfo, error)
-}
-
-// FileManager interface for file system operations
-type FileManager interface {
-	CreateDirectory(path string) error
-	CopyFile(src, dst string) error
-	MoveFile(src, dst string) error
-	DeleteFile(path string) error
-	FileExists(path string) bool
-	GetFileSize(path string) (int64, error)
-	GetFileChecksum(path string) (string, error)
-	ReadFile(path string) ([]byte, error)
-	WriteFile(path string, data []byte) error
-}
-
-// Additional types for interface support
-
 // SystemStatus provides overview of the Syslinux system
 type SystemStatus struct {
 	InstalledVersions map[string]bool `json:"installed_versions"` // version -> installed
@@ -124,71 +88,4 @@ type DiskSpaceInfo struct {
 	UsedSpace      int64   `json:"used_space"`
 	UsagePercent   float64 `json:"usage_percent"`
 	Sufficient     bool    `json:"sufficient"` // Whether space is sufficient for operations
-}
-
-// FileInfo contains information about a file from mirror
-type FileInfo struct {
-	Name         string `json:"name"`
-	Size         int64  `json:"size"`
-	LastModified string `json:"last_modified"`
-	URL          string `json:"url"`
-}
-
-// ProgressCallback is used for reporting download/extraction progress
-type ProgressCallback func(percent int, message string)
-
-// EventHandler interface for handling Syslinux events
-type EventHandler interface {
-	OnDownloadStarted(version string)
-	OnDownloadProgress(version string, percent int)
-	OnDownloadCompleted(version string)
-	OnDownloadFailed(version string, err error)
-	OnExtractionStarted(version string)
-	OnExtractionCompleted(version string)
-	OnInstallationCompleted(version, bootType string)
-}
-
-// Logger interface for structured logging
-type Logger interface {
-	Debug(msg string, fields ...interface{})
-	Info(msg string, fields ...interface{})
-	Warn(msg string, fields ...interface{})
-	Error(msg string, fields ...interface{})
-	WithField(key string, value interface{}) Logger
-	WithFields(fields map[string]interface{}) Logger
-}
-
-// ConfigProvider interface for configuration management
-type ConfigProvider interface {
-	GetConfig() SyslinuxConfig
-	SaveConfig(config SyslinuxConfig) error
-	GetTFTPDir() string
-	GetBiosDir() string
-	GetEfiDir() string
-	GetTempDir() string
-}
-
-// CacheManager interface for caching downloaded files and metadata
-type CacheManager interface {
-	Get(key string) (interface{}, bool)
-	Set(key string, value interface{}, ttl int) error
-	Delete(key string) error
-	Clear() error
-	GetSize() int64
-}
-
-// HTTPClient interface for making HTTP requests
-type HTTPClient interface {
-	Get(url string) (io.ReadCloser, error)
-	GetWithContext(ctx context.Context, url string) (io.ReadCloser, error)
-	Head(url string) (*HTTPResponse, error)
-	HeadWithContext(ctx context.Context, url string) (*HTTPResponse, error)
-}
-
-// HTTPResponse represents an HTTP response
-type HTTPResponse struct {
-	StatusCode    int
-	ContentLength int64
-	LastModified  string
-	Headers       map[string]string
 }

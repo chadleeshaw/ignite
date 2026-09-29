@@ -1,11 +1,9 @@
 package handlers
 
 import (
-	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"time"
 
 	"ignite/syslinux"
 
@@ -69,7 +67,7 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 	// Get all available versions
 	versions, err := h.service.GetAvailableVersions(ctx)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get versions: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to get versions: %v", err), "Unable to load syslinux versions"))
 		return
 	}
 
@@ -90,10 +88,10 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 	templates := LoadTemplates()
 	if tmpl, ok := templates["syslinux"]; ok {
 		if err := tmpl.Execute(w, data); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to execute template: %v", err), http.StatusInternalServerError)
+			HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to execute template: %v", err), "Unable to render the syslinux page"))
 		}
 	} else {
-		http.Error(w, "Syslinux template not found", http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Syslinux template not found", "Unable to render the syslinux page"))
 	}
 }
 
@@ -101,7 +99,7 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 func (h *SyslinuxHandler) ListVersions(w http.ResponseWriter, r *http.Request) {
 	versions, err := h.service.GetAvailableVersions(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to get versions: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to get versions: "+err.Error(), "Unable to load syslinux versions"))
 		return
 	}
 
@@ -115,7 +113,7 @@ func (h *SyslinuxHandler) ListVersions(w http.ResponseWriter, r *http.Request) {
 // RefreshVersions scans the mirror for new versions
 func (h *SyslinuxHandler) RefreshVersions(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.RefreshAvailableVersions(r.Context()); err != nil {
-		http.Error(w, "Failed to refresh versions: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to refresh versions: "+err.Error(), "Unable to refresh syslinux versions"))
 		return
 	}
 
@@ -129,7 +127,7 @@ func (h *SyslinuxHandler) RefreshVersions(w http.ResponseWriter, r *http.Request
 // ScanMirror scans the mirror for available Syslinux versions
 func (h *SyslinuxHandler) ScanMirror(w http.ResponseWriter, r *http.Request) {
 	if err := h.service.RefreshAvailableVersions(r.Context()); err != nil {
-		http.Error(w, "Failed to scan mirror: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to scan mirror: "+err.Error(), "Unable to scan the syslinux mirror"))
 		return
 	}
 
@@ -143,7 +141,7 @@ func (h *SyslinuxHandler) DownloadAndInstallVersion(w http.ResponseWriter, r *ht
 	version := vars["version"]
 
 	if version == "" {
-		http.Error(w, "Version parameter required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Version parameter required", "A version is required"))
 		return
 	}
 
@@ -151,7 +149,7 @@ func (h *SyslinuxHandler) DownloadAndInstallVersion(w http.ResponseWriter, r *ht
 	// The service now handles: cleanup -> download -> extract -> install -> activate
 	_, err := h.service.DownloadVersion(r.Context(), version)
 	if err != nil {
-		http.Error(w, "Failed to start download: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to start download: "+err.Error(), "Unable to start the download"))
 		return
 	}
 
@@ -159,41 +157,17 @@ func (h *SyslinuxHandler) DownloadAndInstallVersion(w http.ResponseWriter, r *ht
 	http.Redirect(w, r, "/syslinux", http.StatusSeeOther)
 }
 
-// ActivateVersion sets a version as the active one
+// ActivateVersion marks an already-downloaded version as the active one.
+// The service layer exposes no standalone activation for an already
+// downloaded version (activation only happens inside the download flow),
+// so this honestly reports 501 instead of faking it.
 func (h *SyslinuxHandler) ActivateVersion(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	version := vars["version"]
-
-	if version == "" {
-		http.Error(w, "Version parameter required", http.StatusBadRequest)
-		return
-	}
-
-	// First deactivate any currently active version
-	if err := h.deactivateCurrentVersion(r.Context()); err != nil {
-		http.Error(w, "Failed to deactivate current version: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Install both BIOS and EFI boot files
-	if err := h.service.InstallBootFiles(r.Context(), version, "bios"); err != nil {
-		http.Error(w, "Failed to install BIOS boot files: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	if err := h.service.InstallBootFiles(r.Context(), version, "efi"); err != nil {
-		http.Error(w, "Failed to install EFI boot files: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Mark version as active
-	if err := h.activateVersion(r.Context(), version); err != nil {
-		http.Error(w, "Failed to activate version: "+err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	// Redirect back to main page
-	http.Redirect(w, r, "/syslinux", http.StatusSeeOther)
+	HandleError(w, r, NewAppError(
+		ErrorTypeServiceUnavail,
+		"syslinux version activation is not implemented in the service layer",
+		"Activating an already-downloaded version is not supported by this server",
+		http.StatusNotImplemented,
+	))
 }
 
 // DeactivateVersion deactivates and removes the currently active version
@@ -202,13 +176,13 @@ func (h *SyslinuxHandler) DeactivateVersion(w http.ResponseWriter, r *http.Reque
 	version := vars["version"]
 
 	if version == "" {
-		http.Error(w, "Version parameter required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Version parameter required", "A version is required"))
 		return
 	}
 
 	// Use the service method to properly deactivate the version
 	if err := h.service.DeactivateVersion(r.Context(), version); err != nil {
-		http.Error(w, "Failed to deactivate version: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to deactivate version: "+err.Error(), "Unable to deactivate the version"))
 		return
 	}
 
@@ -222,14 +196,14 @@ func (h *SyslinuxHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	version := vars["version"]
 
 	if version == "" {
-		http.Error(w, "Version parameter required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Version parameter required", "A version is required"))
 		return
 	}
 
 	// Get all variants of this version (BIOS and EFI)
 	versions, err := h.service.GetAvailableVersions(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to get versions: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to get versions: "+err.Error(), "Unable to load syslinux versions"))
 		return
 	}
 
@@ -242,7 +216,7 @@ func (h *SyslinuxHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if matchedVersion == nil {
-		http.Error(w, "Version not found", http.StatusNotFound)
+		HandleError(w, r, NewNotFoundError("Version not found", "The requested syslinux version does not exist"))
 		return
 	}
 
@@ -266,22 +240,16 @@ func (h *SyslinuxHandler) GetVersion(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(response)
 }
 
-// DeleteVersion removes a version
+// DeleteVersion handles DELETE /api/syslinux/versions/{version}.
+// The service layer exposes no version deletion, so this honestly reports
+// 501 instead of pretending to delete.
 func (h *SyslinuxHandler) DeleteVersion(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	version := vars["version"]
-
-	if version == "" {
-		http.Error(w, "Version parameter required", http.StatusBadRequest)
-		return
-	}
-
-	// This would need implementation in the service
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"message": fmt.Sprintf("Version %s deleted", version),
-	})
+	HandleError(w, r, NewAppError(
+		ErrorTypeServiceUnavail,
+		"syslinux version deletion is not implemented in the service layer",
+		"Deleting syslinux versions is not supported by this server",
+		http.StatusNotImplemented,
+	))
 }
 
 // ListBootFiles returns boot files, optionally filtered by version and boot type
@@ -291,7 +259,7 @@ func (h *SyslinuxHandler) ListBootFiles(w http.ResponseWriter, r *http.Request) 
 
 	bootFiles, err := h.service.ListInstalledBootFiles(r.Context(), bootType)
 	if err != nil {
-		http.Error(w, "Failed to get boot files: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to get boot files: "+err.Error(), "Unable to load boot files"))
 		return
 	}
 
@@ -320,12 +288,12 @@ func (h *SyslinuxHandler) InstallBootFiles(w http.ResponseWriter, r *http.Reques
 	bootType := vars["bootType"]
 
 	if version == "" || bootType == "" {
-		http.Error(w, "Version and bootType parameters required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Version and bootType parameters required", "A version and boot type are required"))
 		return
 	}
 
 	if err := h.service.InstallBootFiles(r.Context(), version, bootType); err != nil {
-		http.Error(w, "Failed to install boot files: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to install boot files: "+err.Error(), "Unable to install the boot files"))
 		return
 	}
 
@@ -343,12 +311,12 @@ func (h *SyslinuxHandler) RemoveBootFiles(w http.ResponseWriter, r *http.Request
 	bootType := vars["bootType"]
 
 	if version == "" || bootType == "" {
-		http.Error(w, "Version and bootType parameters required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Version and bootType parameters required", "A version and boot type are required"))
 		return
 	}
 
 	if err := h.service.RemoveBootFiles(r.Context(), version, bootType); err != nil {
-		http.Error(w, "Failed to remove boot files: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to remove boot files: "+err.Error(), "Unable to remove the boot files"))
 		return
 	}
 
@@ -359,35 +327,28 @@ func (h *SyslinuxHandler) RemoveBootFiles(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// GetBootFile returns details for a specific boot file
+// GetBootFile returns details for a specific boot file.
+// The service layer exposes no single-boot-file lookup, so this honestly
+// reports 501 instead of echoing the id back.
 func (h *SyslinuxHandler) GetBootFile(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
-	id := vars["id"]
-
-	if id == "" {
-		http.Error(w, "ID parameter required", http.StatusBadRequest)
-		return
-	}
-
-	// This would need implementation in the service
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"success": true,
-		"id":      id,
-	})
+	HandleError(w, r, NewAppError(
+		ErrorTypeServiceUnavail,
+		"syslinux boot file lookup is not implemented in the service layer",
+		"Looking up individual boot files is not supported by this server",
+		http.StatusNotImplemented,
+	))
 }
 
-// ListDownloadStatuses returns all download statuses
+// ListDownloadStatuses returns all download statuses.
+// The service layer only supports lookup by download id, so this honestly
+// reports 501 instead of returning an empty list.
 func (h *SyslinuxHandler) ListDownloadStatuses(w http.ResponseWriter, r *http.Request) {
-	// Get optional status filter
-	statusFilter := r.URL.Query().Get("status")
-
-	// This would need implementation in the service to get all statuses
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]interface{}{
-		"downloads": []interface{}{},
-		"filter":    statusFilter,
-	})
+	HandleError(w, r, NewAppError(
+		ErrorTypeServiceUnavail,
+		"syslinux download listing is not implemented in the service layer",
+		"Listing all downloads is not supported by this server",
+		http.StatusNotImplemented,
+	))
 }
 
 // GetDownloadStatus returns status for a specific download
@@ -396,13 +357,13 @@ func (h *SyslinuxHandler) GetDownloadStatus(w http.ResponseWriter, r *http.Reque
 	id := vars["id"]
 
 	if id == "" {
-		http.Error(w, "ID parameter required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("ID parameter required", "An id is required"))
 		return
 	}
 
 	status, err := h.service.GetDownloadStatus(r.Context(), id)
 	if err != nil {
-		http.Error(w, "Failed to get download status: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to get download status: "+err.Error(), "Unable to load the download status"))
 		return
 	}
 
@@ -416,12 +377,12 @@ func (h *SyslinuxHandler) CancelDownload(w http.ResponseWriter, r *http.Request)
 	id := vars["id"]
 
 	if id == "" {
-		http.Error(w, "ID parameter required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("ID parameter required", "An id is required"))
 		return
 	}
 
 	if err := h.service.CancelDownload(r.Context(), id); err != nil {
-		http.Error(w, "Failed to cancel download: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to cancel download: "+err.Error(), "Unable to cancel the download"))
 		return
 	}
 
@@ -436,7 +397,7 @@ func (h *SyslinuxHandler) CancelDownload(w http.ResponseWriter, r *http.Request)
 func (h *SyslinuxHandler) GetSystemStatus(w http.ResponseWriter, r *http.Request) {
 	status, err := h.service.GetSystemStatus(r.Context())
 	if err != nil {
-		http.Error(w, "Failed to get system status: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to get system status: "+err.Error(), "Unable to load the system status"))
 		return
 	}
 
@@ -465,12 +426,12 @@ func (h *SyslinuxHandler) GetConfig(w http.ResponseWriter, r *http.Request) {
 func (h *SyslinuxHandler) UpdateConfig(w http.ResponseWriter, r *http.Request) {
 	var config syslinux.SyslinuxConfig
 	if err := json.NewDecoder(r.Body).Decode(&config); err != nil {
-		http.Error(w, "Invalid JSON: "+err.Error(), http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Invalid JSON: "+err.Error(), "The request body is not valid JSON"))
 		return
 	}
 
 	if err := h.service.UpdateConfig(r.Context(), config); err != nil {
-		http.Error(w, "Failed to update config: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to update config: "+err.Error(), "Unable to update the configuration"))
 		return
 	}
 
@@ -487,95 +448,21 @@ func (h *SyslinuxHandler) ValidateInstallation(w http.ResponseWriter, r *http.Re
 	bootType := vars["bootType"]
 
 	if bootType == "" {
-		http.Error(w, "Boot type parameter required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Boot type parameter required", "A boot type is required"))
 		return
 	}
 
 	if bootType != "bios" && bootType != "efi" {
-		http.Error(w, "Boot type must be 'bios' or 'efi'", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Boot type must be 'bios' or 'efi'", "Boot type must be 'bios' or 'efi'"))
 		return
 	}
 
 	result, err := h.service.ValidateInstallation(r.Context(), bootType)
 	if err != nil {
-		http.Error(w, "Failed to validate installation: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError("Failed to validate installation: "+err.Error(), "Unable to validate the installation"))
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(result)
-}
-
-// Helper methods for version management
-
-// deactivateCurrentVersion finds and deactivates any currently active version
-func (h *SyslinuxHandler) deactivateCurrentVersion(ctx context.Context) error {
-	versions, err := h.service.GetAvailableVersions(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, version := range versions {
-		if version.Active {
-			// Remove boot files
-			if err := h.service.RemoveBootFiles(ctx, version.Version, "bios"); err != nil {
-				return fmt.Errorf("failed to remove BIOS boot files for %s: %w", version.Version, err)
-			}
-			if err := h.service.RemoveBootFiles(ctx, version.Version, "efi"); err != nil {
-				return fmt.Errorf("failed to remove EFI boot files for %s: %w", version.Version, err)
-			}
-
-			// Mark as inactive
-			if err := h.deactivateVersion(ctx, version.Version); err != nil {
-				return fmt.Errorf("failed to deactivate version %s: %w", version.Version, err)
-			}
-		}
-	}
-
-	return nil
-}
-
-// activateVersion marks a specific version as active
-func (h *SyslinuxHandler) activateVersion(ctx context.Context, version string) error {
-	// This would need to be implemented in the service layer
-	// For now, we'll need to directly update the database via repository
-	versions, err := h.service.GetAvailableVersions(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, v := range versions {
-		if v.Version == version {
-			v.Active = true
-			v.Downloaded = true
-			v.UpdatedAt = time.Now()
-			now := time.Now()
-			v.DownloadedAt = &now
-			// We would need a SaveVersion method in the service
-			break
-		}
-	}
-
-	return nil
-}
-
-// deactivateVersion marks a specific version as inactive
-func (h *SyslinuxHandler) deactivateVersion(ctx context.Context, version string) error {
-	// This would need to be implemented in the service layer
-	// For now, we'll need to directly update the database via repository
-	versions, err := h.service.GetAvailableVersions(ctx)
-	if err != nil {
-		return err
-	}
-
-	for _, v := range versions {
-		if v.Version == version {
-			v.Active = false
-			v.UpdatedAt = time.Now()
-			// We would need a SaveVersion method in the service
-			break
-		}
-	}
-
-	return nil
 }

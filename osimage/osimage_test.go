@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"ignite/config"
+	"ignite/dlstatus"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -142,13 +143,13 @@ func createTestConfig() *config.Config {
 }
 
 // Helper function to create a service without starting the background worker
-func createTestService(mockRepo *MockOSImageRepository, mockDownloadRepo *MockDownloadStatusRepository, config *config.Config) *OSImageServiceImpl {
-	service := &OSImageServiceImpl{
-		repo:            mockRepo,
-		downloadRepo:    mockDownloadRepo,
-		config:          config,
-		downloadChan:    make(chan OSImageConfig, 10),
-		activeDownloads: make(map[string]*DownloadStatus),
+func createTestService(mockRepo *MockOSImageRepository, mockDownloadRepo *MockDownloadStatusRepository, config *config.Config) *osImageServiceImpl {
+	service := &osImageServiceImpl{
+		repo:         mockRepo,
+		downloadRepo: mockDownloadRepo,
+		config:       config,
+		downloadChan: make(chan downloadRequest, 10),
+		cancels:      make(map[string]context.CancelFunc),
 	}
 	// Don't start the background worker for tests
 	return service
@@ -169,13 +170,14 @@ func TestNewOSImageService(t *testing.T) {
 	assert.NotNil(t, service)
 
 	// Cast to implementation to verify internal structure
-	impl, ok := service.(*OSImageServiceImpl)
+	impl, ok := service.(*osImageServiceImpl)
 	assert.True(t, ok)
 	assert.Equal(t, mockRepo, impl.repo)
 	assert.Equal(t, mockDownloadRepo, impl.downloadRepo)
 	assert.Equal(t, config, impl.config)
 	assert.NotNil(t, impl.downloadChan)
-	assert.NotNil(t, impl.activeDownloads)
+	assert.NotNil(t, impl.cancels)
+	assert.NotNil(t, impl.httpClient)
 }
 
 // Test GetAllOSImages
@@ -350,8 +352,8 @@ func TestDownloadOSImage_Valid(t *testing.T) {
 	// Mock that the OS/version doesn't exist yet
 	mockRepo.On("GetByOSAndVersion", ctx, osConfig.OS, osConfig.Version).Return(nil, errors.New("not found"))
 
-	// Mock saving the download status twice (queued, then downloading)
-	mockDownloadRepo.On("Save", ctx, mock.AnythingOfType("*osimage.DownloadStatus")).Return(nil).Twice()
+	// Mock saving the queued download status once
+	mockDownloadRepo.On("Save", ctx, mock.AnythingOfType("*dlstatus.DownloadStatus")).Return(nil).Once()
 
 	status, err := service.DownloadOSImage(ctx, osConfig)
 
@@ -359,7 +361,7 @@ func TestDownloadOSImage_Valid(t *testing.T) {
 	assert.NotNil(t, status)
 	assert.Equal(t, osConfig.OS, status.OS)
 	assert.Equal(t, osConfig.Version, status.Version)
-	assert.Equal(t, "downloading", status.Status)
+	assert.Equal(t, dlstatus.StatusQueued, status.Status)
 	assert.False(t, status.StartedAt.IsZero())
 
 	mockRepo.AssertExpectations(t)
@@ -471,7 +473,7 @@ func TestGetDownloadStatus(t *testing.T) {
 		ID:        id,
 		OS:        "ubuntu",
 		Version:   "22.04",
-		Status:    "downloading",
+		Status:    dlstatus.StatusDownloading,
 		Progress:  50,
 		StartedAt: time.Now(),
 	}
@@ -496,13 +498,13 @@ func TestGetActiveDownloads(t *testing.T) {
 	expectedDownloads := []*DownloadStatus{
 		{
 			ID:      "download-1",
-			Status:  "downloading",
+			Status:  dlstatus.StatusDownloading,
 			OS:      "ubuntu",
 			Version: "22.04",
 		},
 		{
 			ID:      "download-2",
-			Status:  "queued",
+			Status:  dlstatus.StatusQueued,
 			OS:      "centos",
 			Version: "8",
 		},
@@ -530,7 +532,7 @@ func TestCancelDownload(t *testing.T) {
 		ID:        id,
 		OS:        "ubuntu",
 		Version:   "22.04",
-		Status:    "downloading",
+		Status:    dlstatus.StatusDownloading,
 		Progress:  30,
 		StartedAt: time.Now(),
 	}
@@ -538,7 +540,7 @@ func TestCancelDownload(t *testing.T) {
 	mockDownloadRepo.On("Get", ctx, id).Return(downloadStatus, nil)
 	mockDownloadRepo.On("Save", ctx, mock.MatchedBy(func(status *DownloadStatus) bool {
 		return status.ID == id &&
-			status.Status == "cancelled" &&
+			status.Status == dlstatus.StatusCancelled &&
 			status.Progress == 0 &&
 			status.ErrorMessage == "Download cancelled by user" &&
 			status.CompletedAt != nil
@@ -561,7 +563,7 @@ func TestCancelDownload_InvalidStatus(t *testing.T) {
 	id := "download-id"
 	downloadStatus := &DownloadStatus{
 		ID:     id,
-		Status: "completed", // Cannot cancel completed download
+		Status: dlstatus.StatusCompleted, // Cannot cancel completed download
 	}
 
 	mockDownloadRepo.On("Get", ctx, id).Return(downloadStatus, nil)
@@ -623,7 +625,7 @@ func TestDownloadStatus(t *testing.T) {
 		ID:           "download-123",
 		OS:           "ubuntu",
 		Version:      "22.04",
-		Status:       "completed",
+		Status:       dlstatus.StatusCompleted,
 		Progress:     100,
 		ErrorMessage: "",
 		StartedAt:    now,
@@ -632,9 +634,103 @@ func TestDownloadStatus(t *testing.T) {
 
 	assert.Equal(t, "download-123", status.ID)
 	assert.Equal(t, "ubuntu", status.OS)
-	assert.Equal(t, "completed", status.Status)
+	assert.Equal(t, dlstatus.StatusCompleted, status.Status)
 	assert.Equal(t, 100, status.Progress)
 	assert.Empty(t, status.ErrorMessage)
 	assert.NotNil(t, status.CompletedAt)
 	assert.True(t, status.CompletedAt.After(status.StartedAt))
+}
+
+// Test DownloadOSImage when the worker queue is full
+func TestDownloadOSImage_QueueFull(t *testing.T) {
+	mockRepo := &MockOSImageRepository{}
+	mockDownloadRepo := &MockDownloadStatusRepository{}
+	config := createTestConfig()
+	service := createTestService(mockRepo, mockDownloadRepo, config)
+
+	ctx := context.Background()
+	// Fill the download queue
+	for i := 0; i < 10; i++ {
+		service.downloadChan <- downloadRequest{}
+	}
+
+	osConfig := OSImageConfig{
+		OS:           "ubuntu",
+		Version:      "22.04",
+		Architecture: "x86_64",
+	}
+
+	mockRepo.On("GetByOSAndVersion", ctx, osConfig.OS, osConfig.Version).Return(nil, errors.New("not found"))
+	// The queued status is persisted before the enqueue attempt...
+	mockDownloadRepo.On("Save", ctx, mock.MatchedBy(func(status *DownloadStatus) bool {
+		return status.Status == dlstatus.StatusQueued
+	})).Return(nil).Once()
+	// ...and then flipped to failed when the queue turns out to be full
+	mockDownloadRepo.On("Save", ctx, mock.MatchedBy(func(status *DownloadStatus) bool {
+		return status.Status == dlstatus.StatusFailed &&
+			status.ErrorMessage == "download queue is full, try again later" &&
+			status.CompletedAt != nil
+	})).Return(nil).Once()
+
+	status, err := service.DownloadOSImage(ctx, osConfig)
+
+	assert.Error(t, err)
+	assert.Nil(t, status)
+	assert.Contains(t, err.Error(), "download queue is full")
+	mockRepo.AssertExpectations(t)
+	mockDownloadRepo.AssertExpectations(t)
+}
+
+// Test that CancelDownload signals the worker via the download's context
+func TestCancelDownload_SignalsWorker(t *testing.T) {
+	mockRepo := &MockOSImageRepository{}
+	mockDownloadRepo := &MockDownloadStatusRepository{}
+	config := createTestConfig()
+	service := createTestService(mockRepo, mockDownloadRepo, config)
+
+	ctx := context.Background()
+	id := "download-id"
+
+	dlCtx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	service.mu.Lock()
+	service.cancels[id] = cancel
+	service.mu.Unlock()
+
+	downloadStatus := &DownloadStatus{
+		ID:        id,
+		OS:        "ubuntu",
+		Version:   "22.04",
+		Status:    dlstatus.StatusDownloading,
+		Progress:  30,
+		StartedAt: time.Now(),
+	}
+
+	mockDownloadRepo.On("Get", ctx, id).Return(downloadStatus, nil)
+	mockDownloadRepo.On("Save", ctx, mock.AnythingOfType("*dlstatus.DownloadStatus")).Return(nil)
+
+	err := service.CancelDownload(ctx, id)
+
+	assert.NoError(t, err)
+	assert.Error(t, dlCtx.Err(), "worker context should have been cancelled")
+	assert.Equal(t, dlstatus.StatusCancelled, downloadStatus.Status)
+
+	service.mu.Lock()
+	_, stillTracked := service.cancels[id]
+	service.mu.Unlock()
+	assert.False(t, stillTracked, "cancel func should be removed after CancelDownload")
+
+	mockDownloadRepo.AssertExpectations(t)
+}
+
+// Test numeric version comparison
+func TestCompareVersions(t *testing.T) {
+	assert.Equal(t, -1, compareVersions("9", "10"))
+	assert.Equal(t, 1, compareVersions("10", "9"))
+	assert.Equal(t, 0, compareVersions("22.04", "22.04"))
+	assert.Equal(t, -1, compareVersions("20.04", "22.04"))
+	assert.Equal(t, 1, compareVersions("22.04", "20.04"))
+	assert.Equal(t, -1, compareVersions("6.03", "6.10"))
+	assert.Equal(t, 1, compareVersions("6.10", "6.03"))
+	assert.Equal(t, -1, compareVersions("6.03", "6.03.1"))
 }

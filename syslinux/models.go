@@ -1,7 +1,11 @@
 package syslinux
 
 import (
+	"fmt"
+	"strings"
 	"time"
+
+	"ignite/dlstatus"
 )
 
 // SyslinuxVersion represents a Syslinux version available for download
@@ -47,16 +51,9 @@ type SyslinuxConfig struct {
 	VerifyChecksum bool   `json:"verify_checksum"` // Verify downloads with checksums
 }
 
-// DownloadStatus represents the status of a Syslinux download
-type DownloadStatus struct {
-	ID           string     `json:"id"`
-	Version      string     `json:"version"`
-	Status       string     `json:"status"`   // downloading, extracting, completed, failed
-	Progress     int        `json:"progress"` // Percentage 0-100
-	ErrorMessage string     `json:"error_message,omitempty"`
-	StartedAt    time.Time  `json:"started_at"`
-	CompletedAt  *time.Time `json:"completed_at,omitempty"`
-}
+// DownloadStatus is the shared download-status type (see ignite/dlstatus).
+// It is aliased so existing references keep compiling.
+type DownloadStatus = dlstatus.DownloadStatus
 
 // SyslinuxMirror represents available versions scraped from kernel.org
 type SyslinuxMirror struct {
@@ -160,24 +157,86 @@ func GetBootFileSourcePath(bootType, fileName string) string {
 	return ""
 }
 
-// GetBootTypeFromVersion determines available boot types for a version
+// GetBootTypeFromVersion determines available boot types for a version.
+// The comparison is numeric so that e.g. "10.00" is not considered older
+// than "4.00" the way a lexicographic string comparison would.
 func GetBootTypeFromVersion(version string) []string {
 	// Most modern versions support both BIOS and EFI
 	// Very old versions might only support BIOS
-	if version < "4.00" {
+	if compareVersionStrings(version, "4.00") < 0 {
 		return []string{"bios"}
 	}
 	return []string{"bios", "efi"}
 }
 
-// ParseVersionFromFilename extracts version from filename like "syslinux-6.03.tar.gz"
-func ParseVersionFromFilename(filename string) string {
-	// Remove syslinux- prefix and .tar.gz suffix
-	if len(filename) > 9 && filename[:9] == "syslinux-" {
-		end := len(filename) - 7 // Remove .tar.gz
-		if end > 9 {
-			return filename[9:end]
+// compareVersionStrings compares dot-separated version strings numerically,
+// segment by segment, falling back to lexical comparison for non-numeric
+// segments.
+func compareVersionStrings(a, b string) int {
+	as := strings.Split(a, ".")
+	bs := strings.Split(b, ".")
+	for i := 0; i < len(as) && i < len(bs); i++ {
+		ai, aerr := parseVersionSegment(as[i])
+		bi, berr := parseVersionSegment(bs[i])
+		switch {
+		case aerr == nil && berr == nil:
+			if ai != bi {
+				if ai < bi {
+					return -1
+				}
+				return 1
+			}
+		default:
+			if as[i] != bs[i] {
+				if as[i] < bs[i] {
+					return -1
+				}
+				return 1
+			}
 		}
 	}
-	return ""
+	switch {
+	case len(as) < len(bs):
+		return -1
+	case len(as) > len(bs):
+		return 1
+	default:
+		return 0
+	}
+}
+
+// parseVersionSegment parses the leading numeric portion of a version
+// segment ("03" -> 3, "pre1" -> error).
+func parseVersionSegment(s string) (int, error) {
+	digits := s
+	for i, r := range s {
+		if r < '0' || r > '9' {
+			digits = s[:i]
+			break
+		}
+	}
+	if digits == "" {
+		return 0, fmt.Errorf("no numeric prefix in %q", s)
+	}
+	n := 0
+	for _, r := range digits {
+		n = n*10 + int(r-'0')
+	}
+	return n, nil
+}
+
+// ParseVersionFromFilename extracts version from filename like "syslinux-6.03.tar.gz".
+// It returns "" unless the filename has both the "syslinux-" prefix and the
+// ".tar.gz" suffix.
+func ParseVersionFromFilename(filename string) string {
+	const prefix = "syslinux-"
+	const suffix = ".tar.gz"
+	if !strings.HasPrefix(filename, prefix) || !strings.HasSuffix(filename, suffix) {
+		return ""
+	}
+	version := filename[len(prefix) : len(filename)-len(suffix)]
+	if version == "" {
+		return ""
+	}
+	return version
 }

@@ -2,6 +2,8 @@ package osimage
 
 import (
 	"time"
+
+	"ignite/dlstatus"
 )
 
 // OSImage represents a bootable OS kernel and initrd combination
@@ -14,7 +16,7 @@ type OSImage struct {
 	InitrdPath   string    `json:"initrd_path"`  // ubuntu/22.04/initrd.img
 	KernelSize   int64     `json:"kernel_size"`  // Size in bytes
 	InitrdSize   int64     `json:"initrd_size"`  // Size in bytes
-	Checksum     string    `json:"checksum"`     // SHA256 verification
+	Checksum     string    `json:"checksum"`     // SHA256 fingerprints of the downloaded files (kernel:initrd); verified against config only when expected checksums are provided
 	Active       bool      `json:"active"`       // Default version for OS
 	DownloadURL  string    `json:"download_url"` // Original download URL
 	CreatedAt    time.Time `json:"created_at"`
@@ -29,14 +31,6 @@ type OSImageConfig struct {
 	Source       string `json:"source"` // Download URL
 }
 
-// DownloadStatus represents the status of an OS image download
-type DownloadStatus struct {
-	ID           string     `json:"id"`
-	OS           string     `json:"os"`
-	Version      string     `json:"version"`
-	Status       string     `json:"status"`   // downloading, completed, failed
-	Progress     int        `json:"progress"` // Percentage 0-100
-	ErrorMessage string     `json:"error_message,omitempty"`
-	StartedAt    time.Time  `json:"started_at"`
-	CompletedAt  *time.Time `json:"completed_at,omitempty"`
-}
+// DownloadStatus is the shared download-status type (see ignite/dlstatus).
+// It is aliased so existing references keep compiling.
+type DownloadStatus = dlstatus.DownloadStatus

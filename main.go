@@ -3,7 +3,7 @@ package main
 import (
 	"embed"
 	"ignite/app"
-	"ignite/testdata"
+	"ignite/cli"
 	"log"
 )
 
@@ -14,7 +14,7 @@ var staticFS embed.FS
 
 func main() {
 	// Parse command line flags
-	config := testdata.ParseFlags()
+	config := cli.ParseFlags()
 
 	// Create application with embedded static files
 	application, err := app.NewApplicationWithStatic(staticFS)
@@ -23,7 +23,7 @@ func main() {
 	}
 
 	// Handle any CLI data operations (mock data, clear data, etc.)
-	if !testdata.HandleDataOperations(config, application) {
+	if !cli.HandleDataOperations(config, application) {
 		return // Exit if only data operations were requested
 	}
 

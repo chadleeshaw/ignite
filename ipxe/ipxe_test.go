@@ -562,3 +562,104 @@ func TestTemplateStructure(t *testing.T) {
 	assert.Contains(t, result, ":exit")
 	assert.Contains(t, result, ":memtest")
 }
+
+// Test menuID generates unique, sanitized IDs per OS+version
+func TestMenuID(t *testing.T) {
+	assert.Equal(t, "ubuntu-22-04", menuID("ubuntu", "22.04"))
+	assert.Equal(t, "centos-stream-9", menuID("centos", "stream-9"))
+
+	// Two versions of the same OS must not collide
+	id1 := menuID("ubuntu", "22.04")
+	id2 := menuID("ubuntu", "20.04")
+	assert.NotEqual(t, id1, id2)
+
+	// IDs must be safe for iPXE labels (no spaces or slashes)
+	assert.Equal(t, "my-os-1-0-beta", menuID("My OS", "1.0/beta"))
+
+	// Degenerate inputs still produce a non-empty ID
+	assert.NotEmpty(t, menuID("", ""))
+}
+
+// Test getDisplayName with empty OS does not panic
+func TestGetDisplayName_EmptyOS(t *testing.T) {
+	cfg := createTestConfig()
+	service := NewService(cfg, nil)
+
+	assert.NotPanics(t, func() {
+		assert.Equal(t, "22.04", service.getDisplayName("", "22.04"))
+		assert.Equal(t, "Unknown OS", service.getDisplayName("", ""))
+	})
+}
+
+// Test getKernelArgs uses the configured HTTP port
+func TestGetKernelArgs_ConfigPort(t *testing.T) {
+	cfg := createTestConfig()
+	cfg.HTTP.Port = "9090"
+	service := NewService(cfg, nil)
+
+	args := service.getKernelArgs("ubuntu", "192.168.1.100")
+	assert.Contains(t, args, "http://192.168.1.100:9090/ubuntu/")
+	assert.NotContains(t, args, ":8080")
+}
+
+// Test getServerIP honors the SERVER_IP environment override
+func TestGetServerIP_EnvOverride(t *testing.T) {
+	t.Setenv("SERVER_IP", "10.20.30.40")
+
+	cfg := createTestConfig()
+	service := NewService(cfg, nil)
+
+	ip, err := service.getServerIP()
+	assert.NoError(t, err)
+	assert.Equal(t, "10.20.30.40", ip)
+}
+
+// Test GenerateConfig gives each OS version a unique menu label
+func TestGenerateConfig_UniqueMenuIDs(t *testing.T) {
+	ctx := context.Background()
+	cfg := createTestConfig()
+	mockOSService := &MockOSImageService{}
+	service := NewService(cfg, mockOSService)
+
+	osImages := []*osimage.OSImage{
+		{ID: "ubuntu-22.04", OS: "ubuntu", Version: "22.04"},
+		{ID: "ubuntu-20.04", OS: "ubuntu", Version: "20.04"},
+	}
+	mockOSService.On("GetAllOSImages", ctx).Return(osImages, nil)
+
+	config, err := service.GenerateConfig(ctx)
+
+	assert.NoError(t, err)
+	assert.Contains(t, config, ":ubuntu-22-04")
+	assert.Contains(t, config, ":ubuntu-20-04")
+	assert.Contains(t, config, "item ubuntu-22-04 Ubuntu 22.04")
+	assert.Contains(t, config, "item ubuntu-20-04 Ubuntu 20.04")
+
+	mockOSService.AssertExpectations(t)
+}
+
+// Test getServerIP prefers the configured ServerIP when the env var is unset
+func TestGetServerIP_ConfigValue(t *testing.T) {
+	t.Setenv("SERVER_IP", "")
+
+	cfg := createTestConfig()
+	cfg.ServerIP = "10.99.99.99"
+	service := NewService(cfg, nil)
+
+	ip, err := service.getServerIP()
+	assert.NoError(t, err)
+	assert.Equal(t, "10.99.99.99", ip)
+}
+
+// Test the SERVER_IP env var wins over the configured ServerIP
+func TestGetServerIP_EnvBeatsConfig(t *testing.T) {
+	t.Setenv("SERVER_IP", "10.20.30.40")
+
+	cfg := createTestConfig()
+	cfg.ServerIP = "10.99.99.99"
+	service := NewService(cfg, nil)
+
+	ip, err := service.getServerIP()
+	assert.NoError(t, err)
+	assert.Equal(t, "10.20.30.40", ip)
+}

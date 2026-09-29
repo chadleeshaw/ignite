@@ -2,6 +2,7 @@ package osimage
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"ignite/db"
 	"time"
@@ -12,12 +13,14 @@ import (
 // OSImageRepositoryImpl implements OSImageRepository using BoltDB
 type OSImageRepositoryImpl struct {
 	*db.GenericRepository[OSImage]
+	database db.Database
 }
 
 // NewOSImageRepository creates a new OS image repository
 func NewOSImageRepository(database db.Database) OSImageRepository {
 	return &OSImageRepositoryImpl{
 		GenericRepository: db.NewGenericRepository[OSImage](database, "osimages"),
+		database:          database,
 	}
 }
 
@@ -115,7 +118,8 @@ func (r *OSImageRepositoryImpl) Delete(ctx context.Context, id string) error {
 	return r.GenericRepository.Delete(ctx, id)
 }
 
-// SetDefault sets an OS image as the default for its OS type
+// SetDefault sets an OS image as the default for its OS type.
+// The unset-old/set-new update is applied atomically in a single batch.
 func (r *OSImageRepositoryImpl) SetDefault(ctx context.Context, id string) error {
 	// Get the image to be set as default
 	image, err := r.Get(ctx, id)
@@ -129,18 +133,53 @@ func (r *OSImageRepositoryImpl) SetDefault(ctx context.Context, id string) error
 		return err
 	}
 
+	now := time.Now()
+	updates := make(map[string]OSImage, len(allImages)+1)
 	for _, img := range allImages {
 		if img.Active {
-			img.Active = false
-			if err := r.Save(ctx, img); err != nil {
-				return err
-			}
+			updated := *img
+			updated.Active = false
+			updated.UpdatedAt = now
+			updates[updated.ID] = updated
 		}
 	}
 
 	// Set the target image as default
 	image.Active = true
-	return r.Save(ctx, image)
+	image.UpdatedAt = now
+	updates[image.ID] = *image
+
+	return r.saveManyOSImages(ctx, updates)
+}
+
+// batchPutter is implemented by *db.BoltDB (see db/bolt.go). Repositories
+// assert it via this local interface so they keep depending only on
+// db.Database while still getting atomic batch writes when available.
+type batchPutter interface {
+	BatchPut(ctx context.Context, bucket string, kvs map[string][]byte) error
+}
+
+// saveManyOSImages stores multiple OS image entities in one atomic batch when
+// the underlying database supports it, and falls back to sequential writes
+// otherwise.
+func (r *OSImageRepositoryImpl) saveManyOSImages(ctx context.Context, entities map[string]OSImage) error {
+	kvs := make(map[string][]byte, len(entities))
+	for key, entity := range entities {
+		data, err := json.Marshal(entity)
+		if err != nil {
+			return fmt.Errorf("failed to marshal OS image %q: %w", key, err)
+		}
+		kvs[key] = data
+	}
+	if bp, ok := r.database.(batchPutter); ok {
+		return bp.BatchPut(ctx, "osimages", kvs)
+	}
+	for key, data := range kvs {
+		if err := r.database.PutKV(ctx, "osimages", []byte(key), data); err != nil {
+			return fmt.Errorf("failed to save OS image %q: %w", key, err)
+		}
+	}
+	return nil
 }
 
 // DownloadStatusRepositoryImpl implements DownloadStatusRepository using BoltDB
@@ -186,7 +225,7 @@ func (r *DownloadStatusRepositoryImpl) GetActive(ctx context.Context) ([]*Downlo
 
 	var active []*DownloadStatus
 	for _, status := range allStatusMap {
-		if status.Status == "downloading" || status.Status == "queued" {
+		if status.Status.Active() {
 			statusCopy := status
 			active = append(active, &statusCopy)
 		}

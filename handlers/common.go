@@ -1,15 +1,18 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
 	"html/template"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"path/filepath"
+	"strings"
+	"sync"
 
 	"ignite/config"
+	"ignite/dhcp"
 )
 
 // TFTPDir holds the directory path for TFTP server operations.
@@ -26,28 +29,79 @@ func init() {
 	}
 }
 
-// LoadTemplates initializes and returns a map of templates for different pages.
+// templateCache holds the parsed templates, built once and shared by all
+// requests so template parsing (and any parse failure) never happens on the
+// request path.
+var (
+	templatesOnce sync.Once
+	templates     map[string]*template.Template
+)
+
+// LoadTemplates returns the parsed template set, parsing once and caching the
+// result for all subsequent calls.
 func LoadTemplates() map[string]*template.Template {
+	templatesOnce.Do(func() {
+		templates = parseTemplates()
+	})
+	return templates
+}
+
+// parseTemplates parses every page/modal template exactly once.
+// A template that fails to parse is logged and left out of the map —
+// callers treat a missing entry as "template not available" instead of
+// panicking on the first request that needs it.
+func parseTemplates() map[string]*template.Template {
 	const baseTemplate = "templates/base.templ"
 
-	return map[string]*template.Template{
-		"index":              template.Must(template.ParseFiles(baseTemplate, "templates/pages/index.templ")),
-		"login":              template.Must(template.ParseFiles("templates/base-login.templ", "templates/pages/login.templ")),
-		"dhcp":               template.Must(template.ParseFiles(baseTemplate, "templates/pages/dhcp.templ")),
-		"tftp":               template.Must(template.ParseFiles(baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ")),
-		"status":             template.Must(template.ParseFiles(baseTemplate, "templates/pages/status.templ")),
-		"status-content":     template.Must(template.ParseFiles("templates/partials/status-content.templ")),
-		"provision":          template.Must(template.ParseFiles(baseTemplate, "templates/pages/provision.templ")),
-		"osimages":           template.Must(template.ParseFiles(baseTemplate, "templates/pages/osimages.templ")),
-		"syslinux":           template.Must(template.ParseFiles(baseTemplate, "templates/pages/syslinux.templ")),
-		"dhcpmodal":          template.Must(template.ParseFiles("templates/modals/dhcpmodal.templ")),
-		"reservemodal":       template.Must(template.ParseFiles("templates/modals/reservemodal.templ")),
-		"bootmodal":          template.Must(template.ParseFiles("templates/modals/bootmodal.templ")),
-		"ipmimodal":          template.Must(template.ParseFiles("templates/modals/ipmimodal.templ")),
-		"uploadmodal":        template.Must(template.ParseFiles("templates/modals/uploadmodal.templ")),
-		"viewmodal":          template.Must(template.ParseFiles("templates/modals/viewmodal.templ")),
-		"provision-new-file": template.Must(template.ParseFiles("templates/modals/provision-new-file.templ")),
-		"manualleasemodal":   template.Must(template.ParseFiles("templates/modals/manualleasemodal.templ")),
+	files := map[string][]string{
+		"index":              {baseTemplate, "templates/pages/index.templ"},
+		"login":              {"templates/base-login.templ", "templates/pages/login.templ"},
+		"dhcp":               {baseTemplate, "templates/pages/dhcp.templ"},
+		"tftp":               {baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ"},
+		"status":             {baseTemplate, "templates/pages/status.templ"},
+		"status-content":     {"templates/partials/status-content.templ"},
+		"provision":          {baseTemplate, "templates/pages/provision.templ"},
+		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
+		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
+		"dhcpmodal":          {"templates/modals/dhcpmodal.templ"},
+		"reservemodal":       {"templates/modals/reservemodal.templ"},
+		"bootmodal":          {"templates/modals/bootmodal.templ"},
+		"ipmimodal":          {"templates/modals/ipmimodal.templ"},
+		"uploadmodal":        {"templates/modals/uploadmodal.templ"},
+		"viewmodal":          {"templates/modals/viewmodal.templ"},
+		"provision-new-file": {"templates/modals/provision-new-file.templ"},
+		"manualleasemodal":   {"templates/modals/manualleasemodal.templ"},
+	}
+
+	parsed := make(map[string]*template.Template, len(files))
+	for name, paths := range files {
+		tmpl, err := template.ParseFiles(paths...)
+		if err != nil {
+			log.Printf("Error parsing template %s: %v", name, err)
+			continue
+		}
+		parsed[name] = tmpl
+	}
+	return parsed
+}
+
+// renderCachedTemplate executes a cached template by name. A missing entry
+// (parse failure) or an execution error produces a generic error response
+// instead of a nil-pointer panic or an internal-error leak.
+func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, data any, userMessage string) {
+	tmpl, ok := LoadTemplates()[name]
+	if !ok || tmpl == nil {
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("template %q not available", name),
+			userMessage,
+		))
+		return
+	}
+	if err := tmpl.Execute(w, data); err != nil {
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("template %q error: %v", name, err),
+			userMessage,
+		))
 	}
 }
 
@@ -87,15 +141,16 @@ func (h *ModalHandlers) CloseModalHandler(w http.ResponseWriter, r *http.Request
 func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request) {
 	template, err := GetQueryParam(r, "template")
 	if err != nil {
-		log.Printf("Error retrieving template parameter: %v", err)
-		http.Error(w, "Invalid template parameter", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Invalid template parameter", "The template parameter is invalid"))
 		return
 	}
 
 	templates := LoadTemplates()
 	if t, ok := templates[template]; !ok {
-		log.Printf("Template %s not found", template)
-		http.Error(w, fmt.Sprintf("Template %s not found", template), http.StatusNotFound)
+		HandleError(w, r, NewNotFoundError(
+			fmt.Sprintf("Template %s not found", template),
+			"The requested dialog does not exist",
+		))
 		return
 	} else {
 		var data map[string]any
@@ -105,29 +160,25 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 		case "dhcpmodal":
 			data, err = NewDHCPModal(w, r, h.container)
 			if err != nil {
-				log.Printf("Error creating DHCP modal data: %v", err)
-				http.Error(w, "Failed to prepare DHCP data: "+err.Error(), http.StatusInternalServerError)
+				HandleError(w, r, NewInternalError("Failed to prepare DHCP data: "+err.Error(), "Unable to prepare the DHCP form"))
 				return
 			}
 		case "reservemodal":
 			data, err = NewReserveModal(w, r, h.container)
 			if err != nil {
-				log.Printf("Error creating reserve modal data: %v", err)
-				http.Error(w, "Failed to prepare modal data: "+err.Error(), http.StatusInternalServerError)
+				HandleError(w, r, NewInternalError("Failed to prepare modal data: "+err.Error(), "Unable to prepare the reservation form"))
 				return
 			}
 		case "bootmodal":
 			data, err = NewBootModal(w, r, h.container)
 			if err != nil {
-				log.Printf("Error creating boot modal data: %v", err)
-				http.Error(w, "Failed to prepare boot data: "+err.Error(), http.StatusInternalServerError)
+				HandleError(w, r, NewInternalError("Failed to prepare boot data: "+err.Error(), "Unable to prepare the boot menu form"))
 				return
 			}
 		case "ipmimodal":
 			data, err = NewIPMIModal(w, r, h.container)
 			if err != nil {
-				log.Printf("Error creating ipmi modal data: %v", err)
-				http.Error(w, "Failed to prepare ipmi data: "+err.Error(), http.StatusInternalServerError)
+				HandleError(w, r, NewInternalError("Failed to prepare ipmi data: "+err.Error(), "Unable to prepare the IPMI form"))
 				return
 			}
 		case "upload":
@@ -135,8 +186,7 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 		case "viewmodal":
 			data, err = NewViewModal(w, r)
 			if err != nil {
-				log.Printf("Error creating view modal data: %v", err)
-				http.Error(w, "Failed to prepare view data: "+err.Error(), http.StatusInternalServerError)
+				HandleError(w, r, NewInternalError("Failed to prepare view data: "+err.Error(), "Unable to prepare the file view"))
 				return
 			}
 		case "provision-new-file":
@@ -144,20 +194,20 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 		case "manualleasemodal":
 			data, err = NewManualLeaseModal(w, r, h.container)
 			if err != nil {
-				log.Printf("Error creating manual lease modal data: %v", err)
-				http.Error(w, "Failed to prepare manual lease data: "+err.Error(), http.StatusInternalServerError)
+				HandleError(w, r, NewInternalError("Failed to prepare manual lease data: "+err.Error(), "Unable to prepare the manual lease form"))
 				return
 			}
 		default:
-			log.Printf("Unhandled template type: %s", template)
-			http.Error(w, "Unhandled template type", http.StatusInternalServerError)
+			HandleError(w, r, NewInternalError("Unhandled template type: "+template, "Unable to open the requested dialog"))
 			return
 		}
 
 		w.Header().Set("Content-Type", "text/html")
 		if err := t.Execute(w, data); err != nil {
-			log.Printf("Error executing template %s: %v", template, err)
-			http.Error(w, "Could not render template", http.StatusInternalServerError)
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Error executing template %s: %v", template, err),
+				"Unable to render the dialog",
+			))
 		}
 	}
 }
@@ -196,7 +246,10 @@ func NewDHCPModal(w http.ResponseWriter, r *http.Request, container *Container) 
 		data["startip"] = server.IPStart.String()
 
 		// Calculate end IP from start IP and lease range
-		startInt := ipToInt(server.IPStart)
+		startInt, err := ipToInt(server.IPStart)
+		if err != nil {
+			return nil, fmt.Errorf("invalid server start IP: %w", err)
+		}
 		endInt := startInt + uint32(server.LeaseRange) - 1
 		endIP := net.IPv4(byte(endInt>>24), byte(endInt>>16), byte(endInt>>8), byte(endInt))
 		data["endip"] = endIP.String()
@@ -457,7 +510,10 @@ func NewViewModal(w http.ResponseWriter, r *http.Request) (map[string]any, error
 		return nil, fmt.Errorf("file parameter is required")
 	}
 
-	filePath := filepath.Join(TFTPDir, fileName)
+	filePath, err := safeJoin(TFTPDir, fileName)
+	if err != nil {
+		return nil, fmt.Errorf("invalid file name: %v", err)
+	}
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -479,12 +535,46 @@ func NewProvisionNewFileModal() map[string]any {
 	}
 }
 
-// ipToInt converts IP to uint32 (helper function for IP calculations)
-func ipToInt(ip net.IP) uint32 {
-	if len(ip) == 16 {
-		ip = ip[12:16] // Convert IPv6 to IPv4 if needed
+// ipToInt converts an IPv4 address to uint32. Non-IPv4 input returns an
+// error instead of panicking or silently truncating.
+func ipToInt(ip net.IP) (uint32, error) {
+	ip4 := ip.To4()
+	if ip4 == nil {
+		return 0, fmt.Errorf("not an IPv4 address: %s", ip.String())
 	}
-	return uint32(ip[0])<<24 + uint32(ip[1])<<16 + uint32(ip[2])<<8 + uint32(ip[3])
+	return uint32(ip4[0])<<24 | uint32(ip4[1])<<16 | uint32(ip4[2])<<8 | uint32(ip4[3]), nil
+}
+
+// findServerByIP looks up a DHCP server by its interface IP. It is shared by
+// the DHCP, boot menu, and IPMI handlers so the lookup logic lives in one place.
+func findServerByIP(ctx context.Context, serverService dhcp.ServerService, ipStr string) (*dhcp.Server, error) {
+	if serverService == nil {
+		return nil, fmt.Errorf("DHCP server service not initialized")
+	}
+	ip := net.ParseIP(strings.TrimSpace(ipStr))
+	if ip == nil {
+		return nil, fmt.Errorf("invalid IP address: %s", ipStr)
+	}
+	servers, err := serverService.GetAllServers(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to list DHCP servers: %w", err)
+	}
+	for _, server := range servers {
+		if server != nil && server.IP.Equal(ip) {
+			return server, nil
+		}
+	}
+	return nil, fmt.Errorf("no DHCP server found for IP: %s", ipStr)
+}
+
+// requireConfig writes a generic 500 and reports false when the container's
+// config is nil, so handlers never nil-dereference container.Config.
+func requireConfig(w http.ResponseWriter, r *http.Request, container *Container) bool {
+	if container == nil || container.Config == nil {
+		HandleError(w, r, NewInternalError("server configuration not initialized", "Server is not initialized. Please try again later."))
+		return false
+	}
+	return true
 }
 
 // NewManualLeaseModal creates data for manual lease modal

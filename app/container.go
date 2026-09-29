@@ -27,7 +27,7 @@ type Container struct {
 }
 
 // NewContainer creates and wires up all dependencies
-func NewContainer() (*Container, error) {
+func NewContainer() (c *Container, err error) {
 	// Load configuration
 	cfg, err := config.LoadDefault()
 	if err != nil {
@@ -39,13 +39,19 @@ func NewContainer() (*Container, error) {
 	if err != nil {
 		return nil, fmt.Errorf("failed to initialize database: %w", err)
 	}
+	// Don't leak the database if a later construction step fails.
+	defer func() {
+		if err != nil {
+			_ = database.Close()
+		}
+	}()
 
 	// Create repositories
 	serverRepo := dhcp.NewBoltServerRepository(database, cfg.DB.Bucket+"_servers")
 	leaseRepo := dhcp.NewBoltLeaseRepository(database, cfg.DB.Bucket+"_leases")
 	osImageRepo := osimage.NewOSImageRepository(database)
 	downloadStatusRepo := osimage.NewDownloadStatusRepository(database)
-	syslinuxRepo, err := syslinux.NewBoltRepository(database.GetDB())
+	syslinuxRepo, err := syslinux.NewBoltRepository(database)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create syslinux repository: %w", err)
 	}
@@ -57,7 +63,7 @@ func NewContainer() (*Container, error) {
 	syslinuxService := syslinux.NewService(syslinuxRepo, syslinux.GetDefaultConfig())
 	ipxeService := ipxe.NewService(cfg, osImageService)
 
-	return &Container{
+	c = &Container{
 		Config:             cfg,
 		Database:           database,
 		ServerRepo:         serverRepo,
@@ -70,7 +76,8 @@ func NewContainer() (*Container, error) {
 		SyslinuxRepo:       syslinuxRepo,
 		SyslinuxService:    syslinuxService,
 		IPXEService:        ipxeService,
-	}, nil
+	}
+	return c, nil
 }
 
 // Close closes all resources held by the container
