@@ -1,5 +1,5 @@
 {{ define "content" }}
-<div class="container mx-auto p-4">
+<div>
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold">Syslinux Boot Files Management</h1>
         <button class="btn btn-primary" onclick="document.getElementById('scanModal').showModal()">
@@ -12,7 +12,7 @@
 
     {{if .Versions}}
     <!-- Current Installation Status -->
-    <div class="card bg-base-100 shadow-xl mb-6">
+    <div class="card bg-base-200 shadow-xl mb-6">
         <div class="card-body">
             <h2 class="card-title">Boot File Status</h2>
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -25,7 +25,7 @@
                     <div class="stat-title">BIOS Boot Files</div>
                     <div class="stat-value text-primary">
                         {{$activeFound := false}}
-                        {{range .Versions}}{{if .Active}}✓{{$activeFound = true}}{{end}}{{end}}
+                        {{range .Versions}}{{if .Active}}<i class="fas fa-check"></i>{{$activeFound = true}}{{end}}{{end}}
                         {{if not $activeFound}}-{{end}}
                     </div>
                     <div class="stat-desc">
@@ -44,7 +44,7 @@
                     <div class="stat-title">EFI Boot Files</div>
                     <div class="stat-value text-secondary">
                         {{$activeFound := false}}
-                        {{range .Versions}}{{if .Active}}✓{{$activeFound = true}}{{end}}{{end}}
+                        {{range .Versions}}{{if .Active}}<i class="fas fa-check"></i>{{$activeFound = true}}{{end}}{{end}}
                         {{if not $activeFound}}-{{end}}
                     </div>
                     <div class="stat-desc">
@@ -58,9 +58,10 @@
     </div>
     {{end}}
 
-    <!-- Active Downloads -->
+    <!-- Active Downloads (auto-refreshes while downloads are running) -->
+    <div id="active-downloads"{{if .Downloads}} hx-get="/syslinux" hx-select="#active-downloads" hx-trigger="every 5s" hx-swap="outerHTML"{{end}}>
     {{if .Downloads}}
-    <div class="card bg-base-100 shadow-xl mb-6">
+    <div class="card bg-base-200 shadow-xl mb-6">
         <div class="card-body">
             <h2 class="card-title">Active Downloads</h2>
             <div class="overflow-x-auto">
@@ -82,10 +83,8 @@
                                 <div class="badge badge-info">{{.Status}}</div>
                             </td>
                             <td>
-                                <div class="w-24">
-                                    <div class="bg-gray-200 rounded-full h-2">
-                                        <div class="bg-blue-600 h-2 rounded-full" style="width: {{.Progress}}%"></div>
-                                    </div>
+                                <div class="flex items-center gap-2">
+                                    <progress class="progress progress-primary w-24" value="{{.Progress}}" max="100"></progress>
                                     <span class="text-xs">{{.Progress}}%</span>
                                 </div>
                             </td>
@@ -107,9 +106,10 @@
         </div>
     </div>
     {{end}}
+    </div>
 
     <!-- Available Versions -->
-    <div class="card bg-base-100 shadow-xl">
+    <div class="card bg-base-200 shadow-xl">
         <div class="card-body">
             <h2 class="card-title">Available Syslinux Versions</h2>
             
@@ -146,7 +146,7 @@
                                 {{end}}
                             </td>
                             <td>
-                                <span id="version-size-{{.ID}}">{{.Size}} bytes</span>
+                                {{formatBytes .Size}}
                             </td>
                             <td>{{if .DownloadedAt}}{{.DownloadedAt.Format "2006-01-02 15:04"}}{{else}}--{{end}}</td>
                             <td>{{if .Active}}{{.UpdatedAt.Format "2006-01-02 15:04"}}{{else}}--{{end}}</td>
@@ -275,24 +275,5 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
-// Format file sizes on page load
-document.addEventListener('DOMContentLoaded', function() {
-    // Format all version sizes
-    document.querySelectorAll('[id^="version-size-"]').forEach(function(element) {
-        const sizeText = element.textContent;
-        const sizeMatch = sizeText.match(/(\d+) bytes/);
-        if (sizeMatch) {
-            const bytes = parseInt(sizeMatch[1]);
-            element.textContent = formatBytes(bytes);
-        }
-    });
-});
-
-// Auto-refresh download status every 5 seconds if there are active downloads
-{{if .Downloads}}
-setInterval(() => {
-    htmx.trigger('#main-content', 'refresh');
-}, 5000);
-{{end}}
 </script>
 {{ end }}
