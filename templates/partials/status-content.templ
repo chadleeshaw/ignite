@@ -4,7 +4,7 @@
         <span class="badge badge-{{if eq .OverallStatus "healthy"}}success{{else if eq .OverallStatus "partial"}}warning{{else}}error{{end}} badge-lg">
             {{if eq .OverallStatus "healthy"}}System Healthy{{else if eq .OverallStatus "partial"}}Partial Service{{else}}System Down{{end}}
         </span>
-        <span class="text-sm text-base-content/70">Last Updated: {{.LastUpdated.Format "15:04:05"}}</span>
+        <span class="text-sm text-base-content/70">Last Updated: {{.LastUpdated}}</span>
     </div>
 </div>
 
