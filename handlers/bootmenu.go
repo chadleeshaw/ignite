@@ -11,8 +11,6 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
-
-	"ignite/config"
 )
 
 // BootMenuHandlers handles boot menu-related requests
@@ -35,8 +33,11 @@ type BootMenuData struct {
 
 // SubmitBootMenu handles boot menu submission
 func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Failed to parse form data", "The submitted form could not be parsed"))
 		return
 	}
 
@@ -59,22 +60,37 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 	requiredFields := []string{"tftpip", "mac", "os", "version", "typeSelect", "template_name", "hostname", "ip", "subnet", "gateway", "dns"}
 	for _, field := range requiredFields {
 		if formData[field] == "" {
-			http.Error(w, fmt.Sprintf("Missing required field: %s", field), http.StatusBadRequest)
+			HandleError(w, r, NewValidationError(
+				fmt.Sprintf("Missing required field: %s", field),
+				fmt.Sprintf("The %s field is required", field),
+			))
 			return
 		}
 	}
 
-	// Load configuration to get provision directory
-	cfg, err := config.LoadDefault()
-	if err != nil {
-		http.Error(w, "Failed to load configuration", http.StatusInternalServerError)
+	// The MAC address becomes part of file names — reject anything that is
+	// not a real MAC so it cannot smuggle path separators.
+	if _, err := net.ParseMAC(formData["mac"]); err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid MAC address: %v", err),
+			"The MAC address is invalid",
+		))
 		return
 	}
+	macDashes := strings.ReplaceAll(formData["mac"], ":", "-")
 
-	// Build PXE file paths
-	buildpxe := fmt.Sprintf("pxelinux.cfg/01-%s", strings.ReplaceAll(formData["mac"], ":", "-"))
-	pxefile := filepath.Join(TFTPDir, buildpxe)
-	pxetempl := filepath.Join(cfg.Provision.Dir, "templates/bootmenu/default.templ")
+	provisionDir := h.container.Config.Provision.Dir
+
+	// Build PXE file paths (join-then-check: user input stays inside the roots).
+	pxefile, err := safeJoin(TFTPDir, filepath.Join("pxelinux.cfg", "01-"+macDashes))
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid PXE file path: %v", err),
+			"The PXE file path is not allowed",
+		))
+		return
+	}
+	pxetempl := filepath.Join(provisionDir, "templates", "bootmenu", "default.templ")
 
 	// Create BootMenu struct
 	bootMenu := dhcp.BootMenu{
@@ -91,35 +107,60 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 		KernelOptions: formData["kernel_options"],
 	}
 
-	// Build config file paths
-	buildconfig := fmt.Sprintf("configs/%s/%s", formData["typeSelect"], strings.ReplaceAll(formData["mac"], ":", "-"))
-	configFile := filepath.Join(cfg.Provision.Dir, buildconfig)
-	templBuild := fmt.Sprintf("templates/%s/%s", formData["typeSelect"], formData["template_name"])
-	configTempl := filepath.Join(cfg.Provision.Dir, templBuild)
+	// Build config file paths (join-then-check).
+	configFile, err := safeJoin(provisionDir, filepath.Join("configs", formData["typeSelect"], macDashes))
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid config file path: %v", err),
+			"The config file path is not allowed",
+		))
+		return
+	}
+	configTempl, err := safeJoin(provisionDir, filepath.Join("templates", formData["typeSelect"], formData["template_name"]))
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid template path: %v", err),
+			"The template path is not allowed",
+		))
+		return
+	}
 
 	// Generate boot data (use buildconfig for HTTP URL, configFile for filesystem path)
+	buildconfig := fmt.Sprintf("configs/%s/%s", formData["typeSelect"], macDashes)
 	pxedata := h.generateBootData(formData, buildconfig)
 
 	// Ensure directories exist
 	if err := os.MkdirAll(filepath.Dir(pxefile), 0755); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create PXE directory: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to create PXE directory: %v", err),
+			"Unable to prepare the PXE directory",
+		))
 		return
 	}
 
 	if err := os.MkdirAll(filepath.Dir(configFile), 0755); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to create config directory: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to create config directory: %v", err),
+			"Unable to prepare the config directory",
+		))
 		return
 	}
 
 	// Write PXE template to disk
 	if err := h.writeTemplateToDisk(pxetempl, pxefile, pxedata); err != nil {
-		http.Error(w, fmt.Sprintf("Error writing PXE menu: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Error writing PXE menu: %v", err),
+			"Unable to write the PXE boot menu",
+		))
 		return
 	}
 
 	// Write config template to disk
 	if err := h.writeTemplateToDisk(configTempl, configFile, formData); err != nil {
-		http.Error(w, fmt.Sprintf("Error writing config file: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Error writing config file: %v", err),
+			"Unable to write the config file",
+		))
 		return
 	}
 
@@ -270,10 +311,12 @@ func (h *BootMenuHandlers) osToInitrd(os, version string) string {
 	return fmt.Sprintf("%s/initrd.img", h.osToName(os))
 }
 
-// writeTemplateToDisk writes the template to disk.
+// writeTemplateToDisk parses the template file and writes the rendered
+// output to disk. Parse failures are returned as errors — never panics.
 func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, filepath string, data interface{}) error {
-	templates := map[string]*template.Template{
-		"templ": template.Must(template.ParseFiles(templpath)),
+	tmpl, err := template.ParseFiles(templpath)
+	if err != nil {
+		return fmt.Errorf("failed to parse template %s: %w", templpath, err)
 	}
 
 	file, err := os.Create(filepath)
@@ -282,7 +325,7 @@ func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, filepath string
 	}
 	defer file.Close()
 
-	if err := templates["templ"].Execute(file, data); err != nil {
+	if err := tmpl.Execute(file, data); err != nil {
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
 
@@ -293,27 +336,9 @@ func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, filepath string
 func (h *BootMenuHandlers) updateDHCPLease(tftpip, mac string, menu dhcp.BootMenu) error {
 	ctx := context.Background()
 
-	// Find server by IP to get server ID
-	networkIP := net.ParseIP(tftpip)
-	if networkIP == nil {
-		return fmt.Errorf("invalid network IP: %s", tftpip)
-	}
-
-	servers, err := h.container.ServerService.GetAllServers(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get servers: %w", err)
-	}
-
-	var serverID string
-	for _, server := range servers {
-		if server.IP.Equal(networkIP) {
-			serverID = server.ID
-			break
-		}
-	}
-
-	if serverID == "" {
-		return fmt.Errorf("server not found for IP: %s", tftpip)
+	// Find server by IP to get server ID via the shared lookup helper.
+	if _, err := findServerByIP(ctx, h.container.ServerService, tftpip); err != nil {
+		return err
 	}
 
 	// Get lease by MAC

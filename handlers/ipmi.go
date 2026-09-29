@@ -25,7 +25,7 @@ func NewIPMIHandlers(container *Container) *IPMIHandlers {
 // SubmitIPMI handles IPMI submission
 func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Failed to parse form data", "The submitted form could not be parsed"))
 		return
 	}
 
@@ -36,7 +36,16 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	password := r.Form.Get("password")
 
 	if ip == "" || username == "" || password == "" {
-		http.Error(w, "IP, username, and password are required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("IP, username, and password are required", "IP, username, and password are required"))
+		return
+	}
+
+	// The BMC IP ends up in the Redfish endpoint URL — validate it up front.
+	if parsedIP := net.ParseIP(ip); parsedIP == nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid BMC IP address: %q", ip),
+			"The BMC IP address is invalid",
+		))
 		return
 	}
 
@@ -61,7 +70,10 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 
 	client, err := gofish.Connect(clientConfig)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to connect to Redfish service: %s", err.Error()), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to connect to Redfish service: %s", err.Error()),
+			"Unable to connect to the Redfish service on the target system",
+		))
 		return
 	}
 	defer client.Logout()
@@ -70,7 +82,7 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	service := client.Service
 	systems, err := service.Systems()
 	if err != nil || len(systems) == 0 {
-		http.Error(w, "No systems found or error retrieving systems", http.StatusNotFound)
+		HandleError(w, r, NewNotFoundError("No systems found or error retrieving systems", "No manageable systems were found on the target"))
 		return
 	}
 
@@ -83,7 +95,10 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	// Set PXE boot if checked
 	if bootConfigChecked {
 		if err := system.SetBoot(bootConfig); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to set PXE boot: %s", err.Error()), http.StatusInternalServerError)
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Failed to set PXE boot: %s", err.Error()),
+				"Unable to set the PXE boot order on the target system",
+			))
 			return
 		}
 	}
@@ -91,7 +106,10 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	// Reboot system if checked
 	if rebootChecked {
 		if err := system.Reset(redfish.ForceRestartResetType); err != nil {
-			http.Error(w, fmt.Sprintf("Failed to reboot system: %s", err.Error()), http.StatusInternalServerError)
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Failed to reboot system: %s", err.Error()),
+				"Unable to reboot the target system",
+			))
 			return
 		}
 	}
@@ -102,27 +120,9 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 
 // updateDHCPLeaseWithIPMI updates the DHCP lease with IPMI configuration
 func (h *IPMIHandlers) updateDHCPLeaseWithIPMI(ctx context.Context, tftpip, mac, ip, username string, pxeboot, reboot bool) error {
-	// Find server by IP to get server ID
-	networkIP := net.ParseIP(tftpip)
-	if networkIP == nil {
-		return fmt.Errorf("invalid network IP: %s", tftpip)
-	}
-
-	servers, err := h.container.ServerService.GetAllServers(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to get servers: %w", err)
-	}
-
-	var serverID string
-	for _, server := range servers {
-		if server.IP.Equal(networkIP) {
-			serverID = server.ID
-			break
-		}
-	}
-
-	if serverID == "" {
-		return fmt.Errorf("server not found for IP: %s", tftpip)
+	// Find server by IP via the shared lookup helper (validates the TFTP IP too).
+	if _, err := findServerByIP(ctx, h.container.ServerService, tftpip); err != nil {
+		return err
 	}
 
 	// Get lease by MAC

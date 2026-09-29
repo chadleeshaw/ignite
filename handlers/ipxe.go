@@ -22,7 +22,10 @@ func (h *IPXEHandlers) GenerateConfig(w http.ResponseWriter, r *http.Request) {
 
 	config, err := h.container.IPXEService.GenerateConfig(ctx)
 	if err != nil {
-		http.Error(w, "Failed to generate iPXE config: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			"Failed to generate iPXE config: "+err.Error(),
+			"Unable to generate the iPXE configuration",
+		))
 		return
 	}
 
@@ -36,7 +39,10 @@ func (h *IPXEHandlers) UpdateConfigFile(w http.ResponseWriter, r *http.Request) 
 	ctx := r.Context()
 
 	if err := h.container.IPXEService.WriteConfigToFile(ctx); err != nil {
-		http.Error(w, "Failed to update iPXE config file: "+err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			"Failed to update iPXE config file: "+err.Error(),
+			"Unable to update the iPXE configuration file",
+		))
 		return
 	}
 

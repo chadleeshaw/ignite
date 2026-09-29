@@ -3,6 +3,7 @@ package handlers
 import (
 	"encoding/json"
 	"fmt"
+	"ignite/config"
 	"ignite/osimage"
 	"net/http"
 
@@ -21,12 +22,15 @@ func NewOSImageHandlers(container *Container) *OSImageHandlers {
 
 // OSImagesPage serves the OS images management page
 func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	ctx := r.Context()
 
 	// Get all OS images
 	images, err := h.container.OSImageService.GetAllOSImages(ctx)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get OS images: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to get OS images: %v", err), "Unable to load OS images"))
 		return
 	}
 
@@ -68,19 +72,19 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Architectures: supportedArchs,
 	}
 
-	templates := LoadTemplates()
-	if err := templates["osimages"].Execute(w, data); err != nil {
-		http.Error(w, fmt.Sprintf("Template error: %v", err), http.StatusInternalServerError)
-	}
+	renderCachedTemplate(w, r, "osimages", data, "Unable to render the OS images page")
 }
 
 // DownloadOSImage starts downloading an OS image
 func (h *OSImageHandlers) DownloadOSImage(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	ctx := r.Context()
 
 	// Parse form data
 	if err := r.ParseForm(); err != nil {
-		http.Error(w, "Failed to parse form data", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Failed to parse form data", "The submitted form could not be parsed"))
 		return
 	}
 
@@ -89,12 +93,22 @@ func (h *OSImageHandlers) DownloadOSImage(w http.ResponseWriter, r *http.Request
 	architecture := r.Form.Get("architecture")
 
 	if os == "" || version == "" {
-		http.Error(w, "OS and version are required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("OS and version are required", "OS and version are required"))
 		return
 	}
 
 	if architecture == "" {
 		architecture = "x86_64" // Default architecture
+	}
+
+	// Validate the OS, version, and architecture against the configured
+	// sources before starting any download.
+	if err := validateOSImageRequest(h.container.Config.OSImages.Sources, os, version, architecture); err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid OS image request: %v", err),
+			err.Error(),
+		))
+		return
 	}
 
 	// Create download config
@@ -107,7 +121,7 @@ func (h *OSImageHandlers) DownloadOSImage(w http.ResponseWriter, r *http.Request
 	// Start download
 	status, err := h.container.OSImageService.DownloadOSImage(ctx, config)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to start download: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to start download: %v", err), "Unable to start the download"))
 		return
 	}
 
@@ -120,6 +134,25 @@ func (h *OSImageHandlers) DownloadOSImage(w http.ResponseWriter, r *http.Request
 	})
 }
 
+// validateOSImageRequest checks that the requested OS, version, and
+// architecture exist in the configured OS image sources.
+func validateOSImageRequest(sources map[string]config.OSDefinition, os, version, architecture string) error {
+	osDef, ok := sources[os]
+	if !ok {
+		return fmt.Errorf("unknown OS %q", os)
+	}
+	versionDef, ok := osDef.Versions[version]
+	if !ok {
+		return fmt.Errorf("unknown version %q for OS %q", version, os)
+	}
+	for _, arch := range versionDef.Architectures {
+		if arch == architecture {
+			return nil
+		}
+	}
+	return fmt.Errorf("unsupported architecture %q for %s %s", architecture, os, version)
+}
+
 // GetDownloadStatus returns the status of a download
 func (h *OSImageHandlers) GetDownloadStatus(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
@@ -127,13 +160,13 @@ func (h *OSImageHandlers) GetDownloadStatus(w http.ResponseWriter, r *http.Reque
 	downloadID := vars["id"]
 
 	if downloadID == "" {
-		http.Error(w, "Download ID is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Download ID is required", "A download id is required"))
 		return
 	}
 
 	status, err := h.container.OSImageService.GetDownloadStatus(ctx, downloadID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get download status: %v", err), http.StatusNotFound)
+		HandleError(w, r, NewNotFoundError(fmt.Sprintf("Failed to get download status: %v", err), "The requested download was not found"))
 		return
 	}
 
@@ -148,12 +181,12 @@ func (h *OSImageHandlers) SetDefaultVersion(w http.ResponseWriter, r *http.Reque
 	imageID := vars["id"]
 
 	if imageID == "" {
-		http.Error(w, "Image ID is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Image ID is required", "An image id is required"))
 		return
 	}
 
 	if err := h.container.OSImageService.SetDefaultVersion(ctx, imageID); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to set default version: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to set default version: %v", err), "Unable to set the default version"))
 		return
 	}
 
@@ -171,12 +204,12 @@ func (h *OSImageHandlers) DeleteOSImage(w http.ResponseWriter, r *http.Request) 
 	imageID := vars["id"]
 
 	if imageID == "" {
-		http.Error(w, "Image ID is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Image ID is required", "An image id is required"))
 		return
 	}
 
 	if err := h.container.OSImageService.DeleteOSImage(ctx, imageID); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to delete OS image: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to delete OS image: %v", err), "Unable to delete the OS image"))
 		return
 	}
 
@@ -188,25 +221,28 @@ func (h *OSImageHandlers) DeleteOSImage(w http.ResponseWriter, r *http.Request) 
 
 // GetAvailableVersions returns available versions for an OS
 func (h *OSImageHandlers) GetAvailableVersions(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	ctx := r.Context()
 
 	os := r.URL.Query().Get("os")
 	if os == "" {
-		http.Error(w, "OS parameter is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("OS parameter is required", "An OS is required"))
 		return
 	}
 
 	// Use the service to get available versions
 	versions, err := h.container.OSImageService.GetAvailableVersions(ctx, os)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get versions: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to get versions: %v", err), "Unable to load available versions"))
 		return
 	}
 
 	// Create a more detailed response with display names from config
 	osDef, exists := h.container.Config.OSImages.Sources[os]
 	if !exists {
-		http.Error(w, fmt.Sprintf("OS configuration not found: %s", os), http.StatusInternalServerError)
+		HandleError(w, r, NewNotFoundError(fmt.Sprintf("OS configuration not found: %s", os), "The requested OS is not configured"))
 		return
 	}
 
@@ -240,13 +276,13 @@ func (h *OSImageHandlers) GetOSImageInfo(w http.ResponseWriter, r *http.Request)
 	imageID := vars["id"]
 
 	if imageID == "" {
-		http.Error(w, "Image ID is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Image ID is required", "An image id is required"))
 		return
 	}
 
 	image, err := h.container.OSImageService.GetOSImage(ctx, imageID)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Failed to get OS image: %v", err), http.StatusNotFound)
+		HandleError(w, r, NewNotFoundError(fmt.Sprintf("Failed to get OS image: %v", err), "The requested OS image was not found"))
 		return
 	}
 
@@ -261,12 +297,12 @@ func (h *OSImageHandlers) CancelDownload(w http.ResponseWriter, r *http.Request)
 	downloadID := vars["id"]
 
 	if downloadID == "" {
-		http.Error(w, "Download ID is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Download ID is required", "A download id is required"))
 		return
 	}
 
 	if err := h.container.OSImageService.CancelDownload(ctx, downloadID); err != nil {
-		http.Error(w, fmt.Sprintf("Failed to cancel download: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to cancel download: %v", err), "Unable to cancel the download"))
 		return
 	}
 
