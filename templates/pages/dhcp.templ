@@ -15,22 +15,25 @@
 <div id="modal-content"></div>
 
 {{range .Servers}}
-<div class="card bg-neutral shadow-xl mb-8">
+<div class="card bg-base-200 shadow-xl mb-8">
     <div class="card-body overflow-visible">
         <div class="flex items-center justify-between mb-4">
             <div class="flex items-center space-x-3">
                 <span class="ip-address text-2xl font-bold text-primary">{{ .TFTPIP }}</span>
-                <span class="badge {{ .Status }} badge-lg"></span>
+                <span class="badge {{ .Status }} badge-lg">{{if eq .Status "badge-success"}}Running{{else}}Stopped{{end}}</span>
             </div>
             <div class="flex items-center space-x-2">
-                <button class="btn btn-sm btn-success tooltip tooltip-bottom" data-tip="Start Server" hx-post="/dhcp/start?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-play"></i></button>
-                <button class="btn btn-sm btn-error tooltip tooltip-bottom" data-tip="Stop Server" hx-post="/dhcp/stop?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-stop"></i></button>
+                {{if eq .Status "badge-success"}}
+                <button class="btn btn-sm btn-error tooltip tooltip-bottom" data-tip="Stop Server" hx-post="/dhcp/stop?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-stop mr-1"></i>Stop</button>
+                {{else}}
+                <button class="btn btn-sm btn-success tooltip tooltip-bottom" data-tip="Start Server" hx-post="/dhcp/start?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-play mr-1"></i>Start</button>
+                {{end}}
                 <button class="btn btn-sm btn-info tooltip tooltip-bottom" data-tip="Edit Server" hx-get="/open_modal?template=dhcpmodal&server_id={{ .ID }}" hx-target="#modal-content" hx-swap="innerHTML"><i class="fas fa-edit"></i></button>
                 <button class="btn btn-sm btn-warning tooltip tooltip-bottom" data-tip="Delete Server" hx-post="/dhcp/delete?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-trash"></i></button>
             </div>
         </div>
 
-        <div style="overflow: visible;">
+        <div class="overflow-x-auto md:overflow-visible">
             <table class="table w-full">
                 <thead>
                     <tr>
@@ -50,14 +53,14 @@
                         <td>{{ .MAC }}</td>
                         <td>{{ .IP }}</td>
                         <td class="text-center">
-                            <div class="badge {{.StateBadgeClass}} badge-sm">{{.StateDisplayName}}</div>
+                            <div id="lease-state-{{.MAC}}" class="badge {{.StateBadgeClass}} badge-sm">{{.StateDisplayName}}</div>
                         </td>
                         <td class="text-center">
                             <button id="reserveBtn-{{ .MAC }}" class="modal-opener tooltip tooltip-top" data-tip="{{if .Static}}Reserved IP{{else}}Reserve IP{{end}}" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">
                                 {{if .Static}}
-                                    <i class="fas fa-check-circle text-success text-lg"></i>
+                                    <i class="fas fa-bookmark text-success text-lg"></i>
                                 {{else}}
-                                    <i class="fas fa-times-circle text-error text-lg"></i>
+                                    <i class="far fa-bookmark text-base-content/40 text-lg"></i>
                                 {{end}}
                             </button>
                         </td>
@@ -74,15 +77,15 @@
                                         <i class="fas fa-flag"></i>
                                     </button>
                                     <ul tabindex="0" class="dropdown-content z-[9999] menu p-2 shadow bg-base-100 rounded-box w-52">
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'assigned')">🔵 Assigned</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'pxe_requested')">⚠️ PXE Requested</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'booting')">🚀 Booting</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaging')">💿 Imaging</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaged')">✅ Imaged</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'configuring')">⚙️ Configuring</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'complete')">🎉 Complete</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'failed')">❌ Failed</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'offline')">👻 Offline</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'assigned')"><i class="fas fa-circle text-info text-xs mr-2"></i>Assigned</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'pxe_requested')"><i class="fas fa-circle text-warning text-xs mr-2"></i>PXE Requested</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'booting')"><i class="fas fa-circle text-warning text-xs mr-2"></i>Booting</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaging')"><i class="fas fa-circle text-accent text-xs mr-2"></i>Imaging</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaged')"><i class="fas fa-circle text-success text-xs mr-2"></i>Imaged</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'configuring')"><i class="fas fa-circle text-accent text-xs mr-2"></i>Configuring</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'complete')"><i class="fas fa-circle text-success text-xs mr-2"></i>Complete</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'failed')"><i class="fas fa-circle text-error text-xs mr-2"></i>Failed</a></li>
+                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'offline')"><i class="fas fa-circle text-base-content/40 text-xs mr-2"></i>Offline</a></li>
                                     </ul>
                                 </div>
                                 <button class="btn btn-xs btn-secondary tooltip tooltip-top" data-tip="View History" onclick="showLeaseHistory('{{.MAC}}')">
@@ -109,13 +112,38 @@
 {{end}}
 
 <script>
+function toast(message, isSuccess) {
+    Toastify({
+        text: message,
+        duration: 3000,
+        close: true,
+        gravity: "top",
+        position: "right",
+        backgroundColor: isSuccess
+            ? "linear-gradient(to right, #00b09b, #96c93d)"
+            : "linear-gradient(to right, #FBBF24, #FF4500)",
+    }).showToast();
+}
+
+var stateDisplayNames = {
+    'assigned': 'Assigned',
+    'pxe_requested': 'PXE Requested',
+    'booting': 'Booting',
+    'imaging': 'Imaging',
+    'imaged': 'Imaged',
+    'configuring': 'Configuring',
+    'complete': 'Complete',
+    'failed': 'Failed',
+    'offline': 'Offline'
+};
+
 function updateLeaseState(mac, newState) {
     if (!newState) return;
-    
+
     const formData = new FormData();
     formData.append('state', newState);
     formData.append('source', 'manual');
-    
+
     fetch('/dhcp/lease/state?mac=' + encodeURIComponent(mac), {
         method: 'POST',
         body: formData
@@ -123,15 +151,20 @@ function updateLeaseState(mac, newState) {
     .then(response => response.json())
     .then(data => {
         if (data.status === 'success') {
-            // Refresh the page to show updated state
-            window.location.reload();
+            // Update the badge in place instead of reloading the page
+            const badge = document.getElementById('lease-state-' + mac);
+            if (badge) {
+                badge.className = 'badge ' + getStateBadgeClass(newState) + ' badge-sm';
+                badge.textContent = stateDisplayNames[newState] || newState;
+            }
+            toast('Lease state updated to ' + (stateDisplayNames[newState] || newState), true);
         } else {
-            alert('Failed to update lease state: ' + (data.message || 'Unknown error'));
+            toast('Failed to update lease state: ' + (data.message || 'Unknown error'), false);
         }
     })
     .catch(error => {
         console.error('Error updating lease state:', error);
-        alert('Failed to update lease state');
+        toast('Failed to update lease state', false);
     });
 }
 
@@ -174,7 +207,7 @@ function showLeaseHistory(mac) {
     })
     .catch(error => {
         console.error('Error fetching lease history:', error);
-        alert('Failed to load lease history');
+        toast('Failed to load lease history', false);
     });
 }
 

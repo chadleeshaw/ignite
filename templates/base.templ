@@ -19,18 +19,18 @@
     <header class="sticky top-0 z-50 shadow-lg bg-neutral text-white">
         <div class="container mx-auto px-4 py-2">
             <nav class="flex justify-between items-center">
-                <div class="flex items-center space-x-4">
-                    <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-10 -mr-4">
+                <div class="flex items-center space-x-2">
+                    <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-10">
                     <div class="text-2xl font-bold text-primary">ignite</div>
                 </div>
                 <div class="hidden md:flex items-center space-x-4">
-                    <a href="/" class="hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
-                    <a href="/dhcp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
-                    <a href="/provision" class="hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
-                    <a href="/tftp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
-                    <a href="/osimages" class="hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
-                    <a href="/syslinux" class="hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
-                    <a href="/status" class="hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
+                    <a data-nav href="/" class="hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
+                    <a data-nav href="/dhcp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
+                    <a data-nav href="/provision" class="hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
+                    <a data-nav href="/tftp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
+                    <a data-nav href="/osimages" class="hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
+                    <a data-nav href="/syslinux" class="hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
+                    <a data-nav href="/status" class="hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
 
                     <!-- User Menu -->
                     <div class="dropdown dropdown-end">
@@ -60,13 +60,13 @@
 
     <div id="mobile-menu" class="hidden md:hidden fixed top-0 left-0 right-0 z-40 bg-neutral shadow-lg pt-16">
         <div class="container mx-auto px-4 py-2">
-            <a href="/" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
-            <a href="/dhcp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
-            <a href="/provision" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
-            <a href="/tftp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
-            <a href="/osimages" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
-            <a href="/syslinux" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
-            <a href="/status" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
+            <a data-nav href="/" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
+            <a data-nav href="/dhcp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
+            <a data-nav href="/provision" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
+            <a data-nav href="/tftp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
+            <a data-nav href="/osimages" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
+            <a data-nav href="/syslinux" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
+            <a data-nav href="/status" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
         </div>
     </div>
 
@@ -101,14 +101,46 @@
         </div>
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
+    <footer class="mt-12 pb-6 text-center text-sm text-base-content/40">
+        <p>Ignite &mdash; Network Boot &amp; Provisioning</p>
+    </footer>
+
     <script src="https://unpkg.com/htmx.org@1.9.9/dist/htmx.min.js" defer></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
     <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script>
-        $(document).ready(function() {
-            $('#menu-btn').click(function() {
-                $('#mobile-menu').toggleClass('hidden');
+        // Mobile menu: toggle, close on link tap, close on outside tap.
+        document.addEventListener('DOMContentLoaded', function() {
+            var menuBtn = document.getElementById('menu-btn');
+            var mobileMenu = document.getElementById('mobile-menu');
+            if (menuBtn && mobileMenu) {
+                menuBtn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    mobileMenu.classList.toggle('hidden');
+                });
+                mobileMenu.querySelectorAll('a').forEach(function(a) {
+                    a.addEventListener('click', function() {
+                        mobileMenu.classList.add('hidden');
+                    });
+                });
+                document.addEventListener('click', function(e) {
+                    if (!mobileMenu.classList.contains('hidden') && !mobileMenu.contains(e.target)) {
+                        mobileMenu.classList.add('hidden');
+                    }
+                });
+            }
+
+            // Highlight the nav link for the current page.
+            var path = window.location.pathname;
+            document.querySelectorAll('a[data-nav]').forEach(function(a) {
+                var href = a.getAttribute('href');
+                var active = href === '/'
+                    ? path === '/'
+                    : (path === href || path.indexOf(href + '/') === 0);
+                if (active) {
+                    a.classList.add('text-primary', 'font-semibold');
+                    a.setAttribute('aria-current', 'page');
+                }
             });
         });
 

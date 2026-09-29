@@ -1,5 +1,5 @@
 {{ define "content" }}
-<main role="main" class="container mx-auto px-4 py-6">
+<div role="main">
     <!-- Header -->
     <div class="flex justify-between items-center mb-6">
         <h1 class="text-3xl font-bold">{{.Title}}</h1>
@@ -214,16 +214,28 @@
                 <ul class="space-y-1 text-base-content/70">
                     <li>• Click file name to edit</li>
                     <li>• <i class="fas fa-trash text-error"></i> button to delete</li>
-                    <li>• Auto-save on edit</li>
-                    <li>• Syntax highlighting</li>
+                    <li>• Press Save to persist changes</li>
+                    <li>• Syntax highlighting in Preview</li>
                 </ul>
             </div>
         </div>
     </div>
-</main>
+</div>
 
 <script>
-// JavaScript is loading properly
+// Toast helper (Toastify is loaded globally in the base template)
+function toast(message, isSuccess) {
+    Toastify({
+        text: message,
+        duration: 3000,
+        close: true,
+        gravity: "top",
+        position: "right",
+        backgroundColor: isSuccess
+            ? "linear-gradient(to right, #00b09b, #96c93d)"
+            : "linear-gradient(to right, #FBBF24, #FF4500)",
+    }).showToast();
+}
 
 // Global state
 let currentFile = null;
@@ -250,7 +262,7 @@ function loadFile(path, name, language) {
         })
         .catch(error => {
             console.error('Error loading file:', error);
-            alert('Error loading file: ' + error.message);
+            toast('Error loading file: ' + error.message, false);
         });
 }
 
@@ -282,28 +294,31 @@ function deleteFile(filePath, fileName, event) {
     .then(response => response.json())
     .then(data => {
         if (data.success) {
-            alert('File deleted successfully!');
+            toast('File deleted successfully!', true);
 
             // Clear editor if the deleted file was currently open
             if (currentFile && currentFile.path === filePath) {
                 clearEditor();
             }
 
-            // Refresh the file browser by reloading the page
-            window.location.reload();
+            // Remove the file row from the browser list without reloading
+            const row = event.target.closest('.file-item');
+            if (row) {
+                row.remove();
+            }
         } else {
-            alert('Error deleting file: ' + data.error);
+            toast('Error deleting file: ' + data.error, false);
         }
     })
     .catch(error => {
         console.error('Error deleting file:', error);
-        alert('Error deleting file: ' + error.message);
+        toast('Error deleting file: ' + error.message, false);
     });
 }
 
 function saveFile() {
     if (!currentFile) {
-        alert('No file selected');
+        toast('No file selected', false);
         return;
     }
     
@@ -321,14 +336,14 @@ function saveFile() {
         if (data.success) {
             isModified = false;
             updateFileStatus();
-            alert('File saved successfully!');
+            toast('File saved successfully!', true);
         } else {
-            alert('Error saving file: ' + data.error);
+            toast('Error saving file: ' + data.error, false);
         }
     })
     .catch(error => {
         console.error('Error saving file:', error);
-        alert('Error saving file: ' + error.message);
+        toast('Error saving file: ' + error.message, false);
     });
 }
 
@@ -358,7 +373,7 @@ function updateCursorPosition() {
 
 function previewFile() {
     if (!currentFile) {
-        alert('No file selected');
+        toast('No file selected', false);
         return;
     }
     

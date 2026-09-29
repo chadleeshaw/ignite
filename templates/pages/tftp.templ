@@ -1,23 +1,25 @@
 {{ define "content" }}
-<main role="main" class="container mx-auto px-4 py-6">
-    <div class="flex justify-between items-center mb-4">
-        <h1 class="text-2xl font-bold">TFTP Server Overview</h1>
+<div>
+    <div class="flex justify-between items-center mb-6">
+        <h1 class="text-3xl font-bold">TFTP Server Overview</h1>
         <button class="btn btn-primary" onclick="document.getElementById('uploadModal').showModal()">
-            ↑ Upload File
+            <i class="fas fa-upload mr-2"></i>Upload File
         </button>
     </div>
 
     <!-- Placeholder for modal -->
     <div id="modal-content"></div>
 
-    <div class="bg-base-200 p-4 rounded-lg shadow-lg mb-6">
-        <p>Directory: {{.ServerDirectory}}</p>
-        {{ if ne .ServerDirectory "./" }}
-        <p><button class="btn btn-xs btn-success" onclick="window.location.href='/tftp/open?dir={{.PrevDirectory}}'">Back</button></p>
-        {{ end }}
+    <div class="text-sm breadcrumbs mb-4">
+        <ul>
+            <li><a href="/tftp" class="{{if not .Breadcrumbs}}text-primary font-semibold{{end}}"><i class="fas fa-home mr-1"></i>root</a></li>
+            {{range .Breadcrumbs}}
+            <li><a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a></li>
+            {{end}}
+        </ul>
     </div>
 
-    <div class="bg-base-200 p-4 rounded-lg shadow-lg">
+    <div class="bg-base-200 p-4 rounded-lg shadow-lg overflow-x-auto">
         <h2 class="text-lg font-bold mb-2">Files in TFTP Directory</h2>
 
         <table class="table w-full">
@@ -50,7 +52,7 @@
         </table>
 
     </div>
-</main>
+</div>
 
 <!-- Upload Modal -->
 {{ template "uploadmodal" }}
