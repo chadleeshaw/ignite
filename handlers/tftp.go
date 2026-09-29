@@ -294,12 +294,19 @@ type FileInfo struct {
 	IsDir        bool
 }
 
+// Breadcrumb is one segment of the TFTP directory trail shown in the UI.
+type Breadcrumb struct {
+	Name string
+	Dir  string
+}
+
 // TFTPData holds information for rendering the TFTP management page
 type TFTPData struct {
 	Title           string
 	ServerRunning   bool
 	ServerDirectory string
 	PrevDirectory   string
+	Breadcrumbs     []Breadcrumb
 	Files           []FileInfo
 }
 
@@ -360,8 +367,28 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		ServerRunning:   isTFTPRunning(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
+		Breadcrumbs:     buildBreadcrumbs(relDir),
 		Files:           fileInfos,
 	}, nil
+}
+
+// buildBreadcrumbs turns a TFTP-relative directory ("", "a", "a/b") into a
+// trail of clickable segments for the file browser UI.
+func buildBreadcrumbs(relDir string) []Breadcrumb {
+	if relDir == "" {
+		return nil
+	}
+	parts := strings.Split(relDir, string(filepath.Separator))
+	crumbs := make([]Breadcrumb, 0, len(parts))
+	accum := ""
+	for _, part := range parts {
+		if accum != "" {
+			accum += string(filepath.Separator)
+		}
+		accum += part
+		crumbs = append(crumbs, Breadcrumb{Name: part, Dir: accum})
+	}
+	return crumbs
 }
 
 // mustAbs returns the absolute form of p, falling back to p itself on error.
