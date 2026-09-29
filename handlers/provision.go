@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 )
@@ -56,12 +57,12 @@ func NewProvisionHandlers(container *Container) *ProvisionHandlers {
 
 // HomeHandler serves the provision page
 func (h *ProvisionHandlers) HomeHandler(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	data := h.getProvisionData()
 
-	templates := LoadTemplates()
-	if err := templates["provision"].Execute(w, data); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	renderCachedTemplate(w, r, "provision", data, "Unable to render the provision page")
 }
 
 // getProvisionData collects all provision files and metadata
@@ -76,10 +77,10 @@ func (h *ProvisionHandlers) getProvisionData() *ProvisionData {
 	}
 
 	// Scan templates directory
-	h.scanDirectory(filepath.Join(provisionDir, "templates"), "template", data)
+	h.scanDirectory(provisionDir, filepath.Join(provisionDir, "templates"), "template", data)
 
 	// Scan configs directory
-	h.scanDirectory(filepath.Join(provisionDir, "configs"), "config", data)
+	h.scanDirectory(provisionDir, filepath.Join(provisionDir, "configs"), "config", data)
 
 	// Sort files by name
 	sort.Slice(data.Files, func(i, j int) bool {
@@ -89,8 +90,10 @@ func (h *ProvisionHandlers) getProvisionData() *ProvisionData {
 	return data
 }
 
-// scanDirectory recursively scans a directory for provision files
-func (h *ProvisionHandlers) scanDirectory(dir, fileType string, data *ProvisionData) {
+// scanDirectory recursively scans a directory for provision files.
+// root is the provision root; file paths are stored relative to it so
+// absolute filesystem paths are never exposed.
+func (h *ProvisionHandlers) scanDirectory(root, dir, fileType string, data *ProvisionData) {
 	if _, err := os.Stat(dir); os.IsNotExist(err) {
 		return
 	}
@@ -118,9 +121,15 @@ func (h *ProvisionHandlers) scanDirectory(dir, fileType string, data *ProvisionD
 			return nil
 		}
 
+		// Expose the path relative to the provision root, never absolute.
+		relToRoot, err := filepath.Rel(root, path)
+		if err != nil {
+			relToRoot = info.Name()
+		}
+
 		fileInfo := &ProvisionFileInfo{
 			Name:     info.Name(),
-			Path:     path,
+			Path:     relToRoot,
 			Size:     info.Size(),
 			ModTime:  info.ModTime(),
 			IsDir:    false, // We only include files now
@@ -173,45 +182,90 @@ func (h *ProvisionHandlers) detectLanguage(path string) string {
 	}
 }
 
+// renderOptions renders a list of <option> elements for the file and
+// template pickers. The template is parsed per request with normal error
+// handling instead of panicking.
+func renderOptions(w http.ResponseWriter, r *http.Request, files []string) {
+	tmpl, err := template.New("options").Parse(
+		"{{range .}}<option value=\"{{.}}\">{{.}}</option>{{end}}",
+	)
+	if err != nil {
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to parse options template: %v", err),
+			"Unable to render options",
+		))
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html")
+	if err := tmpl.Execute(w, files); err != nil {
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to render options template: %v", err),
+			"Unable to render options",
+		))
+	}
+}
+
 // HandleFileOptions handles file options - returns available files for a given type
 func (h *ProvisionHandlers) HandleFileOptions(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	fileType := r.FormValue("typeSelect")
 	if fileType == "" {
-		http.Error(w, "typeSelect parameter is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing typeSelect", "typeSelect parameter is required"))
 		return
 	}
 
 	provisionDir := h.container.Config.Provision.Dir
-	files := h.listFiles(filepath.Join(provisionDir, "templates", fileType))
-
-	tmpl := template.Must(template.New("options").Parse(`
-		{{range .}}
-		<option value="{{.}}">{{.}}</option>
-		{{end}}
-	`))
-
-	w.Header().Set("Content-Type", "text/html")
-	if err := tmpl.Execute(w, files); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+	// Resolve the requested type directory inside templates (join-then-check).
+	typeDir, err := safeJoin(filepath.Join(provisionDir, "templates"), fileType)
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid file type: %v", err),
+			"The requested file type is not allowed",
+		))
+		return
 	}
+	files := h.listFiles(typeDir)
+
+	renderOptions(w, r, files)
 }
 
 // LoadTemplate loads a template file content
 func (h *ProvisionHandlers) LoadTemplate(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	templateType := r.FormValue("typeSelect")
 	templateName := r.FormValue("templateSelect")
 
 	if templateType == "" || templateName == "" {
-		http.Error(w, "typeSelect and templateSelect parameters are required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing parameters", "typeSelect and templateSelect parameters are required"))
 		return
 	}
 
 	provisionDir := h.container.Config.Provision.Dir
-	filePath := filepath.Join(provisionDir, "templates", templateType, templateName)
+	// Resolve inside the templates root (join-then-check).
+	filePath, err := safeJoin(filepath.Join(provisionDir, "templates"), filepath.Join(templateType, templateName))
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid template path: %v", err),
+			"The requested template path is not allowed",
+		))
+		return
+	}
 
 	content, err := h.loadFileContent(filePath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Error loading template: %v", err), http.StatusInternalServerError)
+		if os.IsNotExist(err) {
+			HandleError(w, r, NewNotFoundError("Template not found", "The requested template does not exist"))
+		} else {
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Error loading template: %v", err),
+				"Unable to load the template",
+			))
+		}
 		return
 	}
 
@@ -221,9 +275,12 @@ func (h *ProvisionHandlers) LoadTemplate(w http.ResponseWriter, r *http.Request)
 
 // HandleConfigOptions handles config options - returns available configs for a given type
 func (h *ProvisionHandlers) HandleConfigOptions(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	configType := r.FormValue("configTypeSelect")
 	if configType == "" {
-		http.Error(w, "configTypeSelect parameter is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing configTypeSelect", "configTypeSelect parameter is required"))
 		return
 	}
 
@@ -233,45 +290,63 @@ func (h *ProvisionHandlers) HandleConfigOptions(w http.ResponseWriter, r *http.R
 		// Boot menu configs are in TFTP directory
 		files = h.listFiles(filepath.Join(h.container.Config.TFTP.Dir, "pxelinux.cfg"))
 	} else {
-		// Other configs are in provision configs directory
+		// Other configs are in provision configs directory — resolve
+		// the type directory inside configs (join-then-check).
 		provisionDir := h.container.Config.Provision.Dir
-		files = h.listFiles(filepath.Join(provisionDir, "configs", configType))
+		configDir, err := safeJoin(filepath.Join(provisionDir, "configs"), configType)
+		if err != nil {
+			HandleError(w, r, NewValidationError(
+				fmt.Sprintf("Invalid config type: %v", err),
+				"The requested config type is not allowed",
+			))
+			return
+		}
+		files = h.listFiles(configDir)
 	}
 
-	tmpl := template.Must(template.New("options").Parse(`
-		{{range .}}
-		<option value="{{.}}">{{.}}</option>
-		{{end}}
-	`))
-
-	w.Header().Set("Content-Type", "text/html")
-	if err := tmpl.Execute(w, files); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-	}
+	renderOptions(w, r, files)
 }
 
 // LoadConfig loads a config file content
 func (h *ProvisionHandlers) LoadConfig(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	configType := r.FormValue("configTypeSelect")
 	configName := r.FormValue("configSelect")
 
 	if configType == "" || configName == "" {
-		http.Error(w, "configTypeSelect and configSelect parameters are required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing parameters", "configTypeSelect and configSelect parameters are required"))
 		return
 	}
 
 	var filePath string
+	var err error
 
 	if configType == "bootmenu" {
-		filePath = filepath.Join(h.container.Config.TFTP.Dir, "pxelinux.cfg", configName)
+		filePath, err = safeJoin(filepath.Join(h.container.Config.TFTP.Dir, "pxelinux.cfg"), configName)
 	} else {
 		provisionDir := h.container.Config.Provision.Dir
-		filePath = filepath.Join(provisionDir, "configs", configType, configName)
+		filePath, err = safeJoin(filepath.Join(provisionDir, "configs"), filepath.Join(configType, configName))
+	}
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid config path: %v", err),
+			"The requested config path is not allowed",
+		))
+		return
 	}
 
 	content, err := h.loadFileContent(filePath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Error loading config: %v", err), http.StatusInternalServerError)
+		if os.IsNotExist(err) {
+			HandleError(w, r, NewNotFoundError("Config not found", "The requested config does not exist"))
+		} else {
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Error loading config: %v", err),
+				"Unable to load the config",
+			))
+		}
 		return
 	}
 
@@ -292,63 +367,83 @@ func (h *ProvisionHandlers) UpdateFilename(w http.ResponseWriter, r *http.Reques
 
 // HandleNewTemplate creates a new template file
 func (h *ProvisionHandlers) HandleNewTemplate(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	templateType := r.FormValue("saveTypeSelect")
 	filename := r.FormValue("filenameInput")
 
 	if templateType == "" || filename == "" {
-		http.Error(w, "saveTypeSelect and filenameInput parameters are required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing parameters", "saveTypeSelect and filenameInput parameters are required"))
 		return
 	}
 
 	provisionDir := h.container.Config.Provision.Dir
-	filePath := filepath.Join(provisionDir, "templates", templateType, filename)
+	// Resolve the new file inside the templates root (join-then-check).
+	filePath, err := safeJoin(filepath.Join(provisionDir, "templates"), filepath.Join(templateType, filename))
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid template path: %v", err),
+			"The requested template path is not allowed",
+		))
+		return
+	}
 
 	// Create directories if they don't exist
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		http.Error(w, fmt.Sprintf("Error creating directory: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Error creating directory: %v", err),
+			"Unable to create the template directory",
+		))
 		return
 	}
 
 	// Check if file already exists
 	if _, err := os.Stat(filePath); err == nil {
-		http.Error(w, "File already exists", http.StatusConflict)
+		HandleError(w, r, NewAppError(ErrorTypeConflict, "File already exists", "A file with that name already exists", http.StatusConflict))
 		return
 	}
 
 	// Create empty file
 	file, err := os.Create(filePath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Error creating file: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Error creating file: %v", err),
+			"Unable to create the template file",
+		))
 		return
 	}
 	defer file.Close()
 
+	// Quote the filename for safe interpolation into the JavaScript response.
 	w.Header().Set("Content-Type", "application/javascript")
 	fmt.Fprintf(w, `
-		document.getElementById('currentFilename').textContent = 'Filename: %s';
+		document.getElementById('currentFilename').textContent = %s;
 		document.getElementById('editableTextarea').value = '';
 		alert('Template created successfully!');
-	`, filename)
+	`, strconv.Quote("Filename: "+filename))
 }
 
 // HandleSave saves file content
 func (h *ProvisionHandlers) HandleSave(w http.ResponseWriter, r *http.Request) {
+	if !requireConfig(w, r, h.container) {
+		return
+	}
 	content := r.FormValue("codeContent")
 	filename := r.FormValue("filename")
 	fileType := r.FormValue("type")
 	category := r.FormValue("category")
 
 	if content == "" {
-		http.Error(w, "codeContent parameter is required", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing codeContent", "codeContent parameter is required"))
 		return
 	}
 
 	if filename == "" || filename == "untitled" {
-		http.Error(w, "Please specify a filename before saving", http.StatusBadRequest)
+		HandleError(w, r, NewValidationError("Missing filename", "Please specify a filename before saving"))
 		return
 	}
 
-	var filePath string
 	provisionDir := h.container.Config.Provision.Dir
 
 	if fileType == "" {
@@ -358,17 +453,31 @@ func (h *ProvisionHandlers) HandleSave(w http.ResponseWriter, r *http.Request) {
 		category = "cloud-init" // default category
 	}
 
-	filePath = filepath.Join(provisionDir, fileType, category, filename)
+	// Resolve the target inside the provision root (join-then-check).
+	filePath, err := safeJoin(provisionDir, filepath.Join(fileType, category, filename))
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid file path: %v", err),
+			"The requested file path is not allowed",
+		))
+		return
+	}
 
 	// Create directories if they don't exist
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		http.Error(w, fmt.Sprintf("Error creating directory: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Error creating directory: %v", err),
+			"Unable to create the target directory",
+		))
 		return
 	}
 
 	// Write file
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		http.Error(w, fmt.Sprintf("Error saving file: %v", err), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Error saving file: %v", err),
+			"Unable to save the file",
+		))
 		return
 	}
 
@@ -398,10 +507,6 @@ func (h *ProvisionHandlers) listFiles(dir string) []string {
 
 // loadFileContent reads and returns file content
 func (h *ProvisionHandlers) loadFileContent(filePath string) (string, error) {
-	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		return "", fmt.Errorf("file not found: %s", filePath)
-	}
-
 	content, err := os.ReadFile(filePath)
 	if err != nil {
 		return "", err
@@ -439,17 +544,80 @@ func (h *ProvisionHandlers) isPathAllowed(filePath string, allowedDirs ...string
 
 // Additional API endpoints for the new interface
 
+// resolveProvisionPath resolves a user-supplied path to an absolute path
+// inside the provision or TFTP roots. Relative paths are joined-then-checked
+// against each root; absolute paths are honored only when already contained in
+// an allowed root (legacy clients send absolute paths).
+func (h *ProvisionHandlers) resolveProvisionPath(userPath string) (string, error) {
+	if strings.TrimSpace(userPath) == "" {
+		return "", fmt.Errorf("path parameter is required")
+	}
+
+	var bases []string
+	if dir := h.container.Config.Provision.Dir; dir != "" {
+		bases = append(bases, dir)
+	}
+	if dir := h.container.Config.TFTP.Dir; dir != "" {
+		bases = append(bases, dir)
+	}
+
+	// Relative paths: join-then-check against each allowed root.
+	if !filepath.IsAbs(userPath) {
+		for _, base := range bases {
+			if p, err := safeJoin(base, userPath); err == nil {
+				return p, nil
+			}
+		}
+		return "", fmt.Errorf("path is not within an allowed directory")
+	}
+
+	// Absolute paths: only honor when already inside an allowed root.
+	if h.isPathAllowed(userPath, bases...) {
+		return filepath.Clean(userPath), nil
+	}
+	return "", fmt.Errorf("path is not within an allowed directory")
+}
+
+// writeJSONError writes a generic JSON error without leaking internals.
+func writeJSONError(w http.ResponseWriter, status int, userMessage string) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"success": false,
+		"error":   userMessage,
+	})
+}
+
 // LoadFileContent loads file content via API
 func (h *ProvisionHandlers) LoadFileContent(w http.ResponseWriter, r *http.Request) {
-	filePath := r.URL.Query().Get("path")
-	if filePath == "" {
-		http.Error(w, "path parameter is required", http.StatusBadRequest)
+	if !requireConfig(w, r, h.container) {
+		return
+	}
+	userPath := r.URL.Query().Get("path")
+	if userPath == "" {
+		HandleError(w, r, NewValidationError("Missing path", "path parameter is required"))
+		return
+	}
+
+	filePath, err := h.resolveProvisionPath(userPath)
+	if err != nil {
+		HandleError(w, r, NewValidationError(
+			fmt.Sprintf("Invalid path: %v", err),
+			"The requested path is not allowed",
+		))
 		return
 	}
 
 	content, err := h.loadFileContent(filePath)
 	if err != nil {
-		http.Error(w, fmt.Sprintf("Error loading file: %v", err), http.StatusInternalServerError)
+		if os.IsNotExist(err) {
+			HandleError(w, r, NewNotFoundError("File not found", "The requested file does not exist"))
+		} else {
+			HandleError(w, r, NewInternalError(
+				fmt.Sprintf("Error loading file: %v", err),
+				"Unable to load the file",
+			))
+		}
 		return
 	}
 
@@ -459,36 +627,37 @@ func (h *ProvisionHandlers) LoadFileContent(w http.ResponseWriter, r *http.Reque
 
 // SaveFileContent saves file content via API
 func (h *ProvisionHandlers) SaveFileContent(w http.ResponseWriter, r *http.Request) {
-	filePath := r.FormValue("path")
+	if !requireConfig(w, r, h.container) {
+		return
+	}
+	userPath := r.FormValue("path")
 	content := r.FormValue("content")
 
-	if filePath == "" {
-		http.Error(w, "path parameter is required", http.StatusBadRequest)
+	if userPath == "" {
+		writeJSONError(w, http.StatusBadRequest, "path parameter is required")
 		return
 	}
 
 	if content == "" {
-		http.Error(w, "content parameter is required", http.StatusBadRequest)
+		writeJSONError(w, http.StatusBadRequest, "content parameter is required")
+		return
+	}
+
+	filePath, err := h.resolveProvisionPath(userPath)
+	if err != nil {
+		writeJSONError(w, http.StatusForbidden, "The requested path is not allowed")
 		return
 	}
 
 	// Create directories if they don't exist
 	if err := os.MkdirAll(filepath.Dir(filePath), 0755); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("Error creating directory: %v", err),
-		})
+		writeJSONError(w, http.StatusInternalServerError, "Unable to create the target directory")
 		return
 	}
 
 	// Write file
 	if err := os.WriteFile(filePath, []byte(content), 0644); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("Error saving file: %v", err),
-		})
+		writeJSONError(w, http.StatusInternalServerError, "Unable to save the file")
 		return
 	}
 
@@ -501,47 +670,32 @@ func (h *ProvisionHandlers) SaveFileContent(w http.ResponseWriter, r *http.Reque
 
 // DeleteFile deletes a file via API
 func (h *ProvisionHandlers) DeleteFile(w http.ResponseWriter, r *http.Request) {
-	filePath := r.FormValue("path")
+	if !requireConfig(w, r, h.container) {
+		return
+	}
+	userPath := r.FormValue("path")
 
-	if filePath == "" {
-		w.WriteHeader(http.StatusBadRequest)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "path parameter is required",
-		})
+	if userPath == "" {
+		writeJSONError(w, http.StatusBadRequest, "path parameter is required")
 		return
 	}
 
-	// Security check: ensure file is within allowed directories
-	provisionDir := h.container.Config.Provision.Dir
-	tftpDir := h.container.Config.TFTP.Dir
-
-	if !h.isPathAllowed(filePath, provisionDir, tftpDir) {
-		w.WriteHeader(http.StatusForbidden)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "File deletion not allowed outside of provision directories",
-		})
+	// Security check: resolve inside the allowed provision/TFTP roots.
+	filePath, err := h.resolveProvisionPath(userPath)
+	if err != nil {
+		writeJSONError(w, http.StatusForbidden, "File deletion not allowed outside of provision directories")
 		return
 	}
 
 	// Check if file exists
 	if _, err := os.Stat(filePath); os.IsNotExist(err) {
-		w.WriteHeader(http.StatusNotFound)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   "File not found",
-		})
+		writeJSONError(w, http.StatusNotFound, "File not found")
 		return
 	}
 
 	// Delete file
 	if err := os.Remove(filePath); err != nil {
-		w.WriteHeader(http.StatusInternalServerError)
-		json.NewEncoder(w).Encode(map[string]interface{}{
-			"success": false,
-			"error":   fmt.Sprintf("Error deleting file: %v", err),
-		})
+		writeJSONError(w, http.StatusInternalServerError, "Unable to delete the file")
 		return
 	}
 
@@ -558,7 +712,10 @@ func (h *ProvisionHandlers) GetTemplateGallery(w http.ResponseWriter, r *http.Re
 
 	w.Header().Set("Content-Type", "application/json")
 	if err := json.NewEncoder(w).Encode(gallery); err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Error encoding gallery: %v", err),
+			"Unable to load the template gallery",
+		))
 	}
 }
 
