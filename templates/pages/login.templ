@@ -31,15 +31,20 @@
                         <label class="label">
                             <span class="label-text text-base-content">Password</span>
                         </label>
-                        <input
-                            type="password"
-                            id="password"
-                            name="password"
-                            placeholder="Enter password"
-                            class="input input-bordered w-full focus:input-primary"
-                            required
-                            autocomplete="current-password"
-                        >
+                        <div class="relative">
+                            <input
+                                type="password"
+                                id="password"
+                                name="password"
+                                placeholder="Enter password"
+                                class="input input-bordered w-full focus:input-primary pr-12"
+                                required
+                                autocomplete="current-password"
+                            >
+                            <button type="button" id="toggle-password" class="absolute right-2 top-1/2 -translate-y-1/2 btn btn-ghost btn-sm btn-circle" aria-label="Show password">
+                                <i class="fas fa-eye" id="toggle-password-icon"></i>
+                            </button>
+                        </div>
                     </div>
 
                     <div class="form-control mt-6">
@@ -65,6 +70,17 @@
 document.addEventListener('DOMContentLoaded', function() {
     const form = document.getElementById('login-form');
     const errorMessage = document.getElementById('error-message');
+    const passwordInput = document.getElementById('password');
+    const toggleBtn = document.getElementById('toggle-password');
+    const toggleIcon = document.getElementById('toggle-password-icon');
+
+    // Show/hide password toggle
+    toggleBtn.addEventListener('click', function() {
+        const show = passwordInput.type === 'password';
+        passwordInput.type = show ? 'text' : 'password';
+        toggleIcon.className = show ? 'fas fa-eye-slash' : 'fas fa-eye';
+        toggleBtn.setAttribute('aria-label', show ? 'Hide password' : 'Show password');
+    });
 
     form.addEventListener('submit', function(e) {
         e.preventDefault();
