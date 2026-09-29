@@ -1,6 +1,6 @@
 {{ define "content" }}
 <div class="text-center">
-    <h1 class="text-5xl font-bold text-primary mb-4">Welcome to Ignite</h1>
+    <h1 class="text-5xl font-bold mb-4 bg-gradient-to-r from-primary to-secondary bg-clip-text text-transparent">Welcome to Ignite</h1>
     <p class="text-xl mb-8">Your all-in-one solution for network booting and server provisioning.</p>
     
     <!-- Workflow Steps -->
@@ -11,7 +11,7 @@
             <!-- Step 1: Syslinux -->
             <div class="flex flex-col items-center">
                 <div class="bg-primary text-primary-content w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mb-3">1</div>
-                <div class="card bg-base-100 shadow-lg w-64">
+                <div class="card bg-base-200 shadow-lg w-64">
                     <div class="card-body text-center p-4">
                         <i class="fas fa-cog text-3xl text-primary mb-2"></i>
                         <h3 class="card-title text-lg justify-center">Download Syslinux</h3>
@@ -31,7 +31,7 @@
             <!-- Step 2: OS Images -->
             <div class="flex flex-col items-center">
                 <div class="bg-secondary text-secondary-content w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mb-3">2</div>
-                <div class="card bg-base-100 shadow-lg w-64">
+                <div class="card bg-base-200 shadow-lg w-64">
                     <div class="card-body text-center p-4">
                         <i class="fas fa-download text-3xl text-secondary mb-2"></i>
                         <h3 class="card-title text-lg justify-center">Download OS Images</h3>
@@ -51,7 +51,7 @@
             <!-- Step 3: DHCP -->
             <div class="flex flex-col items-center">
                 <div class="bg-accent text-accent-content w-12 h-12 rounded-full flex items-center justify-center text-xl font-bold mb-3">3</div>
-                <div class="card bg-base-100 shadow-lg w-64">
+                <div class="card bg-base-200 shadow-lg w-64">
                     <div class="card-body text-center p-4">
                         <i class="fas fa-network-wired text-3xl text-accent mb-2"></i>
                         <h3 class="card-title text-lg justify-center">Create DHCP Server</h3>
@@ -67,21 +67,21 @@
 </div>
 
 <div class="mt-16 grid md:grid-cols-3 gap-8">
-    <div class="card bg-neutral shadow-xl">
+    <div class="card bg-base-200 shadow-xl">
         <div class="card-body items-center text-center">
             <i class="fas fa-cogs text-4xl text-secondary mb-4"></i>
             <h2 class="card-title">Powerful Provisioning</h2>
             <p>Automate OS installations with flexible templating for Ubuntu, NixOS, and Redhat.</p>
         </div>
     </div>
-    <div class="card bg-neutral shadow-xl">
+    <div class="card bg-base-200 shadow-xl">
         <div class="card-body items-center text-center">
             <i class="fas fa-server text-4xl text-secondary mb-4"></i>
             <h2 class="card-title">Integrated TFTP/DHCP</h2>
             <p>A unified server for seamless PXE booting and IP address management.</p>
         </div>
     </div>
-    <div class="card bg-neutral shadow-xl">
+    <div class="card bg-base-200 shadow-xl">
         <div class="card-body items-center text-center">
             <i class="fas fa-bolt text-4xl text-secondary mb-4"></i>
             <h2 class="card-title">Redfish API Control</h2>
