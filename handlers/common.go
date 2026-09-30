@@ -8,6 +8,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 
@@ -46,6 +47,49 @@ func LoadTemplates() map[string]*template.Template {
 	return templates
 }
 
+// templateFuncs exposes formatting helpers to every parsed template.
+var templateFuncs = template.FuncMap{
+	"formatBytes": formatBytes,
+}
+
+// formatBytes renders a byte count as a human-readable string (e.g. "117.7 MB").
+// Non-numeric or negative inputs render as an empty string.
+func formatBytes(v any) string {
+	var b int64
+	switch n := v.(type) {
+	case int:
+		b = int64(n)
+	case int8:
+		b = int64(n)
+	case int16:
+		b = int64(n)
+	case int32:
+		b = int64(n)
+	case int64:
+		b = n
+	case uint:
+		b = int64(n)
+	case uint8:
+		b = int64(n)
+	case uint16:
+		b = int64(n)
+	case uint32:
+		b = int64(n)
+	case uint64:
+		b = int64(n)
+	case float32:
+		b = int64(n)
+	case float64:
+		b = int64(n)
+	default:
+		return ""
+	}
+	if b < 0 {
+		return ""
+	}
+	return humanReadableSize(b)
+}
+
 // parseTemplates parses every page/modal template exactly once.
 // A template that fails to parse is logged and left out of the map —
 // callers treat a missing entry as "template not available" instead of
@@ -75,7 +119,7 @@ func parseTemplates() map[string]*template.Template {
 
 	parsed := make(map[string]*template.Template, len(files))
 	for name, paths := range files {
-		tmpl, err := template.ParseFiles(paths...)
+		tmpl, err := template.New(filepath.Base(paths[0])).Funcs(templateFuncs).ParseFiles(paths...)
 		if err != nil {
 			log.Printf("Error parsing template %s: %v", name, err)
 			continue
