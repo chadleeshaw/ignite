@@ -71,19 +71,19 @@ func tokensEqual(got, want string) bool {
 	return subtle.ConstantTimeCompare(sumGot[:], sumWant[:]) == 1
 }
 
-// crossSiteRequest reports a browser POST that did not originate on this
-// host. A missing Origin is allowed (non-browser clients). SameSite=Lax
-// already blocks most cross-site cookie posts; this rejects the rest.
+// crossSiteRequest reports a state-changing request that did not originate
+// on this host. A missing Origin is cross-site: browsers send Origin on
+// POST, PUT, and DELETE, and a client that omits it is not treated as same-site.
 func crossSiteRequest(r *http.Request) bool {
 	if r == nil {
-		return false
+		return true
 	}
 	if strings.EqualFold(r.Header.Get("Sec-Fetch-Site"), "cross-site") {
 		return true
 	}
 	origin := strings.TrimSpace(r.Header.Get("Origin"))
 	if origin == "" {
-		return false
+		return true
 	}
 	parsed, err := url.Parse(origin)
 	if err != nil || parsed.Host == "" {

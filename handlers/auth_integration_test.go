@@ -370,7 +370,7 @@ func TestSessionPersistence(t *testing.T) {
 
 	middlewareHandler := AuthMiddleware(testHandler)
 
-	paths := []string{"/", "/dhcp", "/provision", "/status"}
+	paths := []string{"/", "/dhcp", "/provision", "/syslinux"}
 
 	for _, path := range paths {
 		t.Run("Session persistence for "+path, func(t *testing.T) {

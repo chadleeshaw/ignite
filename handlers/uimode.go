@@ -50,20 +50,23 @@ func currentUIMode(r *http.Request) string {
 	return mode
 }
 
-// applyUIMode returns data with Mode set to the signed-in user's density.
+// applyUIMode returns data with Mode set to the signed-in user's density
+// and CSRFToken set to that session's token.
 // A request with no session (except GET /login), a failed lookup, or an
-// unknown stored value gets DefaultUIMode. Maps gain a "Mode" key. Structs
-// with an exported Mode string field are updated (a non-pointer struct is
-// copied first). Nil data becomes a small struct carrying Title and Mode
-// so base templates can render. Shells paint data-theme from Mode and
-// fall back to cozy when it is empty.
+// unknown stored value gets DefaultUIMode. Maps gain "Mode" and "CSRFToken"
+// keys. Structs with exported Mode or CSRFToken string fields are updated
+// (a non-pointer struct is copied first). Nil data becomes a small struct
+// carrying Title, Mode, and CSRFToken so base templates can render. Shells
+// paint data-theme from Mode and fall back to cozy when it is empty.
 func applyUIMode(r *http.Request, data any) any {
 	mode := currentUIMode(r)
+	csrf := currentCSRFToken(r)
 	if data == nil {
 		return struct {
-			Title string
-			Mode  string
-		}{Mode: mode}
+			Title     string
+			Mode      string
+			CSRFToken string
+		}{Mode: mode, CSRFToken: csrf}
 	}
 
 	v := reflect.ValueOf(data)
@@ -71,44 +74,55 @@ func applyUIMode(r *http.Request, data any) any {
 	case reflect.Pointer:
 		if v.IsNil() {
 			return struct {
-				Title string
-				Mode  string
-			}{Mode: mode}
+				Title     string
+				Mode      string
+				CSRFToken string
+			}{Mode: mode, CSRFToken: csrf}
 		}
 		if v.Elem().Kind() == reflect.Struct {
-			setStructMode(v.Elem(), mode)
+			setPageFields(v.Elem(), mode, csrf)
 		}
 		return data
 	case reflect.Struct:
 		cp := reflect.New(v.Type())
 		cp.Elem().Set(v)
-		setStructMode(cp.Elem(), mode)
+		setPageFields(cp.Elem(), mode, csrf)
 		return cp.Interface()
 	case reflect.Map:
-		setMapMode(v, mode)
+		setMapPageFields(v, mode, csrf)
 		return data
 	default:
 		return data
 	}
 }
 
-func setStructMode(v reflect.Value, mode string) {
+func setPageFields(v reflect.Value, mode, csrf string) {
+	setStringField(v, "Mode", mode)
+	setStringField(v, "CSRFToken", csrf)
+}
+
+func setStringField(v reflect.Value, name, value string) {
 	if !v.IsValid() || !v.CanSet() {
 		return
 	}
-	field := v.FieldByName("Mode")
+	field := v.FieldByName(name)
 	if field.IsValid() && field.CanSet() && field.Kind() == reflect.String {
-		field.SetString(mode)
+		field.SetString(value)
 	}
 }
 
-func setMapMode(v reflect.Value, mode string) {
+func setMapPageFields(v reflect.Value, mode, csrf string) {
+	setMapString(v, "Mode", mode)
+	setMapString(v, "CSRFToken", csrf)
+}
+
+func setMapString(v reflect.Value, key, value string) {
 	if !v.IsValid() || v.IsNil() || v.Type().Key().Kind() != reflect.String {
 		return
 	}
-	value := reflect.ValueOf(mode)
-	if !value.Type().AssignableTo(v.Type().Elem()) {
+	rv := reflect.ValueOf(value)
+	if !rv.Type().AssignableTo(v.Type().Elem()) {
 		return
 	}
-	v.SetMapIndex(reflect.ValueOf("Mode"), value)
+	v.SetMapIndex(reflect.ValueOf(key), rv)
 }

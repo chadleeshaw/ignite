@@ -41,9 +41,9 @@ func isTFTPRunning() bool {
 	return serviceRegistry.tftpKnown && serviceRegistry.tftpRunning
 }
 
-// tftpStatusString renders the TFTP state honestly: "unknown" until something
+// TFTPStatus renders the TFTP state honestly: "unknown" until something
 // reports it, never a guessed "running".
-func tftpStatusString() string {
+func TFTPStatus() string {
 	serviceRegistry.RLock()
 	defer serviceRegistry.RUnlock()
 	if !serviceRegistry.tftpKnown {
@@ -118,6 +118,7 @@ type StatusPageData struct {
 	Title         string             `json:"title"`
 	Mode          string             `json:"-"`
 	Page          string             `json:"-"`
+	CSRFToken     string             `json:"-"`
 	HTTPServer    ServiceStatus      `json:"http_server"`
 	TFTPServer    ServiceStatus      `json:"tftp_server"`
 	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
@@ -140,7 +141,7 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	// TFTP server status — tracked runtime state, never a UDP guess.
 	tftpStatus := ServiceStatus{
 		Name:        "TFTP Server",
-		Status:      tftpStatusString(),
+		Status:      TFTPStatus(),
 		Description: "Network boot file server for PXE clients",
 		Details:     fmt.Sprintf("Port %d", tftpPort),
 		Port:        tftpPort,
@@ -203,13 +204,8 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	}, nil
 }
 
-// HandleStatusPage redirects to Overview. /status/content remains the
-// fragment Overview can poll.
-func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/", http.StatusFound)
-}
-
-// HandleStatusContent serves status content for HTMX updates
+// HandleStatusContent serves status content for HTMX updates.
+// There is no /status page; Overview polls this fragment.
 func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Request) {
 	if !requireConfig(w, r, h.container) {
 		return

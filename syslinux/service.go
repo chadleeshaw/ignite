@@ -416,21 +416,17 @@ func (s *service) downloadAndInstall(ctx context.Context, statusID string, sysVe
 		return
 	}
 
-	// Step 4: only now clean up the old active version and swap to the new one
-	if err := s.cleanupActiveVersion(bg); err != nil {
-		s.failStatus(bg, statusID, "failed to cleanup previous version: "+err.Error())
-		return
-	}
-
+	// Step 4: mark the version downloaded, then share ActivateVersion with
+	// the standalone activate route. That removes the previous boot files
+	// and installs this version's extracted files.
 	now := time.Now()
 	sysVersion.Downloaded = true
-	sysVersion.Active = true
 	sysVersion.DownloadedAt = &now
 	if err := s.repo.SaveVersion(bg, sysVersion); err != nil {
 		s.failStatus(bg, statusID, "failed to save version: "+err.Error())
 		return
 	}
-	if err := s.repo.SetActiveVersion(bg, sysVersion.Version); err != nil {
+	if err := s.ActivateVersion(bg, sysVersion.Version); err != nil {
 		s.failStatus(bg, statusID, "failed to activate version: "+err.Error())
 		return
 	}
@@ -640,14 +636,20 @@ func (s *service) extractSingleFile(ctx context.Context, tr *tar.Reader, header 
 		return fmt.Errorf("unknown boot type for file %s", header.Name)
 	}
 
-	// Ensure target directory exists
+	// Ensure target directory exists. A second copy is kept under TempDir so
+	// a later ActivateVersion can replace the single TFTP boot set.
 	if err := os.MkdirAll(targetDir, 0755); err != nil {
 		return fmt.Errorf("failed to create target directory: %w", err)
+	}
+	storeDir := ExtractedBootDir(s.config.TempDir, version, bootType)
+	if err := os.MkdirAll(storeDir, 0755); err != nil {
+		return fmt.Errorf("failed to create extracted boot directory: %w", err)
 	}
 
 	// Get filename from path
 	fileName := filepath.Base(header.Name)
 	targetPath := filepath.Join(targetDir, fileName)
+	storePath := filepath.Join(storeDir, fileName)
 
 	// Create target file
 	outFile, err := os.Create(targetPath)
@@ -655,9 +657,14 @@ func (s *service) extractSingleFile(ctx context.Context, tr *tar.Reader, header 
 		return fmt.Errorf("failed to create target file: %w", err)
 	}
 	defer outFile.Close()
+	storeFile, err := os.Create(storePath)
+	if err != nil {
+		return fmt.Errorf("failed to create stored boot file: %w", err)
+	}
+	defer storeFile.Close()
 
-	// Copy file data
-	if _, err := io.Copy(outFile, tr); err != nil {
+	// Copy file data into the TFTP directory and the per-version store.
+	if _, err := io.Copy(io.MultiWriter(outFile, storeFile), tr); err != nil {
 		return fmt.Errorf("failed to copy file data: %w", err)
 	}
 
@@ -924,34 +931,105 @@ func (s *service) CheckDiskSpace(ctx context.Context) (*DiskSpaceInfo, error) {
 	return &DiskSpaceInfo{}, nil
 }
 
-// cleanupActiveVersion removes any currently active version and cleans up files.
-// It is only called after the new version has been fully downloaded,
-// extracted, and verified.
-func (s *service) cleanupActiveVersion(ctx context.Context) error {
-	versions, err := s.repo.ListVersions(ctx)
-	if err != nil {
-		return fmt.Errorf("failed to list versions: %w", err)
+// ExtractedBootDir is the per-version copy of boot files written at extract
+// time. ActivateVersion copies this directory into the TFTP boot directories
+// after removing the files that were already there.
+func ExtractedBootDir(tempDir, version, bootType string) string {
+	return filepath.Join(tempDir, "extracted", version, bootType)
+}
+
+// ActivateVersion makes an already-downloaded version the active one.
+// It removes the boot files currently in the TFTP directories, copies this
+// version's extracted files into place, and flips the active flag. Other
+// downloaded versions stay downloaded. Download uses this same function
+// after extract, instead of only calling SetActiveVersion.
+func (s *service) ActivateVersion(ctx context.Context, version string) error {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return fmt.Errorf("%w: empty version", ErrVersionNotFound)
 	}
 
-	for _, version := range versions {
-		if version.Downloaded || version.Active {
-			// Remove boot files
-			s.RemoveBootFiles(ctx, version.Version, "bios")
-			s.RemoveBootFiles(ctx, version.Version, "efi")
+	sysVersion, err := s.repo.GetVersionByNumber(ctx, version)
+	if err != nil || sysVersion == nil {
+		return fmt.Errorf("%w: %s", ErrVersionNotFound, version)
+	}
+	if !sysVersion.Downloaded {
+		return fmt.Errorf("%w: %s", ErrVersionNotDownloaded, version)
+	}
 
-			// Remove downloaded archive
-			archivePath := filepath.Join(s.config.TempDir, fmt.Sprintf("syslinux-%s.tar.gz", version.Version))
-			os.Remove(archivePath)
+	if err := s.RemoveBootFiles(ctx, version, "bios"); err != nil {
+		return fmt.Errorf("failed to remove old BIOS boot files: %w", err)
+	}
+	if err := s.RemoveBootFiles(ctx, version, "efi"); err != nil {
+		return fmt.Errorf("failed to remove old EFI boot files: %w", err)
+	}
+	if err := s.restoreExtractedBootFiles(version); err != nil {
+		return err
+	}
+	if err := s.InstallBootFiles(ctx, version, "bios"); err != nil {
+		return err
+	}
+	if err := s.InstallBootFiles(ctx, version, "efi"); err != nil {
+		return err
+	}
+	if err := s.repo.SetActiveVersion(ctx, version); err != nil {
+		return fmt.Errorf("failed to activate version: %w", err)
+	}
+	return nil
+}
 
-			// Mark as not downloaded and not active
-			version.Downloaded = false
-			version.Active = false
-			version.DownloadedAt = nil
-			s.repo.SaveVersion(ctx, version)
+// restoreExtractedBootFiles copies the version's stored BIOS and EFI files
+// into the TFTP boot directories. The caller has already removed the
+// previous files.
+func (s *service) restoreExtractedBootFiles(version string) error {
+	bootTypes := []struct {
+		name     string
+		required map[string]string
+		dest     string
+	}{
+		{"bios", GetRequiredBiosFiles(), filepath.Join(s.config.TFTPDir, s.config.BiosDir)},
+		{"efi", GetRequiredEfiFiles(), filepath.Join(s.config.TFTPDir, s.config.EfiDir)},
+	}
+	for _, bootType := range bootTypes {
+		if err := os.MkdirAll(bootType.dest, 0755); err != nil {
+			return fmt.Errorf("failed to create %s boot directory: %w", bootType.name, err)
+		}
+		srcDir := ExtractedBootDir(s.config.TempDir, version, bootType.name)
+		var missing []string
+		for name := range bootType.required {
+			src := filepath.Join(srcDir, name)
+			if _, err := os.Stat(src); err != nil {
+				missing = append(missing, name)
+				continue
+			}
+			if err := copyFile(src, filepath.Join(bootType.dest, name)); err != nil {
+				return fmt.Errorf("failed to install %s: %w", name, err)
+			}
+		}
+		if len(missing) > 0 {
+			sort.Strings(missing)
+			return fmt.Errorf("missing stored %s boot files for version %s: %s",
+				bootType.name, version, strings.Join(missing, ", "))
 		}
 	}
-
 	return nil
+}
+
+func copyFile(src, dst string) error {
+	in, err := os.Open(src)
+	if err != nil {
+		return err
+	}
+	defer in.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		return err
+	}
+	if _, err := io.Copy(out, in); err != nil {
+		out.Close()
+		return err
+	}
+	return out.Close()
 }
 
 // DeactivateVersion deactivates and removes the currently active version

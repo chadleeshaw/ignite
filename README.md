@@ -176,6 +176,8 @@ Ignite can be configured via environment variables. Here are the available optio
 | `HTTP_DIR`  | Directory for the HTTP server to serve files from. | `./public/http`   |
 | `HTTP_PORT` | Port for the HTTP server to listen on.         | `8080`             |
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
+| `BMC_TLS_INSECURE` | Skip TLS verification for Redfish BMCs. Set to `true`, `1`, `yes`, or `on` only for a self-signed BMC. Any other value verifies certificates. | verify TLS |
+| `BMC_SYSTEM_ID` | Redfish ComputerSystem `Id` when a BMC exposes more than one system. A `system_id` form field on `POST /pxe/submit_ipmi` overrides this. | first and only system |
 
 ## API Reference
 
@@ -189,8 +191,7 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/open_modal`           | Opens a modal dialog.                    |
 | `/close_modal`          | Closes a modal dialog.                   |
 | `/dhcp`                 | Serves the DHCP management page.         |
-| `/dhcp/servers`         | Retrieves a list of DHCP servers.        |
-| `/status`               | Redirects to Overview (`/`).             |
+| `/dhcp/servers`         | DHCP server list. HTML fragment for htmx; JSON when `?format=json` or `Accept` is `application/json` without `text/html`. |
 | `/provision`            | Serves the provisioning page.            |
 | `/tftp`                 | Serves the TFTP management page.         |
 | `/tftp/open`            | Opens a file in the TFTP directory.      |
@@ -204,6 +205,39 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/prov/getfilename`     | Updates the filename for a template.     |
 | `/provision/load-file`  | Loads file content via API.              |
 | `/provision/gallery`    | Retrieves template gallery items.        |
+
+`GET /dhcp/servers` returns an HTML fragment (`text/html`) for browsers and
+htmx. Add `?format=json`, or send `Accept: application/json` without
+`text/html`, for JSON:
+
+```json
+{
+  "servers": [
+    {
+      "id": "server-id",
+      "tftpip": "192.168.1.1",
+      "status": "badge-success",
+      "lease_range": 50,
+      "used": 1,
+      "free": 49,
+      "leases": [
+        {
+          "mac": "aa:bb:cc:dd:ee:ff",
+          "ip": "192.168.1.100",
+          "static": false,
+          "state": "assigned",
+          "state_badge_class": "badge-info",
+          "state_display_name": "Assigned"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`status` is `badge-success` when the server is running and `badge-error` when
+it is stopped. `used` and `free` follow `dhcp.PoolOccupancy` (reserved or
+unexpired). `menu`, `ipmi`, and `last_seen` are also present on each lease.
 
 ### POST Routes
 
@@ -220,11 +254,73 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/tftp/delete_file`       | Deletes a file from the TFTP directory.       |
 | `/tftp/upload_file`       | Uploads a file to the TFTP directory.         |
 | `/pxe/submit_menu`        | Submits a new PXE boot menu.                  |
-| `/pxe/submit_ipmi`        | Submits an IPMI command.                      |
+| `/pxe/submit_ipmi`        | Redfish power and one-time PXE boot. Verifies TLS unless `BMC_TLS_INSECURE` is set. Powers On when the host is off and ForceRestart only when it is on. With more than one system and no `system_id` / `BMC_SYSTEM_ID`, responds `409`. |
 | `/prov/newtemplate`       | Creates a new provisioning template.          |
 | `/prov/save`              | Saves a provisioning file.                    |
 | `/provision/save-file`    | Saves file content via API.                   |
 | `/provision/delete-file`  | Deletes a file from provision directories.    |
+| `/api/syslinux/activate/{version}` | Activates an already-downloaded SYSLINUX version. |
+
+`POST /api/syslinux/activate/{version}` does not download the archive. The
+version must already be downloaded. Activation removes the boot files
+currently in the TFTP directories and installs that version's extracted
+BIOS and EFI files. Other downloaded versions stay downloaded.
+
+Success is `200` with:
+
+```json
+{"success": true, "message": "Syslinux 6.03 is active", "version": "6.03"}
+```
+
+| Status | When |
+|--------|------|
+| `409`  | The version exists but has not been downloaded. `error.user_message` is `This version is not downloaded. Download it before activating.` |
+| `404`  | No stored version has that number. |
+| `500`  | Boot files are missing or activation failed. |
+
+## CSRF
+
+Session-authenticated `POST`, `PUT`, and `DELETE` requests must send the
+per-session token and a same-host `Origin`. This includes logout,
+change-password, and every htmx POST. A missing or wrong token is `403`
+with `error.user_message` `CSRF token mismatch`. A missing `Origin`, a
+foreign `Origin`, or `Sec-Fetch-Site: cross-site` is `403` with
+`Cross-site requests are not allowed`. `POST /auth/login` and the
+per-lease host callbacks (`POST /dhcp/lease/{mac}/heartbeat` and
+`POST /dhcp/lease/{mac}/state`) are exempt. `GET` does not require a token.
+
+`ignite_mode` is an HttpOnly cookie. Page theme comes from `.Mode` in the
+HTML, not from reading that cookie in JavaScript.
+
+Every HTML render that uses the base page data includes `.CSRFToken`. The
+frontend sends it in either place:
+
+- Header `X-CSRF-Token` (htmx and fetch)
+- Form field `csrf_token`
+
+Add this to the base document, without storing the token in a cookie:
+
+```html
+<meta name="csrf-token" content="{{.CSRFToken}}">
+```
+
+```html
+<body hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'>
+```
+
+State-changing forms also need:
+
+```html
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+```
+
+Fetch clients that do not use htmx read the meta tag:
+
+```js
+headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content }
+```
+
+`POST /auth/logout` needs the token when a session cookie is still present.
 
 ## Architecture
 
@@ -293,7 +389,7 @@ docker run -d \
   -p 69:69/udp \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/public:/app/public \
-  ghcr.io/chadleeshaw/ignite:v2.0.0
+  ghcr.io/chadleeshaw/ignite:v3.0.0
 ```
 
 #### **Option 2: Build from Source**
@@ -309,12 +405,12 @@ docker run -d --name ignite -p 8080:8080 -p 69:69/udp ignite:release
 ### **Binary Installation**
 ```bash
 # Download for your platform
-wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-linux-amd64
+wget https://github.com/chadleeshaw/ignite/releases/download/v3.0.0/ignite-linux-amd64
 chmod +x ignite-linux-amd64
 ./ignite-linux-amd64
 
 # Or use the x86_64 variant
-wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-x86_64
+wget https://github.com/chadleeshaw/ignite/releases/download/v3.0.0/ignite-x86_64
 chmod +x ignite-x86_64
 ./ignite-x86_64
 ```

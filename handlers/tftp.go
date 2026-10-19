@@ -306,6 +306,7 @@ type TFTPData struct {
 	Title           string
 	Mode            string
 	Page            string
+	CSRFToken       string
 	ServerRunning   bool
 	ServerStatus    string
 	ServerDirectory string
@@ -382,7 +383,7 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		Title:           "TFTP",
 		Page:            "tftp",
 		ServerRunning:   isTFTPRunning(),
-		ServerStatus:    tftpStatusString(),
+		ServerStatus:    TFTPStatus(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
 		Root:            TFTPDir,

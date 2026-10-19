@@ -19,13 +19,20 @@ var (
 	defaultPassword = "admin"
 )
 
-// sessionStore holds the server-side session table: token -> expiry.
+// sessionEntry is one server-side login. The CSRF token is bound to the
+// session and is not stored in a cookie, so a cross-site form cannot read it.
+type sessionEntry struct {
+	expiry time.Time
+	csrf   string
+}
+
+// sessionStore holds the server-side session table: token -> entry.
 // A session is valid only if its token is present here and not expired,
 // so logout (delete) and expiry are enforced server-side.
 var sessionStore = struct {
 	sync.RWMutex
-	tokens map[string]time.Time
-}{tokens: make(map[string]time.Time)}
+	tokens map[string]sessionEntry
+}{tokens: make(map[string]sessionEntry)}
 
 // sessionTTL is how long a login session stays valid.
 const sessionTTL = 24 * time.Hour
@@ -49,14 +56,22 @@ func generateSessionToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// createSession mints a new random token, stores it server-side, and returns it.
+// createSession mints a new random token and a per-session CSRF token,
+// stores them server-side, and returns the session token.
 func createSession() (string, error) {
 	token, err := generateSessionToken()
 	if err != nil {
 		return "", err
 	}
+	csrf, err := generateSessionToken()
+	if err != nil {
+		return "", err
+	}
 	sessionStore.Lock()
-	sessionStore.tokens[token] = time.Now().Add(sessionTTL)
+	sessionStore.tokens[token] = sessionEntry{
+		expiry: time.Now().Add(sessionTTL),
+		csrf:   csrf,
+	}
 	sessionStore.Unlock()
 	return token, nil
 }
@@ -77,16 +92,31 @@ func validSession(token string) bool {
 		return false
 	}
 	sessionStore.RLock()
-	expiry, ok := sessionStore.tokens[token]
+	entry, ok := sessionStore.tokens[token]
 	sessionStore.RUnlock()
 	if !ok {
 		return false
 	}
-	if time.Now().After(expiry) {
+	if time.Now().After(entry.expiry) {
 		destroySession(token)
 		return false
 	}
 	return true
+}
+
+// sessionCSRF returns the CSRF token bound to a live session.
+// An unknown or expired session returns an empty string.
+func sessionCSRF(token string) string {
+	if !validSession(token) {
+		return ""
+	}
+	sessionStore.RLock()
+	entry, ok := sessionStore.tokens[token]
+	sessionStore.RUnlock()
+	if !ok {
+		return ""
+	}
+	return entry.csrf
 }
 
 // sessionCookie builds the session cookie with secure flags.
@@ -360,10 +390,21 @@ func isAPIRequest(r *http.Request) bool {
 // API/JSON clients get a 401 JSON response; browsers get a login redirect.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth for login page and auth endpoints
-		if r.URL.Path == "/login" ||
-			r.URL.Path == "/auth/login" ||
-			r.URL.Path == "/auth/logout" {
+		// Login has no session yet, so it cannot present a CSRF token.
+		if r.URL.Path == "/login" || r.URL.Path == "/auth/login" {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Logout stays reachable without a session. A live session must
+		// still present its CSRF token.
+		if r.URL.Path == "/auth/logout" {
+			if isAuthenticated(r) {
+				if message := csrfFailure(r); message != "" {
+					rejectCSRF(w, r, message)
+					return
+				}
+			}
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -403,6 +444,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
+		if message := csrfFailure(r); message != "" {
+			rejectCSRF(w, r, message)
 			return
 		}
 

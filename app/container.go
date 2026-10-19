@@ -51,8 +51,14 @@ func NewContainer() (c *Container, err error) {
 	// Create repositories
 	serverRepo := dhcp.NewBoltServerRepository(database, cfg.DB.Bucket+"_servers")
 	leaseRepo := dhcp.NewBoltLeaseRepository(database, cfg.DB.Bucket+"_leases")
-	osImageRepo := osimage.NewOSImageRepository(database)
-	downloadStatusRepo := osimage.NewDownloadStatusRepository(database)
+	osImageRepo, err := osimage.NewOSImageRepository(database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create os image repository: %w", err)
+	}
+	downloadStatusRepo, err := osimage.NewDownloadStatusRepository(database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create download status repository: %w", err)
+	}
 	syslinuxRepo, err := syslinux.NewBoltRepository(database)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create syslinux repository: %w", err)
@@ -64,7 +70,10 @@ func NewContainer() (c *Container, err error) {
 	osImageService := osimage.NewOSImageService(osImageRepo, downloadStatusRepo, cfg)
 	syslinuxService := syslinux.NewService(syslinuxRepo, syslinux.GetDefaultConfig())
 	ipxeService := ipxe.NewService(cfg, osImageService)
-	prefs := handlers.NewBoltPreferenceStore(database, cfg.DB.Bucket+"_prefs")
+	prefs, err := handlers.NewBoltPreferenceStore(database, cfg.DB.Bucket+"_prefs")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preference store: %w", err)
+	}
 
 	c = &Container{
 		Config:             cfg,

@@ -108,10 +108,11 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Title   string
-		Mode    string
-		Page    string
-		Servers []DHCPServerView
+		Title     string
+		Mode      string
+		Page      string
+		CSRFToken string
+		Servers   []DHCPServerView
 	}{
 		Title:   "DHCP",
 		Page:    "dhcp",
@@ -144,15 +145,27 @@ func (h *DHCPHandlers) GetDHCPServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Title   string
-		Mode    string
-		Servers []DHCPServerView
+		Title     string
+		Mode      string
+		CSRFToken string
+		Servers   []DHCPServerView
 	}{
 		Title:   "DHCP Servers",
 		Servers: serverViews,
 	}
 
-	renderTemplate(w, r, "dhcp.templ", data)
+	// htmx and browsers get the HTML fragment. JSON clients (Accept:
+	// application/json without text/html, or ?format=json) get the same
+	// server views: id, tftpip, status, lease_range, used, free, leases.
+	if wantsDashboardJSON(r) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_ = json.NewEncoder(w).Encode(map[string]any{"servers": serverViews})
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	renderCachedTemplate(w, r, "dhcp-servers", data, "Unable to render DHCP servers")
 }
 
 // StartDHCPServer handles POST /dhcp/start
@@ -816,12 +829,6 @@ type LeaseView struct {
 	StateBadgeClass  string        `json:"state_badge_class"`
 	StateDisplayName string        `json:"state_display_name"`
 	LastSeen         time.Time     `json:"last_seen"`
-}
-
-// renderTemplate is a placeholder for template rendering.
-func renderTemplate(w http.ResponseWriter, r *http.Request, templateName string, data interface{}) {
-	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "Template: %s with data: %+v", templateName, applyUIMode(r, data))
 }
 
 // getMaskBits converts a dotted-decimal subnet mask to its CIDR prefix length.

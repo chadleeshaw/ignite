@@ -53,7 +53,6 @@ func TestAuthMiddleware_ProtectedPaths_Unauthenticated(t *testing.T) {
 		"/tftp",
 		"/osimages",
 		"/syslinux",
-		"/status",
 		"/dhcp/servers",
 		"/provision/load-file",
 	}
@@ -94,7 +93,6 @@ func TestAuthMiddleware_ProtectedPaths_Authenticated(t *testing.T) {
 		"/tftp",
 		"/osimages",
 		"/syslinux",
-		"/status",
 	}
 
 	// Create a simple handler that returns 200 OK
@@ -232,7 +230,11 @@ func TestAuthMiddleware_POSTRequests(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", tt.path, nil)
 			if tt.authenticated {
-				req.AddCookie(testSessionCookie(t))
+				cookie := testSessionCookie(t)
+				req.Host = "example.com"
+				req.Header.Set("Origin", "http://example.com")
+				req.AddCookie(cookie)
+				req.Header.Set("X-CSRF-Token", sessionCSRF(cookie.Value))
 			}
 			w := httptest.NewRecorder()
 

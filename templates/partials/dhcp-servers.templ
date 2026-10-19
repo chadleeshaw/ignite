@@ -1,0 +1,24 @@
+<div id="dhcp-servers">
+{{if .Servers}}
+<div class="space-y-4">
+{{range .Servers}}
+<article class="bg-base-200 p-4 rounded-lg shadow">
+    <div class="flex items-center justify-between mb-2">
+        <h3 class="font-semibold">{{.TFTPIP}}</h3>
+        <span class="badge {{.Status}}">{{if eq .Status "badge-success"}}running{{else}}stopped{{end}}</span>
+    </div>
+    <p class="text-sm text-base-content/80">{{.Used}} used / {{.Free}} free / {{.LeaseRange}} total</p>
+    <ul class="mt-2 text-sm">
+    {{range .Leases}}
+        <li>{{.MAC}} {{.IP}} <span class="badge {{.StateBadgeClass}}">{{.StateDisplayName}}</span></li>
+    {{else}}
+        <li>No leases</li>
+    {{end}}
+    </ul>
+</article>
+{{end}}
+</div>
+{{else}}
+<p id="dhcp-servers-empty">No DHCP servers</p>
+{{end}}
+</div>

@@ -114,6 +114,7 @@ func SendError(w http.ResponseWriter, r *http.Request, err *AppError) {
 type errorPageData struct {
 	Title      string
 	Mode       string
+	CSRFToken  string
 	StatusCode int
 	Heading    string
 	Message    string

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"io"
 	"net/http"
 	"net/url"
@@ -39,12 +40,15 @@ type BoltPreferenceStore struct {
 
 // NewBoltPreferenceStore returns a store rooted at bucket.
 // The bucket is created immediately so the first read is "no preference"
-// rather than a missing-bucket error.
-func NewBoltPreferenceStore(database db.Database, bucket string) *BoltPreferenceStore {
-	if database != nil && bucket != "" {
-		_ = database.GetOrCreateBucket(context.Background(), bucket)
+// rather than a missing-bucket error. A creation failure is returned.
+func NewBoltPreferenceStore(database db.Database, bucket string) (*BoltPreferenceStore, error) {
+	if database == nil || bucket == "" {
+		return nil, fmt.Errorf("preference store requires a database and bucket")
 	}
-	return &BoltPreferenceStore{database: database, bucket: bucket}
+	if err := database.GetOrCreateBucket(context.Background(), bucket); err != nil {
+		return nil, fmt.Errorf("failed to create preferences bucket: %w", err)
+	}
+	return &BoltPreferenceStore{database: database, bucket: bucket}, nil
 }
 
 // GetUIMode returns the stored mode, or DefaultUIMode when the user has
@@ -146,6 +150,7 @@ func (h *PreferenceHandlers) SetMode(w http.ResponseWriter, r *http.Request) {
 		Name:     uiModeCookie,
 		Value:    mode,
 		Path:     "/",
+		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   60 * 60 * 24 * 365,
 	})

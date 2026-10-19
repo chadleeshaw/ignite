@@ -21,7 +21,7 @@ WORKDIR /app
 
 # Download the pre-built binary from GitHub release
 # Use curl with follow redirects for better GitHub releases handling
-RUN curl -L -o ./ignite https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-linux-amd64 && \
+RUN curl -L -o ./ignite https://github.com/chadleeshaw/ignite/releases/download/v3.0.0/ignite-linux-amd64 && \
     chmod +x ./ignite
 
 # Copy public files
@@ -36,6 +36,6 @@ USER ignite
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/status || exit 1
+    CMD curl -f http://localhost:8080/ || exit 1
 
 CMD ["./ignite"]

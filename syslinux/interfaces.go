@@ -41,7 +41,10 @@ type Service interface {
 	GetDownloadStatus(ctx context.Context, id string) (*DownloadStatus, error)
 	CancelDownload(ctx context.Context, id string) error
 
-	// Version activation/deactivation
+	// Version activation/deactivation.
+	// ActivateVersion switches to a version that is already downloaded. It
+	// does not download, and it does not delete other downloaded versions.
+	ActivateVersion(ctx context.Context, version string) error
 	DeactivateVersion(ctx context.Context, version string) error
 
 	// Boot file management

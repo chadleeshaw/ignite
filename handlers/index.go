@@ -12,6 +12,7 @@ type OverviewPage struct {
 	Title           string
 	Mode            string
 	Page            string
+	CSRFToken       string
 	OverallStatus   string
 	CozySubtitle    string
 	ConsoleSubtitle string

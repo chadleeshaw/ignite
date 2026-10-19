@@ -118,6 +118,7 @@ func parseTemplates() map[string]*template.Template {
 		"tftp":               {baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ"},
 		"status-content":     {"templates/partials/status-content.templ"},
 		"dashboard-summary":  {"templates/partials/dashboard-summary.templ"},
+		"dhcp-servers":       {"templates/partials/dhcp-servers.templ"},
 		"provision":          {baseTemplate, "templates/pages/provision.templ"},
 		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
 		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
