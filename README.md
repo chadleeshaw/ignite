@@ -36,42 +36,39 @@ Designed for developers, system administrators, and hobbyists, Ignite provides a
 
 ## Screenshots
 
-Here's a comprehensive look at the Ignite web interface across all major features:
+The nav is Overview, DHCP, TFTP, OS Images, Syslinux, and Provision. Cozy is the default density. Console is the same layout in a monospace, tighter rhythm. Service health that used to live on a separate Status page is on Overview.
 
-### **Main Dashboard**
-The central hub providing system overview, quick actions, and navigation to all features.
+### **Overview**
+Service tiles for HTTP, TFTP, and DHCP, plus the lease and pool summary slot.
 
-![Main Dashboard](./public/http/img/main_page.png)
+![Overview in Cozy mode](./public/http/img/main_page.png)
 
-### **DHCP Management** 
-Complete DHCP server management with lease monitoring, reservations, and dynamic IP allocation.
+![Overview in Console mode](./public/http/img/console_page.png)
 
-![DHCP Management](./public/http/img/dhcp_page.png)
+### **DHCP**
+Servers, pool free space, and leases with state, reservation, boot menu, and last-seen time.
 
-### **TFTP File Management**
-File browser and management interface for boot files, operating system images, and PXE configurations.
+![DHCP in Cozy mode](./public/http/img/dhcp_page.png)
 
-![TFTP File Management](./public/http/img/tftp_page.png)
+### **TFTP**
+Boot-file browser for the TFTP root, with upload, download, and view.
 
-### **Provision Templates**
-Cloud-init and Kickstart template editor with syntax highlighting, template management, file deletion, and clear distinction between templates and configs.
+![TFTP in Cozy mode](./public/http/img/tftp_page.png)
 
-![Provision Templates](./public/http/img/provision_page.png)
+### **Provision**
+Template and config file picker beside the editor.
 
-### **OS Images Management**
-Download, manage, and deploy operating system images with progress tracking and version control.
+![Provision in Cozy mode](./public/http/img/provision_page.png)
 
-![OS Images Management](./public/http/img/osimage_page.png)
+### **OS Images**
+Installed kernels and initrds.
 
-### **Syslinux Configuration**
-Advanced PXE boot menu configuration and SYSLINUX management interface.
+![OS Images in Cozy mode](./public/http/img/osimage_page.png)
 
-![Syslinux Configuration](./public/http/img/syslinux_page.png)
+### **Syslinux**
+Versions available to install. One active version covers BIOS and EFI.
 
-### **System Status**
-Real-time monitoring of server status, services, and system health indicators.
-
-![System Status](./public/http/img/status_page.png)
+![Syslinux in Cozy mode](./public/http/img/syslinux_page.png)
 
 ## Getting Started
 
@@ -125,6 +122,16 @@ go run vmtest.go 2    # Test ignite integration
 go run vmtest.go logs # Show test logs
 go run vmtest.go clean # Clean up test files
 ```
+
+**README screenshots**:
+
+Regenerate the images under `public/http/img/` with headless Chrome. TCP 8080 and UDP 69 must be free. The target builds Ignite, seeds a temporary database (DHCP leases, OS images, and Syslinux versions), and writes Cozy captures plus one Console overview.
+
+```bash
+make screenshots
+```
+
+`CHROME_PATH` overrides the Chrome binary. `scripts/capture.sh` is the same flow without Make.
 
 **Code Quality**:
 

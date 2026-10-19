@@ -45,6 +45,10 @@ db-clear:
 db-reset: db-clear db-mock
 	@echo "Database reset complete"
 
+# README screenshots. Needs Chrome and free TCP 8080 / UDP 69.
+screenshots:
+	@bash scripts/capture.sh
+
 # Help
 help:
 	@echo "Available targets:"
@@ -57,4 +61,5 @@ help:
 	@echo "  db-mock  - Add mock data to database"
 	@echo "  db-clear - Clear database"
 	@echo "  db-reset - Reset database with mock data"
+	@echo "  screenshots - Regenerate README screenshots (Chrome, ports 8080 and 69 free)"
 	@echo "  help     - Show this help"
