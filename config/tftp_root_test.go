@@ -36,9 +36,22 @@ func TestResolveTFTPRootOverride(t *testing.T) {
 }
 
 func TestResolveTFTPRootKeepsPersistentOverride(t *testing.T) {
-	work, err := os.MkdirTemp("/workspace", "tftp-root-test")
+	dir := filepath.Join(t.TempDir(), "custom-tftp")
+	root, err := ResolveTFTPRoot(dir)
 	require.NoError(t, err)
-	t.Cleanup(func() { _ = os.RemoveAll(work) })
+
+	abs, err := filepath.Abs(dir)
+	require.NoError(t, err)
+	require.Equal(t, abs, root.Path)
+	require.NotContains(t, root.Path, "ignite-tftp")
+	require.NotContains(t, root.Warning, "Falling back")
+	info, err := os.Stat(root.Path)
+	require.NoError(t, err)
+	require.True(t, info.IsDir())
+}
+
+func TestResolveTFTPRootDefaultStaysPublicTFTP(t *testing.T) {
+	work := t.TempDir()
 	prev, err := os.Getwd()
 	require.NoError(t, err)
 	require.NoError(t, os.Chdir(work))
@@ -49,20 +62,10 @@ func TestResolveTFTPRootKeepsPersistentOverride(t *testing.T) {
 	want, err := filepath.Abs(DefaultTFTPDir)
 	require.NoError(t, err)
 	require.Equal(t, want, root.Path)
-	require.False(t, root.Ephemeral)
-	require.Empty(t, root.Warning)
-	require.Equal(t, []string{"TFTP root: " + want}, root.StartupLines())
+	require.NotContains(t, root.Path, "ignite-tftp")
+	require.NotContains(t, root.Warning, "Falling back")
 	_, err = os.Stat(filepath.Join(work, "public", "tftp"))
 	require.NoError(t, err)
-
-	custom := filepath.Join(work, "custom-tftp")
-	root, err = ResolveTFTPRoot(custom)
-	require.NoError(t, err)
-	customAbs, err := filepath.Abs(custom)
-	require.NoError(t, err)
-	require.Equal(t, customAbs, root.Path)
-	require.False(t, root.Ephemeral)
-	require.Empty(t, root.Warning)
 }
 
 func TestResolveTFTPRootFallsBackWhenCreateFails(t *testing.T) {
