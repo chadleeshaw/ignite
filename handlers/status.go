@@ -114,6 +114,7 @@ type DHCPServerStatus struct {
 // StatusPageData represents data for the status page
 type StatusPageData struct {
 	Title         string             `json:"title"`
+	Mode          string             `json:"-"`
 	HTTPServer    ServiceStatus      `json:"http_server"`
 	TFTPServer    ServiceStatus      `json:"tftp_server"`
 	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
@@ -198,22 +199,10 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	}, nil
 }
 
-// HandleStatusPage serves the status monitoring page
+// HandleStatusPage redirects to Overview. Status content now lives on the
+// home page; /status/content remains the fragment Overview can poll.
 func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
-	if !requireConfig(w, r, h.container) {
-		return
-	}
-
-	data, err := h.getStatusData(r)
-	if err != nil {
-		HandleError(w, r, NewInternalError(
-			fmt.Sprintf("failed to get status data: %v", err),
-			"Unable to load system status",
-		))
-		return
-	}
-
-	renderCachedTemplate(w, r, "status", data, "Unable to render the status page")
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // HandleStatusContent serves status content for HTMX updates

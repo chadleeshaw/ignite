@@ -125,6 +125,13 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 		return
 	}
 
+	// Hand the per-lease provision token to config templates as
+	// {{.provision_token}} so cloud-init (and the other installers) can call
+	// the host callback routes. Templates that do not reference it are unchanged.
+	if token := h.provisionToken(r.Context(), formData["mac"]); token != "" {
+		formData["provision_token"] = token
+	}
+
 	// Generate boot data (use buildconfig for HTTP URL, configFile for filesystem path)
 	buildconfig := fmt.Sprintf("configs/%s/%s", formData["typeSelect"], macDashes)
 	pxedata := h.generateBootData(formData, buildconfig)
@@ -330,6 +337,32 @@ func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, filepath string
 	}
 
 	return nil
+}
+
+// provisionToken returns the lease's callback secret, issuing one when the
+// row predates tokens. A missing lease yields an empty token.
+func (h *BootMenuHandlers) provisionToken(ctx context.Context, mac string) string {
+	if h.container == nil || h.container.LeaseService == nil {
+		return ""
+	}
+	lease, err := h.container.LeaseService.GetLeaseByMAC(ctx, mac)
+	if err != nil || lease == nil {
+		return ""
+	}
+	if lease.ProvisionToken != "" {
+		return lease.ProvisionToken
+	}
+	token, err := dhcp.NewProvisionToken()
+	if err != nil {
+		log.Printf("Failed to issue provision token for %s: %v", mac, err)
+		return ""
+	}
+	lease.ProvisionToken = token
+	if err := h.container.LeaseService.UpdateLease(ctx, lease); err != nil {
+		log.Printf("Failed to store provision token for %s: %v", mac, err)
+		return ""
+	}
+	return token
 }
 
 // updateDHCPLease updates the DHCP lease with new boot menu data.

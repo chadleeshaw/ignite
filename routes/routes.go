@@ -22,6 +22,8 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	bootMenuHandlers := handlers.NewBootMenuHandlers(container)
 	ipmiHandlers := handlers.NewIPMIHandlers(container)
 	statusHandlers := handlers.NewStatusHandlers(container)
+	dashboardHandlers := handlers.NewDashboardHandlers(container)
+	preferenceHandlers := handlers.NewPreferenceHandlers(container.Prefs)
 	modalHandlers := handlers.NewModalHandlers(container)
 	indexHandlers := handlers.NewIndexHandlers(container)
 	osImageHandlers := handlers.NewOSImageHandlers(container)
@@ -44,6 +46,8 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	setupSyslinuxRoutes(router, syslinuxHandlers)
 	setupIPXERoutes(router, ipxeHandlers)
 	setupStatusRoutes(router, statusHandlers)
+	setupDashboardRoutes(router, dashboardHandlers)
+	setupPreferenceRoutes(router, preferenceHandlers)
 
 	return router
 }
@@ -83,9 +87,14 @@ func setupDHCPRoutes(router *mux.Router, handlers *handlers.DHCPHandlers) {
 	router.HandleFunc("/dhcp/delete_lease", handlers.DeleteLease).Methods("POST").Name("DeleteLease")
 	router.HandleFunc("/dhcp/add_manual_lease", handlers.AddManualLease).Methods("POST").Name("AddManualLease")
 
-	// State management API routes
+	// State management API routes. The admin UI uses /dhcp/lease/state and
+	// stays behind the session cookie. Host callbacks are the two routes
+	// below; AuthMiddleware lets them through and the handlers require the
+	// per-lease provision token.
 	router.HandleFunc("/dhcp/lease/state", handlers.UpdateLeaseState).Methods("POST").Name("UpdateLeaseState")
 	router.HandleFunc("/dhcp/lease/history", handlers.GetLeaseStateHistory).Methods("GET").Name("GetLeaseStateHistory")
+	router.HandleFunc("/dhcp/lease/{mac}/heartbeat", handlers.RecordHeartbeat).Methods("POST").Name("RecordHeartbeat")
+	router.HandleFunc("/dhcp/lease/{mac}/state", handlers.HostUpdateLeaseState).Methods("POST").Name("HostUpdateLeaseState")
 }
 
 // setupTFTPRoutes configures TFTP file management routes
@@ -133,6 +142,17 @@ func setupBootMenuRoutes(router *mux.Router, handlers *handlers.BootMenuHandlers
 func setupIPMIRoutes(router *mux.Router, handlers *handlers.IPMIHandlers) {
 	// POST routes
 	router.HandleFunc("/pxe/submit_ipmi", handlers.SubmitIPMI).Methods("POST").Name("SubmitIPMI")
+}
+
+// setupDashboardRoutes configures the Overview summary fragment.
+func setupDashboardRoutes(router *mux.Router, handlers *handlers.DashboardHandlers) {
+	router.HandleFunc("/dashboard/summary", handlers.Summary).Methods("GET").Name("DashboardSummary")
+}
+
+// setupPreferenceRoutes configures the per-user UI mode endpoints.
+func setupPreferenceRoutes(router *mux.Router, handlers *handlers.PreferenceHandlers) {
+	router.HandleFunc("/api/preferences/mode", handlers.GetMode).Methods("GET").Name("GetUIMode")
+	router.HandleFunc("/api/preferences/mode", handlers.SetMode).Methods("POST").Name("SetUIMode")
 }
 
 // setupStatusRoutes configures status monitoring routes

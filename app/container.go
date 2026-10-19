@@ -5,6 +5,7 @@ import (
 	"ignite/config"
 	"ignite/db"
 	"ignite/dhcp"
+	"ignite/handlers"
 	"ignite/ipxe"
 	"ignite/osimage"
 	"ignite/syslinux"
@@ -24,6 +25,7 @@ type Container struct {
 	SyslinuxRepo       syslinux.Repository
 	SyslinuxService    syslinux.Service
 	IPXEService        *ipxe.Service
+	Prefs              handlers.PreferenceStore
 }
 
 // NewContainer creates and wires up all dependencies
@@ -62,6 +64,7 @@ func NewContainer() (c *Container, err error) {
 	osImageService := osimage.NewOSImageService(osImageRepo, downloadStatusRepo, cfg)
 	syslinuxService := syslinux.NewService(syslinuxRepo, syslinux.GetDefaultConfig())
 	ipxeService := ipxe.NewService(cfg, osImageService)
+	prefs := handlers.NewBoltPreferenceStore(database, cfg.DB.Bucket+"_prefs")
 
 	c = &Container{
 		Config:             cfg,
@@ -76,6 +79,7 @@ func NewContainer() (c *Container, err error) {
 		SyslinuxRepo:       syslinuxRepo,
 		SyslinuxService:    syslinuxService,
 		IPXEService:        ipxeService,
+		Prefs:              prefs,
 	}
 	return c, nil
 }

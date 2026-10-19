@@ -104,6 +104,7 @@ func parseTemplates() map[string]*template.Template {
 		"tftp":               {baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ"},
 		"status":             {baseTemplate, "templates/pages/status.templ"},
 		"status-content":     {"templates/partials/status-content.templ"},
+		"dashboard-summary":  {"templates/partials/dashboard-summary.templ"},
 		"provision":          {baseTemplate, "templates/pages/provision.templ"},
 		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
 		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
@@ -141,7 +142,7 @@ func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, d
 		))
 		return
 	}
-	if err := tmpl.Execute(w, data); err != nil {
+	if err := tmpl.Execute(w, applyUIMode(r, data)); err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("template %q error: %v", name, err),
 			userMessage,

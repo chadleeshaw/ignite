@@ -297,6 +297,7 @@ type FileInfo struct {
 // TFTPData holds information for rendering the TFTP management page
 type TFTPData struct {
 	Title           string
+	Mode            string
 	ServerRunning   bool
 	ServerDirectory string
 	PrevDirectory   string

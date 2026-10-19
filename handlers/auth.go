@@ -300,6 +300,25 @@ func isAuthenticated(r *http.Request) bool {
 	return validSession(cookie.Value)
 }
 
+// isHostCallback reports whether the request is a per-lease provisioning
+// callback (heartbeat or state), as opposed to the session-protected admin
+// route POST /dhcp/lease/state.
+func isHostCallback(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "dhcp" || parts[1] != "lease" || parts[2] == "" {
+		return false
+	}
+	switch parts[3] {
+	case "heartbeat", "state":
+		return true
+	default:
+		return false
+	}
+}
+
 // isAPIRequest reports whether the request expects a JSON 401 instead of a
 // login redirect: anything under /api/ or explicitly asking for JSON.
 func isAPIRequest(r *http.Request) bool {
@@ -324,6 +343,13 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Skip auth for static files and PXE boot files (needed for network booting)
 		if strings.HasPrefix(r.URL.Path, "/public/") ||
 			strings.HasPrefix(r.URL.Path, "/tftp/serve") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Host provisioning callbacks authenticate with a per-lease token
+		// inside the handler. They must not be redirected to the login page.
+		if isHostCallback(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
