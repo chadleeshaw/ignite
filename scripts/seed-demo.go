@@ -32,7 +32,7 @@ func main() {
 	if err := mock.PopulateMockData(ctx); err != nil {
 		fatal(err)
 	}
-	if err := decorateLeases(ctx, container.LeaseService); err != nil {
+	if err := decorateLeases(ctx, container.LeaseService, container.LeaseRepo); err != nil {
 		fatal(err)
 	}
 	if err := seedOSImages(ctx, container.OSImageRepo); err != nil {
@@ -48,7 +48,7 @@ func fatal(err error) {
 	panic(err)
 }
 
-func decorateLeases(ctx context.Context, leases dhcp.LeaseService) error {
+func decorateLeases(ctx context.Context, leases dhcp.LeaseService, repo dhcp.LeaseRepository) error {
 	type paint struct {
 		reserved bool
 		state    dhcp.LeaseState
@@ -109,7 +109,10 @@ func decorateLeases(ctx context.Context, leases dhcp.LeaseService) error {
 		lease.LastSeen = now.Add(-paint.seen)
 		lease.Menu = paint.menu
 		lease.IPMI = paint.ipmi
-		if err := leases.UpdateLease(ctx, lease); err != nil {
+		// UpdateLease keeps a newer LastSeen, so the painted heartbeat would
+		// be discarded and every row would read "just now". The repository
+		// write is the seed's stored row.
+		if err := repo.Save(ctx, lease); err != nil {
 			return err
 		}
 	}

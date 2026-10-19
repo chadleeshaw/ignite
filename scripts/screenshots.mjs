@@ -88,6 +88,11 @@ try {
     ["/provision", "provision_page.png", "provision_console.png"],
   ];
   for (const [path, cozyFile, consoleFile] of pages) {
+    // DHCP draws both servers, their lease tables, and the detail panel.
+    // A short viewport scrolls the second table under the status bar.
+    if (path === "/dhcp") {
+      await page.setViewport({ width: 1280, height: 1280, deviceScaleFactor: 1 });
+    }
     await page.goto(base + path, { waitUntil: "networkidle0" });
     await settle(page);
     // Mode is stored on the server, so a navigation keeps the last choice.
@@ -100,6 +105,9 @@ try {
       if (!stillOpen) await openProvisionFile(page);
     }
     await save(page, consoleFile);
+    if (path === "/dhcp") {
+      await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+    }
   }
 } finally {
   await browser.close();

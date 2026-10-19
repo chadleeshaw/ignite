@@ -83,6 +83,16 @@ func isDHCPRunning(serverID string, modelStarted bool) bool {
 	return modelStarted
 }
 
+// dhcpStatusWord is the only status word for a DHCP server. Overview tiles,
+// the DHCP page badge, and the status bar all use it. A server that is not
+// running is "stopped"; stored leases do not make it "configured".
+func dhcpStatusWord(running bool) string {
+	if running {
+		return "running"
+	}
+	return "stopped"
+}
+
 // StatusHandlers handles status-related requests
 type StatusHandlers struct {
 	container *Container
@@ -164,10 +174,7 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	for _, server := range servers {
 		leases, _ := h.container.LeaseService.GetLeasesByServer(ctx, server.ID)
 
-		status := "configured"
-		if isDHCPRunning(server.ID, server.Started) {
-			status = "running"
-		}
+		status := dhcpStatusWord(isDHCPRunning(server.ID, server.Started))
 
 		dhcpServers = append(dhcpServers, DHCPServerStatus{
 			ID:          server.ID,

@@ -101,6 +101,7 @@ html[data-theme="console"] .app { gap: 10px; }
   padding-bottom: 16px;
 }
 html[data-theme="console"] .stage { gap: 10px; }
+.stage > * { flex-shrink: 0; }
 
 .ignite-nav {
   display: flex;
@@ -347,6 +348,7 @@ html[data-theme="console"] .main { gap: 10px; }
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  flex-shrink: 0;
   min-width: 0;
 }
 html[data-theme="console"] .panel { border-radius: 10px; }
@@ -486,7 +488,29 @@ html[data-theme="console"] .b.sm { padding: 0 8px; font-size: 11.5px; }
 }
 .btn-ghost { background: transparent; border-color: transparent; color: var(--text-muted); }
 
-.cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr)); gap: 10px; padding: 12px; }
+.dhcp-servers { display: flex; flex-direction: column; gap: 12px; min-width: 0; }
+html[data-theme="console"] .dhcp-servers { gap: 10px; }
+#lease-detail { position: sticky; top: 0; }
+#lease-detail .note { margin: 0; padding: 12px 16px; }
+.lease-rows { overflow: visible; }
+@media (max-width: 1100px) {
+  .lease-rows { overflow-x: auto; overflow-y: clip; padding-bottom: 8px; }
+}
+.lease-table th.acts,
+.lease-table td.acts { text-align: right; }
+.lease-table td.acts .actions.stable {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  row-gap: 6px;
+}
+.cards {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 240px), 1fr));
+  gap: 10px;
+  padding: 12px;
+  align-items: start;
+}
+.cards > :only-child { max-width: 360px; justify-self: start; width: 100%; }
 .cd {
   background: rgba(255, 255, 255, 0.04);
   border: 1px solid rgba(255, 255, 255, 0.08);

@@ -61,6 +61,7 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		ID:         server.ID,
 		TFTPIP:     server.IP.String(),
 		Status:     h.getServerStatusBadge(running),
+		StatusWord: dhcpStatusWord(running),
 		Leases:     h.convertLeasesToViews(leases),
 		LeaseRange: server.LeaseRange,
 		Used:       used,
@@ -764,6 +765,7 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 			IP:               lease.IP.String(),
 			Static:           lease.Reserved,
 			Menu:             lease.Menu,
+			MenuLabel:        menuLabel(lease.Menu),
 			IPMI:             lease.IPMI,
 			State:            string(lease.State),
 			StateBadgeClass:  getStateBadgeClass(lease.State),
@@ -778,6 +780,26 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 	})
 
 	return views
+}
+
+// menuLabel is the boot menu name shown on cards, tables, and the detail
+// panel. OS and version win over Filename, because a saved menu stores the
+// pxelinux.cfg path in Filename. A path with no OS or version is "Custom menu".
+// An empty menu returns "" so the template can print an em dash.
+func menuLabel(menu dhcp.BootMenu) string {
+	osName := strings.TrimSpace(menu.OS)
+	version := strings.TrimSpace(menu.Version)
+	if osName != "" || version != "" {
+		return strings.TrimSpace(osName + " " + version)
+	}
+	file := strings.TrimSpace(menu.Filename)
+	if file == "" {
+		return ""
+	}
+	if strings.ContainsAny(file, `/\`) {
+		return "Custom menu"
+	}
+	return file
 }
 
 // getStateBadgeClass returns the CSS class for a lease state badge.
@@ -812,6 +834,7 @@ type DHCPServerView struct {
 	ID         string      `json:"id"`
 	TFTPIP     string      `json:"tftpip"`
 	Status     string      `json:"status"`
+	StatusWord string      `json:"status_word"`
 	Leases     []LeaseView `json:"leases"`
 	LeaseRange int         `json:"lease_range"`
 	Used       int         `json:"used"`
@@ -824,6 +847,7 @@ type LeaseView struct {
 	IP               string        `json:"ip"`
 	Static           bool          `json:"static"`
 	Menu             dhcp.BootMenu `json:"menu"`
+	MenuLabel        string        `json:"menu_label"`
 	IPMI             dhcp.IPMI     `json:"ipmi"`
 	State            string        `json:"state"`
 	StateBadgeClass  string        `json:"state_badge_class"`

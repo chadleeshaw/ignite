@@ -16,14 +16,15 @@
 
 {{if not .Servers}}
 <p class="note mt">No DHCP servers yet. Add one to hand out addresses.</p>
-{{end}}
-
+{{else}}
+<div class="main">
+<div class="dhcp-servers">
 {{range .Servers}}
-<section class="panel mt">
+<section class="panel">
     <div class="pad" style="justify-content: space-between;">
         <div>
             <span class="ip">{{.TFTPIP}}</span>
-            {{if .Running}}
+            {{if eq .StatusWord "running"}}
             <span class="st ok">running</span>
             {{else}}
             <span class="st er">stopped</span>
@@ -55,7 +56,7 @@
                 data-seen="{{relTime .LastSeen}}"
                 data-seen-at="{{rfc3339 .LastSeen}}"
                 data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
-                data-menu="{{if .Menu.Filename}}{{.Menu.OS}} {{.Menu.Version}}{{else}}none{{end}}"
+                data-menu="{{if .MenuLabel}}{{.MenuLabel}}{{else}}—{{end}}"
                 data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
                 data-reserved="{{if .Static}}yes{{else}}no{{end}}"
                 onclick="selectLease(this)">
@@ -65,9 +66,8 @@
                 </div>
                 <div class="kv">
                     <span>MAC</span><span class="mono">{{.MAC}}</span>
-                    <span>Seen</span>
-                    <time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time>
-                    <span>Menu</span><span>{{if .Menu.Filename}}{{.Menu.Filename}}{{else}}—{{end}}</span>
+                    <span>Seen</span><span><time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time></span>
+                    <span>Menu</span><span>{{if .MenuLabel}}{{.MenuLabel}}{{else}}—{{end}}</span>
                 </div>
             </button>
             {{end}}
@@ -77,17 +77,15 @@
         {{end}}
     </div>
 
-    <div class="console-view scroll">
-        <table>
+    <div class="lease-rows">
+        <table class="lease-table">
             <thead>
                 <tr>
                     <th>MAC</th>
                     <th>IP</th>
                     <th>State</th>
-                    <th>Seen</th>
-                    <th>Reserved</th>
-                    <th>Menu</th>
-                    <th>IPMI</th>
+                    <th>Last seen</th>
+                    <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
@@ -100,7 +98,7 @@
                     data-seen="{{relTime .LastSeen}}"
                     data-seen-at="{{rfc3339 .LastSeen}}"
                     data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
-                    data-menu="{{if .Menu.Filename}}{{.Menu.OS}} {{.Menu.Version}}{{else}}none{{end}}"
+                    data-menu="{{if .MenuLabel}}{{.MenuLabel}}{{else}}—{{end}}"
                     data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
                     data-reserved="{{if .Static}}yes{{else}}no{{end}}"
                     onclick="selectLease(this)"
@@ -109,33 +107,10 @@
                     <td class="ip">{{.IP}}</td>
                     <td><span class="badge lease-state {{.StateBadgeClass}}" data-mac="{{.MAC}}">{{.StateDisplayName}}</span></td>
                     <td><time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time></td>
-                    <td>{{if .Static}}yes{{else}}no{{end}}</td>
-                    <td>{{if .Menu.Filename}}{{.Menu.Filename}}{{else}}—{{end}}</td>
-                    <td>{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}—{{end}}</td>
-                </tr>
-                {{else}}
-                <tr><td colspan="7">No leases on this server.</td></tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
-
-    <div class="scroll">
-        <table>
-            <thead>
-                <tr>
-                    <th>MAC</th>
-                    <th>Actions</th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .Leases}}
-                <tr>
-                    <td class="mono">{{.MAC}}</td>
-                    <td>
+                    <td class="acts">
                         <div class="actions stable">
                             <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content"><span class="label-fit"><span>{{if .Static}}Reserved{{else}}Reserve{{end}}</span><span aria-hidden="true">Reserve</span><span aria-hidden="true">Reserved</span></span></button>
-                            <button class="b sm {{if .Menu.Filename}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">Boot menu</button>
+                            <button class="b sm {{if .MenuLabel}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">Boot menu</button>
                             <button class="b sm {{if .IPMI.Username}}p{{end}}" hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">IPMI</button>
                             <div class="dropdown dropdown-end">
                                 <button class="b sm" tabindex="0" type="button">State</button>
@@ -156,6 +131,8 @@
                         </div>
                     </td>
                 </tr>
+                {{else}}
+                <tr><td colspan="5">No leases on this server.</td></tr>
                 {{end}}
             </tbody>
         </table>
@@ -166,10 +143,12 @@
     </div>
 </section>
 {{end}}
+</div>
 
-<section class="panel mt" id="lease-detail">
-    <div class="det" id="lease-detail-body">
-        <span>Lease</span><span id="det-summary">Select a lease</span>
+<aside class="panel" id="lease-detail">
+    <div class="ph"><h3 id="det-title">Lease</h3></div>
+    <p class="note" id="det-empty">Select a lease to see details</p>
+    <div class="det" id="lease-detail-body" hidden>
         <span>MAC</span><span id="det-mac">—</span>
         <span>IP</span><span id="det-ip">—</span>
         <span>State</span><span id="det-state">—</span>
@@ -178,7 +157,9 @@
         <span>Menu</span><span id="det-menu">—</span>
         <span>IPMI</span><span id="det-ipmi">—</span>
     </div>
-</section>
+</aside>
+</div>
+{{end}}
 
 <script>
 function toast(message, isSuccess) {
@@ -204,11 +185,13 @@ var stateDisplayNames = {
 };
 
 function selectLease(el) {
-    document.querySelectorAll('.lease-pick.sel, tr.lease-pick.sel').forEach(function (node) {
-        node.classList.remove('sel');
+    var mac = el.getAttribute('data-mac');
+    document.querySelectorAll('.lease-pick').forEach(function (node) {
+        node.classList.toggle('sel', node.getAttribute('data-mac') === mac);
     });
-    el.classList.add('sel');
-    document.getElementById('det-summary').textContent = el.getAttribute('data-ip');
+    document.getElementById('det-title').textContent = el.getAttribute('data-ip') || 'Lease';
+    document.getElementById('det-empty').hidden = true;
+    document.getElementById('lease-detail-body').hidden = false;
     document.getElementById('det-mac').textContent = el.getAttribute('data-mac');
     document.getElementById('det-ip').textContent = el.getAttribute('data-ip');
     document.getElementById('det-state').textContent = el.getAttribute('data-state');
