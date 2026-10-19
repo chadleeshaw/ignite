@@ -74,8 +74,8 @@ func TestActivateVersionNotFound(t *testing.T) {
 
 func TestActivateVersionSuccess(t *testing.T) {
 	handler, cfg, repo := testSyslinuxHandler(t)
-	bios := filepath.Join(cfg.TFTPDir, cfg.BiosDir)
-	efi := filepath.Join(cfg.TFTPDir, cfg.EfiDir)
+	bios := syslinux.ExtractedBootDir(cfg.TempDir, "6.03", "bios")
+	efi := syslinux.ExtractedBootDir(cfg.TempDir, "6.03", "efi")
 	require.NoError(t, os.MkdirAll(bios, 0o755))
 	require.NoError(t, os.MkdirAll(efi, 0o755))
 	for name := range syslinux.GetRequiredBiosFiles() {

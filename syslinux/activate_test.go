@@ -38,17 +38,17 @@ func testSyslinuxService(t *testing.T) (*service, Repository) {
 	return svc, repo
 }
 
-func writeRequiredBootFiles(t *testing.T, cfg SyslinuxConfig) {
+func writeExtractedBootFiles(t *testing.T, cfg SyslinuxConfig, version, contents string) {
 	t.Helper()
-	bios := filepath.Join(cfg.TFTPDir, cfg.BiosDir)
-	efi := filepath.Join(cfg.TFTPDir, cfg.EfiDir)
+	bios := ExtractedBootDir(cfg.TempDir, version, "bios")
+	efi := ExtractedBootDir(cfg.TempDir, version, "efi")
 	require.NoError(t, os.MkdirAll(bios, 0o755))
 	require.NoError(t, os.MkdirAll(efi, 0o755))
 	for name := range GetRequiredBiosFiles() {
-		require.NoError(t, os.WriteFile(filepath.Join(bios, name), []byte(name), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(bios, name), []byte(contents), 0o644))
 	}
 	for name := range GetRequiredEfiFiles() {
-		require.NoError(t, os.WriteFile(filepath.Join(efi, name), []byte(name), 0o644))
+		require.NoError(t, os.WriteFile(filepath.Join(efi, name), []byte(contents), 0o644))
 	}
 }
 
@@ -86,7 +86,7 @@ func TestActivateVersionMissingBootFiles(t *testing.T) {
 	err := svc.ActivateVersion(ctx, "6.03")
 	require.Error(t, err)
 	require.False(t, errors.Is(err, ErrVersionNotDownloaded))
-	require.Contains(t, err.Error(), "missing")
+	require.Contains(t, err.Error(), "missing stored")
 
 	got, err := repo.GetVersionByNumber(ctx, "6.03")
 	require.NoError(t, err)
@@ -97,7 +97,12 @@ func TestActivateVersionMissingBootFiles(t *testing.T) {
 func TestActivateVersionKeepsOtherDownloads(t *testing.T) {
 	svc, repo := testSyslinuxService(t)
 	ctx := context.Background()
-	writeRequiredBootFiles(t, svc.config)
+	// The previous version's bytes are what TFTP is serving now.
+	oldBIOS := filepath.Join(svc.config.TFTPDir, svc.config.BiosDir)
+	require.NoError(t, os.MkdirAll(oldBIOS, 0o755))
+	require.NoError(t, os.WriteFile(filepath.Join(oldBIOS, "pxelinux.0"), []byte("old-6.03"), 0o644))
+	writeExtractedBootFiles(t, svc.config, "6.03", "stored-6.03")
+	writeExtractedBootFiles(t, svc.config, "6.04", "stored-6.04")
 
 	require.NoError(t, repo.SaveVersion(ctx, &SyslinuxVersion{
 		ID:         "6.03",
@@ -128,6 +133,16 @@ func TestActivateVersionKeepsOtherDownloads(t *testing.T) {
 	require.True(t, current.Downloaded)
 	require.True(t, current.Active)
 
-	// Activating the version that is already active is a no-op success.
+	installed, err := os.ReadFile(filepath.Join(svc.config.TFTPDir, svc.config.BiosDir, "pxelinux.0"))
+	require.NoError(t, err)
+	require.Equal(t, "stored-6.04", string(installed))
+	efi, err := os.ReadFile(filepath.Join(svc.config.TFTPDir, svc.config.EfiDir, "syslinux.efi"))
+	require.NoError(t, err)
+	require.Equal(t, "stored-6.04", string(efi))
+
+	// Activating the version that is already active installs that version again.
 	require.NoError(t, svc.ActivateVersion(ctx, "6.04"))
+	installed, err = os.ReadFile(filepath.Join(svc.config.TFTPDir, svc.config.BiosDir, "pxelinux.0"))
+	require.NoError(t, err)
+	require.Equal(t, "stored-6.04", string(installed))
 }

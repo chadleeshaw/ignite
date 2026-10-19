@@ -240,8 +240,9 @@ unexpired). `menu`, `ipmi`, and `last_seen` are also present on each lease.
 | `/api/syslinux/activate/{version}` | Activates an already-downloaded SYSLINUX version. |
 
 `POST /api/syslinux/activate/{version}` does not download the archive. The
-version must already be downloaded, with its BIOS and EFI boot files on disk.
-Other downloaded versions stay downloaded.
+version must already be downloaded. Activation removes the boot files
+currently in the TFTP directories and installs that version's extracted
+BIOS and EFI files. Other downloaded versions stay downloaded.
 
 Success is `200` with:
 
