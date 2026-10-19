@@ -75,12 +75,15 @@ func (a *Application) Start() error {
 	)
 	a.maintainer.Start(rootCtx)
 
-	// Start TFTP server
+	// Start TFTP server. Record the outcome so status never stays "unknown"
+	// after a start attempt, including a failed bind.
 	a.tftpServer = tftp.NewServer(a.container.Config.TFTP.Dir)
 	if err := a.tftpServer.Start(); err != nil {
+		handlers.SetTFTPRunning(false)
 		a.stopMaintenance()
 		return fmt.Errorf("failed to start TFTP server: %w", err)
 	}
+	handlers.SetTFTPRunning(true)
 	log.Printf("TFTP server started on port 69, serving from %s", a.container.Config.TFTP.Dir)
 
 	// Create HTTP router with injected dependencies and static file handling
@@ -155,6 +158,7 @@ func (a *Application) Stop() error {
 
 	if a.tftpServer != nil {
 		a.tftpServer.Stop()
+		handlers.SetTFTPRunning(false)
 	}
 
 	if err := a.container.Close(); err != nil {

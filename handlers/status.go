@@ -41,9 +41,9 @@ func isTFTPRunning() bool {
 	return serviceRegistry.tftpKnown && serviceRegistry.tftpRunning
 }
 
-// tftpStatusString renders the TFTP state honestly: "unknown" until something
+// TFTPStatus renders the TFTP state honestly: "unknown" until something
 // reports it, never a guessed "running".
-func tftpStatusString() string {
+func TFTPStatus() string {
 	serviceRegistry.RLock()
 	defer serviceRegistry.RUnlock()
 	if !serviceRegistry.tftpKnown {
@@ -137,7 +137,7 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	// TFTP server status — tracked runtime state, never a UDP guess.
 	tftpStatus := ServiceStatus{
 		Name:        "TFTP Server",
-		Status:      tftpStatusString(),
+		Status:      TFTPStatus(),
 		Description: "Network boot file server for PXE clients",
 		Details:     fmt.Sprintf("Port %d", tftpPort),
 		Port:        tftpPort,
