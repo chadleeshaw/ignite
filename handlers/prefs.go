@@ -146,19 +146,26 @@ func (h *PreferenceHandlers) SetMode(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	http.SetCookie(w, &http.Cookie{
-		Name:     uiModeCookie,
-		Value:    mode,
-		Path:     "/",
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-		MaxAge:   60 * 60 * 24 * 365,
-	})
+	http.SetCookie(w, modeCookie(r, mode))
 	if modeWantsNoContent(r) {
 		w.WriteHeader(http.StatusNoContent)
 		return
 	}
 	http.Redirect(w, r, modeRedirectTarget(r), http.StatusSeeOther)
+}
+
+// modeCookie is the ignite_mode cookie. Secure follows the same rule as
+// the session cookie.
+func modeCookie(r *http.Request, mode string) *http.Cookie {
+	return &http.Cookie{
+		Name:     uiModeCookie,
+		Value:    mode,
+		Path:     "/",
+		HttpOnly: true,
+		Secure:   cookieSecure(r),
+		SameSite: http.SameSiteLaxMode,
+		MaxAge:   60 * 60 * 24 * 365,
+	}
 }
 
 // modeWantsNoContent reports a programmatic save: JSON body, a client that

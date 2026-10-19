@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -119,14 +120,44 @@ func sessionCSRF(token string) string {
 	return entry.csrf
 }
 
-// sessionCookie builds the session cookie with secure flags.
-func sessionCookie(token string, expired bool) *http.Cookie {
+// cookieSecure reports whether a cookie should set the Secure flag.
+// COOKIE_SECURE is auto (the default), true, or false. auto, and any other
+// value, sets Secure only when the request arrived on TLS or when
+// X-Forwarded-Proto is https. The CSRF token is not a cookie.
+func cookieSecure(r *http.Request) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SECURE"))) {
+	case "true":
+		return true
+	case "false":
+		return false
+	default:
+		return requestIsHTTPS(r)
+	}
+}
+
+// requestIsHTTPS reports a TLS connection or an https reverse-proxy hop.
+func requestIsHTTPS(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if i := strings.Index(proto, ","); i >= 0 {
+		proto = proto[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
+}
+
+// sessionCookie builds the session cookie. Secure follows cookieSecure.
+func sessionCookie(r *http.Request, token string, expired bool) *http.Cookie {
 	c := &http.Cookie{
 		Name:     "ignite_session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   cookieSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	}
 	if expired {
@@ -220,7 +251,7 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set session cookie with secure flags
-	http.SetCookie(w, sessionCookie(token, false))
+	http.SetCookie(w, sessionCookie(r, token, false))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{
@@ -237,7 +268,7 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear the session cookie
-	http.SetCookie(w, sessionCookie("", true))
+	http.SetCookie(w, sessionCookie(r, "", true))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{

@@ -156,6 +156,7 @@ Ignite can be configured via environment variables. Here are the available optio
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
 | `BMC_TLS_INSECURE` | Skip TLS verification for Redfish BMCs. Set to `true`, `1`, `yes`, or `on` only for a self-signed BMC. Any other value verifies certificates. | verify TLS |
 | `BMC_SYSTEM_ID` | Redfish ComputerSystem `Id` when a BMC exposes more than one system. A `system_id` form field on `POST /pxe/submit_ipmi` overrides this. | first and only system |
+| `COOKIE_SECURE` | `Secure` flag on `ignite_session` and `ignite_mode`. `auto` sets it only when the request is TLS or `X-Forwarded-Proto` is `https`. `true` always sets it. `false` never does. Any other value is `auto`. The CSRF token is not a cookie. | `auto` |
 
 Startup logs the resolved TFTP root (`TFTP root: ...`). `TFTP_DIR` overrides the default. The directory is created if it is missing. When that directory cannot be created, Ignite falls back to a temporary directory named `ignite-tftp.*` under the system temp dir and logs a warning that boot files, OS images, and per-MAC configs will not survive a restart. The same warning is logged when `TFTP_DIR` itself points at a temp directory; the override is still used. The TFTP page shows this resolved path as the root.
 
