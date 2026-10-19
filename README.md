@@ -172,7 +172,7 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/open_modal`           | Opens a modal dialog.                    |
 | `/close_modal`          | Closes a modal dialog.                   |
 | `/dhcp`                 | Serves the DHCP management page.         |
-| `/dhcp/servers`         | Retrieves a list of DHCP servers.        |
+| `/dhcp/servers`         | DHCP server list. HTML fragment for htmx; JSON when `?format=json` or `Accept` is `application/json` without `text/html`. |
 | `/status`               | Redirects to Overview (`/`).             |
 | `/provision`            | Serves the provisioning page.            |
 | `/tftp`                 | Serves the TFTP management page.         |
@@ -187,6 +187,39 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/prov/getfilename`     | Updates the filename for a template.     |
 | `/provision/load-file`  | Loads file content via API.              |
 | `/provision/gallery`    | Retrieves template gallery items.        |
+
+`GET /dhcp/servers` returns an HTML fragment (`text/html`) for browsers and
+htmx. Add `?format=json`, or send `Accept: application/json` without
+`text/html`, for JSON:
+
+```json
+{
+  "servers": [
+    {
+      "id": "server-id",
+      "tftpip": "192.168.1.1",
+      "status": "badge-success",
+      "lease_range": 50,
+      "used": 1,
+      "free": 49,
+      "leases": [
+        {
+          "mac": "aa:bb:cc:dd:ee:ff",
+          "ip": "192.168.1.100",
+          "static": false,
+          "state": "assigned",
+          "state_badge_class": "badge-info",
+          "state_display_name": "Assigned"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`status` is `badge-success` when the server is running and `badge-error` when
+it is stopped. `used` and `free` follow `dhcp.PoolOccupancy` (reserved or
+unexpired). `menu`, `ipmi`, and `last_seen` are also present on each lease.
 
 ### POST Routes
 
