@@ -50,24 +50,52 @@ func currentUIMode(r *http.Request) string {
 	return mode
 }
 
-// applyUIMode returns data with Mode set to the signed-in user's density
-// and CSRFToken set to that session's token.
-// A request with no session (except GET /login), a failed lookup, or an
-// unknown stored value gets DefaultUIMode. Maps gain "Mode" and "CSRFToken"
-// keys. Structs with exported Mode or CSRFToken string fields are updated
-// (a non-pointer struct is copied first). Nil data becomes a small struct
-// carrying Title, Mode, and CSRFToken so base templates can render. The HTML
-// data-theme attribute stays "ignite" until the per-mode themes exist; Mode
-// is still passed through.
+// pageHealthFn supplies OverallStatus for every HTML render. Nil leaves
+// the field empty, which tests use when they are not checking health.
+var (
+	pageHealthMu sync.RWMutex
+	pageHealthFn func(*http.Request) string
+)
+
+// SetPageHealth installs the function that fills OverallStatus on every
+// page render. The application wires it to the same overall service word
+// as /status/content. Pass nil to clear it.
+func SetPageHealth(fn func(*http.Request) string) {
+	pageHealthMu.Lock()
+	pageHealthFn = fn
+	pageHealthMu.Unlock()
+}
+
+func pageHealth(r *http.Request) string {
+	pageHealthMu.RLock()
+	fn := pageHealthFn
+	pageHealthMu.RUnlock()
+	if fn == nil || r == nil {
+		return ""
+	}
+	return fn(r)
+}
+
+// applyUIMode returns data with Mode set to the signed-in user's density,
+// CSRFToken set to that session's token, and OverallStatus set from
+// SetPageHealth. A request with no session (except GET /login), a failed
+// lookup, or an unknown stored value gets DefaultUIMode. Maps gain "Mode",
+// "CSRFToken", and "OverallStatus" keys. Structs with those exported string
+// fields are updated (a non-pointer struct is copied first). Nil data
+// becomes a small struct carrying Title, Mode, CSRFToken, and OverallStatus
+// so base templates can render. The HTML data-theme attribute stays
+// "ignite" until the per-mode themes exist; Mode is still passed through.
 func applyUIMode(r *http.Request, data any) any {
 	mode := currentUIMode(r)
 	csrf := currentCSRFToken(r)
+	health := pageHealth(r)
 	if data == nil {
 		return struct {
-			Title     string
-			Mode      string
-			CSRFToken string
-		}{Mode: mode, CSRFToken: csrf}
+			Title         string
+			Mode          string
+			CSRFToken     string
+			OverallStatus string
+		}{Mode: mode, CSRFToken: csrf, OverallStatus: health}
 	}
 
 	v := reflect.ValueOf(data)
@@ -75,31 +103,33 @@ func applyUIMode(r *http.Request, data any) any {
 	case reflect.Pointer:
 		if v.IsNil() {
 			return struct {
-				Title     string
-				Mode      string
-				CSRFToken string
-			}{Mode: mode, CSRFToken: csrf}
+				Title         string
+				Mode          string
+				CSRFToken     string
+				OverallStatus string
+			}{Mode: mode, CSRFToken: csrf, OverallStatus: health}
 		}
 		if v.Elem().Kind() == reflect.Struct {
-			setPageFields(v.Elem(), mode, csrf)
+			setPageFields(v.Elem(), mode, csrf, health)
 		}
 		return data
 	case reflect.Struct:
 		cp := reflect.New(v.Type())
 		cp.Elem().Set(v)
-		setPageFields(cp.Elem(), mode, csrf)
+		setPageFields(cp.Elem(), mode, csrf, health)
 		return cp.Interface()
 	case reflect.Map:
-		setMapPageFields(v, mode, csrf)
+		setMapPageFields(v, mode, csrf, health)
 		return data
 	default:
 		return data
 	}
 }
 
-func setPageFields(v reflect.Value, mode, csrf string) {
+func setPageFields(v reflect.Value, mode, csrf, health string) {
 	setStringField(v, "Mode", mode)
 	setStringField(v, "CSRFToken", csrf)
+	setStringField(v, "OverallStatus", health)
 }
 
 func setStringField(v reflect.Value, name, value string) {
@@ -112,9 +142,10 @@ func setStringField(v reflect.Value, name, value string) {
 	}
 }
 
-func setMapPageFields(v reflect.Value, mode, csrf string) {
+func setMapPageFields(v reflect.Value, mode, csrf, health string) {
 	setMapString(v, "Mode", mode)
 	setMapString(v, "CSRFToken", csrf)
+	setMapString(v, "OverallStatus", health)
 }
 
 func setMapString(v reflect.Value, key, value string) {

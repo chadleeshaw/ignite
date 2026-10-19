@@ -55,6 +55,9 @@ func NewApplicationWithStatic(staticFS embed.FS) (*Application, error) {
 		Prefs:           container.Prefs,
 	}
 	handlers.SetPreferenceStore(container.Prefs)
+	handlers.SetPageHealth(func(r *http.Request) string {
+		return handlers.NewStatusHandlers(handlerContainer).CurrentOverallStatus(r)
+	})
 
 	return &Application{
 		container:        container,

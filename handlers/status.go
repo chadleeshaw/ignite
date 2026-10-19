@@ -174,6 +174,19 @@ func overallServiceStatus(httpStatus, tftpStatus string, dhcpStates []dhcp.Serve
 	return "healthy"
 }
 
+// CurrentOverallStatus is the same overall service word /status/content
+// renders: healthy, partial, or down. An error reading status yields "".
+func (h *StatusHandlers) CurrentOverallStatus(r *http.Request) string {
+	if h == nil || r == nil {
+		return ""
+	}
+	data, err := h.getStatusData(r)
+	if err != nil || data == nil {
+		return ""
+	}
+	return data.OverallStatus
+}
+
 // HandleStatusContent serves status content for HTMX updates.
 func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Request) {
 	if !requireConfig(w, r, h.container) {

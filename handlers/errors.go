@@ -112,12 +112,13 @@ func SendError(w http.ResponseWriter, r *http.Request, err *AppError) {
 
 // errorPageData is the view model for HTML error pages.
 type errorPageData struct {
-	Title      string
-	Mode       string
-	CSRFToken  string
-	StatusCode int
-	Heading    string
-	Message    string
+	Title         string
+	Mode          string
+	CSRFToken     string
+	OverallStatus string
+	StatusCode    int
+	Heading       string
+	Message       string
 }
 
 // SendHTMLError renders the shared error page. Mode comes from the signed-in

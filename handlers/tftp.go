@@ -299,6 +299,7 @@ type TFTPData struct {
 	Title           string
 	Mode            string
 	CSRFToken       string
+	OverallStatus   string
 	ServerRunning   bool
 	ServerDirectory string
 	PrevDirectory   string
