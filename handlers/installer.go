@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	"strings"
+	"unicode"
 
 	"ignite/dhcp"
 )
@@ -31,6 +32,21 @@ func validateInstallerFields(form map[string]string) error {
 			return fmt.Errorf("%s must be an IPv4 address", field)
 		}
 		form[field] = normalized
+	}
+	if err := validateKernelOptions(form["kernel_options"]); err != nil {
+		return err
+	}
+	return nil
+}
+
+// validateKernelOptions rejects newlines and other control characters.
+// The value is appended raw to the PXE APPEND line, so a control character
+// would start a new config line.
+func validateKernelOptions(options string) error {
+	for _, r := range options {
+		if unicode.IsControl(r) {
+			return fmt.Errorf("kernel_options contains a control character")
+		}
 	}
 	return nil
 }

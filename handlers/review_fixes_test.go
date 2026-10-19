@@ -51,6 +51,32 @@ func TestInstallerFieldsRejectInjection(t *testing.T) {
 	require.Error(t, validateInstallerFields(xmlIP))
 }
 
+func TestKernelOptionsRejectControlCharacters(t *testing.T) {
+	base := map[string]string{
+		"mac":      "aa:bb:cc:dd:ee:01",
+		"hostname": "cb-host",
+		"tftpip":   "10.0.0.1",
+		"ip":       "10.0.0.2",
+		"subnet":   "255.255.255.0",
+		"gateway":  "10.0.0.1",
+		"dns":      "1.1.1.1",
+	}
+	for _, bad := range []string{"quiet\nrd.break", "quiet\rconsole=ttyS0", "quiet\tconsole=ttyS0", "quiet\x1b[31m"} {
+		form := copyForm(base)
+		form["kernel_options"] = bad
+		err := validateInstallerFields(form)
+		require.Error(t, err, bad)
+		require.Contains(t, err.Error(), "kernel_options")
+	}
+	ok := copyForm(base)
+	ok["kernel_options"] = "quiet console=ttyS0,115200n8"
+	require.NoError(t, validateInstallerFields(ok))
+	require.Equal(t, "quiet console=ttyS0,115200n8", ok["kernel_options"])
+
+	empty := copyForm(base)
+	require.NoError(t, validateInstallerFields(empty))
+}
+
 func TestShellAndXMLEscaping(t *testing.T) {
 	require.Equal(t, `'it'\''s'`, shellQuote("it's"))
 	require.Contains(t, xmlEscape("a<b"), "&lt;")
