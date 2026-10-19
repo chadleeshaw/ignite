@@ -69,7 +69,7 @@ Advanced PXE boot menu configuration and SYSLINUX management interface.
 ![Syslinux Configuration](./public/http/img/syslinux_page.png)
 
 ### **System Status**
-Real-time monitoring of server status, services, and system health indicators.
+Service health is shown on Overview. `GET /status` redirects there.
 
 ![System Status](./public/http/img/status_page.png)
 
@@ -173,7 +173,7 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/close_modal`          | Closes a modal dialog.                   |
 | `/dhcp`                 | Serves the DHCP management page.         |
 | `/dhcp/servers`         | Retrieves a list of DHCP servers.        |
-| `/status`               | Serves the server status page.           |
+| `/status`               | Redirects to Overview (`/`).             |
 | `/provision`            | Serves the provisioning page.            |
 | `/tftp`                 | Serves the TFTP management page.         |
 | `/tftp/open`            | Opens a file in the TFTP directory.      |

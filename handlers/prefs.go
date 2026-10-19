@@ -3,8 +3,10 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"io"
 	"net/http"
+	"net/url"
 	"strings"
 
 	"ignite/db"
@@ -111,16 +113,22 @@ func (h *PreferenceHandlers) GetMode(w http.ResponseWriter, r *http.Request) {
 
 // SetMode handles POST /api/preferences/mode.
 // The body is either JSON {"mode":"cozy"|"console"} or a form field mode.
-// A recognized value is stored and answered with 204. Anything else is 400.
+// A recognized value is stored. JSON, Accept: application/json, and
+// HTMX requests are answered with 204. A plain HTML form is answered with
+// 303 back to a same-origin relative path, or / when the Referer is not
+// one. An invalid mode is 400 and is not redirected.
 func (h *PreferenceHandlers) SetMode(w http.ResponseWriter, r *http.Request) {
+	if crossSiteRequest(r) {
+		writeJSONMessage(w, http.StatusForbidden, false, "Cross-site requests are not allowed")
+		return
+	}
 	mode, err := readUIMode(r)
+	if errors.Is(err, errInvalidJSON) {
+		writeJSONMessage(w, http.StatusBadRequest, false, "The request body is not valid JSON")
+		return
+	}
 	if err != nil || !ValidUIMode(mode) {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusBadRequest)
-		_ = json.NewEncoder(w).Encode(map[string]any{
-			"success": false,
-			"message": "mode must be cozy or console",
-		})
+		writeJSONMessage(w, http.StatusBadRequest, false, "mode must be cozy or console")
 		return
 	}
 	if h == nil || h.store == nil {
@@ -141,7 +149,63 @@ func (h *PreferenceHandlers) SetMode(w http.ResponseWriter, r *http.Request) {
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   60 * 60 * 24 * 365,
 	})
-	w.WriteHeader(http.StatusNoContent)
+	if modeWantsNoContent(r) {
+		w.WriteHeader(http.StatusNoContent)
+		return
+	}
+	http.Redirect(w, r, modeRedirectTarget(r), http.StatusSeeOther)
+}
+
+// modeWantsNoContent reports a programmatic save: JSON body, a client that
+// asked for JSON, or an HTMX request. A plain HTML form is the other case.
+func modeWantsNoContent(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if strings.Contains(r.Header.Get("Content-Type"), "application/json") {
+		return true
+	}
+	if strings.Contains(r.Header.Get("Accept"), "application/json") {
+		return true
+	}
+	return r.Header.Get("HX-Request") != ""
+}
+
+// modeRedirectTarget is a same-origin relative path taken from Referer.
+// Anything else, including an off-site URL, becomes /.
+func modeRedirectTarget(r *http.Request) string {
+	if r == nil {
+		return "/"
+	}
+	ref := strings.TrimSpace(r.Referer())
+	if ref == "" {
+		return "/"
+	}
+	parsed, err := url.Parse(ref)
+	if err != nil {
+		return "/"
+	}
+	if parsed.IsAbs() {
+		if parsed.Scheme != "http" && parsed.Scheme != "https" {
+			return "/"
+		}
+		if !strings.EqualFold(parsed.Host, r.Host) {
+			return "/"
+		}
+	} else if parsed.Host != "" {
+		return "/"
+	}
+	path := parsed.Path
+	if path == "" || !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") {
+		return "/"
+	}
+	if strings.ContainsAny(path, "\\\r\n") {
+		return "/"
+	}
+	if parsed.RawQuery != "" {
+		return path + "?" + parsed.RawQuery
+	}
+	return path
 }
 
 func readUIMode(r *http.Request) (string, error) {
@@ -153,7 +217,7 @@ func readUIMode(r *http.Request) (string, error) {
 		}
 		var req uiModeRequest
 		if err := json.Unmarshal(body, &req); err != nil {
-			return "", err
+			return "", errInvalidJSON
 		}
 		return strings.TrimSpace(req.Mode), nil
 	}

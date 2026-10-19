@@ -68,6 +68,7 @@ func TestPreferenceModeEndpoints(t *testing.T) {
 		form := url.Values{"mode": {"cozy"}}
 		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(form.Encode()))
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
 		rec := httptest.NewRecorder()
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusNoContent, rec.Code)
@@ -94,9 +95,9 @@ func TestPageRenderKeepsBodyClass(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	require.Contains(t, body, `<body class="bg-base-100">`)
-	require.Contains(t, body, `data-theme="cozy"`)
+	require.Contains(t, body, `data-theme="ignite"`)
 	require.NotContains(t, body, `data-theme="console"`)
-	require.NotContains(t, body, `data-theme="ignite"`)
+	require.NotContains(t, body, `data-theme="cozy"`)
 	require.NotContains(t, body, `bg-base-100 console`)
 	require.NotContains(t, body, `bg-base-100 cozy`)
 	require.NotContains(t, body, `{{.Mode}}`)
@@ -134,6 +135,114 @@ func TestApplyUIModeUsesStoredPreference(t *testing.T) {
 	})
 	require.True(t, ok)
 	require.Equal(t, "cozy", got.Mode)
+}
+
+func TestApplyUIModeOverwritesHardcodedMode(t *testing.T) {
+	prev := preferenceStore
+	t.Cleanup(func() { SetPreferenceStore(prev) })
+	SetPreferenceStore(&memoryPrefs{mode: ConsoleUIMode})
+
+	req := httptest.NewRequest(http.MethodGet, "/dhcp", nil)
+	req.AddCookie(testSessionCookie(t))
+	page := struct {
+		Title string
+		Mode  string
+	}{Title: "DHCP", Mode: DefaultUIMode}
+	stamped := applyUIMode(req, page)
+	got, ok := stamped.(*struct {
+		Title string
+		Mode  string
+	})
+	require.True(t, ok)
+	require.Equal(t, ConsoleUIMode, got.Mode)
+
+	anonymous := httptest.NewRequest(http.MethodGet, "/dhcp", nil)
+	forced := struct {
+		Title string
+		Mode  string
+	}{Title: "DHCP", Mode: ConsoleUIMode}
+	stamped = applyUIMode(anonymous, forced)
+	got, ok = stamped.(*struct {
+		Title string
+		Mode  string
+	})
+	require.True(t, ok)
+	require.Equal(t, DefaultUIMode, got.Mode)
+}
+
+func TestSetModeContentNegotiation(t *testing.T) {
+	store := &memoryPrefs{mode: DefaultUIMode}
+	h := NewPreferenceHandlers(store)
+
+	t.Run("json stays 204", func(t *testing.T) {
+		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(`{"mode":"console"}`))
+		req.Header.Set("Content-Type", "application/json")
+		req.Host = "example.com"
+		rec := httptest.NewRecorder()
+		h.SetMode(rec, req)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+		require.Equal(t, ConsoleUIMode, store.mode)
+	})
+
+	t.Run("accept json stays 204", func(t *testing.T) {
+		form := url.Values{"mode": {"cozy"}}
+		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("Accept", "application/json")
+		rec := httptest.NewRecorder()
+		h.SetMode(rec, req)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+		require.Equal(t, DefaultUIMode, store.mode)
+	})
+
+	t.Run("htmx stays 204", func(t *testing.T) {
+		form := url.Values{"mode": {"console"}}
+		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("HX-Request", "true")
+		rec := httptest.NewRecorder()
+		h.SetMode(rec, req)
+		require.Equal(t, http.StatusNoContent, rec.Code)
+	})
+
+	t.Run("html form redirects to same-origin referer", func(t *testing.T) {
+		form := url.Values{"mode": {"cozy"}}
+		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Host = "example.com"
+		req.Header.Set("Referer", "http://example.com/dhcp?tab=leases")
+		rec := httptest.NewRecorder()
+		h.SetMode(rec, req)
+		require.Equal(t, http.StatusSeeOther, rec.Code)
+		require.Equal(t, "/dhcp?tab=leases", rec.Header().Get("Location"))
+		require.Equal(t, DefaultUIMode, store.mode)
+	})
+
+	t.Run("foreign referer redirects home", func(t *testing.T) {
+		form := url.Values{"mode": {"console"}}
+		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Host = "example.com"
+		req.Header.Set("Referer", "http://evil.example/phish")
+		rec := httptest.NewRecorder()
+		h.SetMode(rec, req)
+		require.Equal(t, http.StatusSeeOther, rec.Code)
+		require.Equal(t, "/", rec.Header().Get("Location"))
+	})
+
+	t.Run("invalid mode is 400", func(t *testing.T) {
+		form := url.Values{"mode": {"neon"}}
+		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(form.Encode()))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Host = "example.com"
+		req.Header.Set("Referer", "http://example.com/dhcp")
+		rec := httptest.NewRecorder()
+		h.SetMode(rec, req)
+		require.Equal(t, http.StatusBadRequest, rec.Code)
+		require.Empty(t, rec.Header().Get("Location"))
+		require.Contains(t, rec.Body.String(), "mode must be cozy or console")
+		require.Equal(t, ConsoleUIMode, store.mode)
+	})
 }
 
 type memoryPrefs struct {
