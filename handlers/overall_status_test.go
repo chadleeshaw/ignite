@@ -30,3 +30,17 @@ func TestNonOverviewPageGetsOverallStatus(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	require.Contains(t, rec.Body.String(), `data-overall-status="partial"`)
 }
+
+func TestApplyUIModeKeepsComputedOverallStatus(t *testing.T) {
+	SetPageHealth(nil)
+	t.Cleanup(func() { SetPageHealth(nil) })
+
+	data := &StatusPageData{OverallStatus: "partial"}
+	req := httptest.NewRequest(http.MethodGet, "/status/content", nil)
+	got := applyUIMode(req, data).(*StatusPageData)
+	require.Equal(t, "partial", got.OverallStatus)
+
+	SetPageHealth(func(*http.Request) string { return "down" })
+	got = applyUIMode(req, data).(*StatusPageData)
+	require.Equal(t, "down", got.OverallStatus)
+}

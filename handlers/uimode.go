@@ -78,7 +78,8 @@ func pageHealth(r *http.Request) string {
 
 // applyUIMode returns data with Mode set to the signed-in user's density,
 // CSRFToken set to that session's token, and OverallStatus set from
-// SetPageHealth. A request with no session (except GET /login), a failed
+// SetPageHealth when that value is non-empty. An empty value leaves a
+// status the handler already stored. A request with no session (except GET /login), a failed
 // lookup, or an unknown stored value gets DefaultUIMode. Maps gain "Mode",
 // "CSRFToken", and "OverallStatus" keys. Structs with those exported string
 // fields are updated (a non-pointer struct is copied first). Nil data
@@ -129,7 +130,12 @@ func applyUIMode(r *http.Request, data any) any {
 func setPageFields(v reflect.Value, mode, csrf, health string) {
 	setStringField(v, "Mode", mode)
 	setStringField(v, "CSRFToken", csrf)
-	setStringField(v, "OverallStatus", health)
+	// An empty callback must not wipe a status the handler already computed.
+	// /status/content sets OverallStatus itself. Other pages leave it empty
+	// and receive the shared value when one is available.
+	if health != "" {
+		setStringField(v, "OverallStatus", health)
+	}
 }
 
 func setStringField(v reflect.Value, name, value string) {
@@ -145,7 +151,9 @@ func setStringField(v reflect.Value, name, value string) {
 func setMapPageFields(v reflect.Value, mode, csrf, health string) {
 	setMapString(v, "Mode", mode)
 	setMapString(v, "CSRFToken", csrf)
-	setMapString(v, "OverallStatus", health)
+	if health != "" {
+		setMapString(v, "OverallStatus", health)
+	}
 }
 
 func setMapString(v reflect.Value, key, value string) {

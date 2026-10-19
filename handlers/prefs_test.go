@@ -122,7 +122,7 @@ func TestPageRenderKeepsBodyClass(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	require.Contains(t, body, `<body class="bg-base-100">`)
+	require.Contains(t, body, `<body class="bg-base-100" data-overall-status="">`)
 	require.Contains(t, body, `data-theme="ignite"`)
 	require.NotContains(t, body, `data-theme="console"`)
 	require.NotContains(t, body, `data-theme="cozy"`)
