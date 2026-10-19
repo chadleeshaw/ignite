@@ -32,11 +32,11 @@
                 {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}
             </p>
         </div>
-        <div class="actions">
+        <div class="actions stable">
             {{if .Running}}
-            <button class="b dg sm" hx-post="/dhcp/stop?server_id={{.ID}}" hx-swap="none">Stop</button>
+            <button class="b dg sm" hx-post="/dhcp/stop?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Stop</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
             {{else}}
-            <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none">Start</button>
+            <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Start</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
             {{end}}
             <button class="b sm" hx-get="/open_modal?template=dhcpmodal&server_id={{.ID}}" hx-target="#modal-content">Edit</button>
             <button class="b dg sm" hx-post="/dhcp/delete?server_id={{.ID}}" hx-swap="none" hx-confirm="Delete this DHCP server?">Delete</button>
@@ -131,8 +131,8 @@
                 <tr>
                     <td class="mono">{{.MAC}}</td>
                     <td>
-                        <div class="actions">
-                            <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">{{if .Static}}Reserved{{else}}Reserve{{end}}</button>
+                        <div class="actions stable">
+                            <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content"><span class="label-fit"><span>{{if .Static}}Reserved{{else}}Reserve{{end}}</span><span aria-hidden="true">Reserve</span><span aria-hidden="true">Reserved</span></span></button>
                             <button class="b sm {{if .Menu.Filename}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">Boot menu</button>
                             <button class="b sm {{if .IPMI.Username}}p{{end}}" hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">IPMI</button>
                             <div class="dropdown dropdown-end">

@@ -54,6 +54,7 @@ var templateFuncs = template.FuncMap{
 	"uiMode":            uiMode,
 	"pageID":            pageID,
 	"fieldString":       fieldString,
+	"statusBar":         statusBar,
 	"modePreferenceURL": func() string { return ModePreferenceURL },
 	"summaryURL":        func() string { return OverviewSummaryURL },
 	"initial": func(s string) string {

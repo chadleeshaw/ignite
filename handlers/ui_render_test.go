@@ -77,15 +77,16 @@ func renderNamed(t *testing.T, name string, data any) string {
 
 func TestPagesRenderThemesFromMode(t *testing.T) {
 	overview := renderNamed(t, "index", OverviewPage{
-		Title:        "Overview",
-		Page:         "overview",
-		CozySubtitle: "All services are up",
-		HTTPStatus:   "running",
-		TFTPStatus:   "unknown",
-		LeaseTotal:   5,
-		ServerCount:  2,
-		DHCPRunning:  0,
-		Status:       mockStatusPageData(true),
+		Title:         "Overview",
+		Page:          "overview",
+		OverallStatus: "healthy",
+		CozySubtitle:  "All services are up",
+		HTTPStatus:    "running",
+		TFTPStatus:    "unknown",
+		LeaseTotal:    5,
+		ServerCount:   2,
+		DHCPRunning:   0,
+		Status:        mockStatusPageData(true),
 	})
 	for _, want := range []string{
 		`data-theme="cozy"`,
@@ -101,6 +102,19 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 	if strings.Contains(overview, "localStorage") {
 		t.Error("overview still mentions localStorage")
+	}
+	for _, want := range []string{
+		`class="sb"`,
+		"All services up",
+		"5 leases · 2 servers",
+		"CONSOLE",
+		`<kbd>1</kbd> overview`,
+		`<kbd>\</kbd> cozy · <kbd>?</kbd> help`,
+		"Tip: <kbd>\\</kbd> switches Console",
+	} {
+		if !strings.Contains(overview, want) {
+			t.Errorf("overview status bar missing %q", want)
+		}
 	}
 	for _, want := range []string{
 		`method="post"`,
@@ -179,6 +193,24 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(console, "localStorage") {
 		t.Error("dhcp page still mentions localStorage")
 	}
+	for _, want := range []string{
+		`class="sb"`,
+		"DHCP is stopped",
+		"1 server · 2 leases",
+		"CONSOLE",
+		`<kbd>2</kbd> dhcp`,
+		`class="label-fit"`,
+		`aria-hidden="true">Reserved`,
+		`aria-hidden="true">Start`,
+		`class="actions stable"`,
+	} {
+		if !strings.Contains(console, want) {
+			t.Errorf("dhcp actions or status bar missing %q", want)
+		}
+	}
+	if strings.Contains(console, "innerHTML") || strings.Contains(console, "outerHTML") || strings.Contains(console, "insertAdjacentHTML") {
+		t.Error("dhcp page still has an HTML string sink")
+	}
 
 	tftp := renderNamed(t, "tftp", &TFTPData{
 		Title:           "TFTP",
@@ -199,6 +231,11 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if !strings.Contains(tftp, `data-theme="cozy"`) {
 		t.Error("missing Mode should still be cozy")
 	}
+	for _, want := range []string{"TFTP status is unknown", "1 file · 1 folder", `<kbd>3</kbd> tftp`, `class="sb"`} {
+		if !strings.Contains(tftp, want) {
+			t.Errorf("tftp status bar missing %q", want)
+		}
+	}
 
 	osOut := renderNamed(t, "osimages", struct {
 		Title         string
@@ -216,6 +253,9 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	})
 	if !strings.Contains(osOut, "24.04") || !strings.Contains(osOut, `id="versionSelect"`) || !strings.Contains(osOut, `class="ico ubuntu"`) {
 		t.Error("os images list or download form missing")
+	}
+	if !strings.Contains(osOut, "1 image") || !strings.Contains(osOut, `<kbd>4</kbd> images`) || !strings.Contains(osOut, "Ready") {
+		t.Error("os images status bar missing")
 	}
 
 	sys := renderNamed(t, "syslinux", struct {
@@ -251,14 +291,44 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(idle, "/api/syslinux/activate/") {
 		t.Error("activate control shown before the route works")
 	}
+	if !strings.Contains(sys, "1 version") || !strings.Contains(sys, `<kbd>5</kbd> syslinux`) {
+		t.Error("syslinux status bar missing")
+	}
 
 	prov := renderNamed(t, "provision", &ProvisionData{
 		Title: "Provision", Page: "provision", Files: nil, Categories: []string{"ipxe"},
 	})
-	for _, id := range []string{"file-search", "type-filter", "category-filter", "current-filename", "editor-textarea", "save-btn", "help-content"} {
+	for _, id := range []string{"file-search", "type-filter", "category-filter", "current-filename", "editor-textarea", "save-btn", "help-content", "editor-info"} {
 		if !strings.Contains(prov, `id="`+id+`"`) {
 			t.Errorf("provision missing %s", id)
 		}
+	}
+	for _, want := range []string{`class="sb"`, "CONSOLE", "0 files", `<kbd>6</kbd> provision`, `<kbd>⌘S</kbd> save`, `<kbd>\</kbd> cozy · <kbd>?</kbd> help`} {
+		if !strings.Contains(prov, want) {
+			t.Errorf("provision status bar missing %q", want)
+		}
+	}
+	if strings.Contains(prov, "innerHTML") || strings.Contains(prov, "outerHTML") || strings.Contains(prov, "insertAdjacentHTML") {
+		t.Error("provision page still has an HTML string sink")
+	}
+}
+
+func TestStatusBarDefaults(t *testing.T) {
+	bar := statusBar(nil)
+	if bar.Health != "Ready" || bar.Counts != "" || bar.Keys != nil {
+		t.Fatalf("nil: %+v", bar)
+	}
+	bar = statusBar(map[string]string{"Page": "overview", "StatusCounts": "4 pools"})
+	if bar.Counts != "4 pools" || bar.Health != "Ready" || len(bar.Keys) != 1 || bar.Keys[0].Label != "overview" {
+		t.Fatalf("override: %+v", bar)
+	}
+	bar = statusBar(struct {
+		Page          string
+		StatusHealth  string
+		OverallStatus string
+	}{Page: "overview", StatusHealth: "Custom health", OverallStatus: "down"})
+	if bar.Health != "Custom health" {
+		t.Fatalf("health override: %+v", bar)
 	}
 }
 

@@ -45,14 +45,21 @@
         <div class="stage">
             {{template "content" .}}
         </div>
+        {{$bar := statusBar .}}
         <footer class="sb">
-            {{with fieldString . "OverallStatus"}}
-            <span class="only-cozy">{{if eq . "healthy"}}All services up{{else if eq . "partial"}}Partial service{{else if eq . "down"}}System down{{else}}{{.}}{{end}}</span>
-            <span class="only-console">{{.}}</span>
-            {{end}}
-            <span class="only-cozy">Tip: <kbd>\</kbd> switches Console</span>
-            <span class="only-console"><kbd>1</kbd>–<kbd>6</kbd> pages <kbd>\</kbd> cozy</span>
+            <span class="only-cozy">{{$bar.Health}}</span>
+            <span class="only-console">CONSOLE</span>
+            {{if $bar.Counts}}<span class="only-console">{{$bar.Counts}}</span>{{end}}
             <span class="grow"></span>
+            {{if $bar.Tip}}
+            <span class="only-cozy">{{$bar.Tip}}</span>
+            {{else}}
+            <span class="only-cozy">Tip: <kbd>\</kbd> switches Console</span>
+            {{end}}
+            <span class="only-console sb-keys">
+                {{range $bar.Keys}}<span><kbd>{{.Key}}</kbd> {{.Label}}</span>{{end}}
+                <span><kbd>\</kbd> cozy · <kbd>?</kbd> help</span>
+            </span>
         </footer>
     </div>
 
@@ -123,6 +130,50 @@
                 if (mode !== "cozy" && mode !== "console") return;
                 e.preventDefault();
                 igniteSetMode(mode);
+            });
+        }
+
+        function placeStageMenu(drop) {
+            var menu = drop.querySelector(":scope > .dropdown-content");
+            var btn = drop.querySelector(":scope > button");
+            if (!menu || !btn) return;
+            var rect = btn.getBoundingClientRect();
+            var height = menu.offsetHeight || 240;
+            var top = rect.bottom + 4;
+            if (window.innerHeight - top < height && rect.top > height) {
+                top = rect.top - height - 4;
+            }
+            menu.style.position = "fixed";
+            menu.style.top = Math.max(8, top) + "px";
+            menu.style.right = Math.max(8, window.innerWidth - rect.right) + "px";
+            menu.style.left = "auto";
+            menu.style.zIndex = "80";
+        }
+
+        function clearStageMenu(drop) {
+            var menu = drop.querySelector(":scope > .dropdown-content");
+            if (!menu) return;
+            menu.style.position = "";
+            menu.style.top = "";
+            menu.style.right = "";
+            menu.style.left = "";
+        }
+
+        document.addEventListener("focusin", function (e) {
+            var drop = e.target.closest && e.target.closest(".stage .dropdown");
+            if (drop) placeStageMenu(drop);
+        });
+        document.addEventListener("focusout", function (e) {
+            var drop = e.target.closest && e.target.closest(".stage .dropdown");
+            if (!drop) return;
+            setTimeout(function () {
+                if (!drop.contains(document.activeElement)) clearStageMenu(drop);
+            }, 0);
+        });
+        var stage = document.querySelector(".stage");
+        if (stage) {
+            stage.addEventListener("scroll", function () {
+                stage.querySelectorAll(".dropdown:focus-within").forEach(placeStageMenu);
             });
         }
 

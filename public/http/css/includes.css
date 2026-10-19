@@ -82,15 +82,19 @@ html[data-theme="console"] .sp { opacity: 0.45; }
   z-index: 1;
   display: flex;
   flex-direction: column;
-  min-height: 100vh;
+  box-sizing: border-box;
+  height: 100vh;
+  max-height: 100vh;
+  overflow: hidden;
   padding: 16px 32px 0;
   gap: 12px;
 }
 html[data-theme="console"] .app { gap: 10px; }
 
 .stage {
-  flex: 1;
+  flex: 1 1 auto;
   min-height: 0;
+  overflow: auto;
   display: flex;
   flex-direction: column;
   gap: 12px;
@@ -175,10 +179,11 @@ html[data-theme="console"] .tog { border-radius: 8px; }
 .mode-btn {
   padding: 5px 12px;
   border-radius: 999px;
-  border: 0;
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
   font-size: 12.5px;
+  font-weight: 700;
   font-family: inherit;
   display: flex;
   align-items: center;
@@ -190,7 +195,6 @@ html:not([data-theme="console"]) .mode-btn[data-mode="cozy"],
 html[data-theme="console"] .mode-btn[data-mode="console"] {
   background: #eef1ff;
   color: var(--night-800);
-  font-weight: 700;
 }
 html:not([data-theme="console"]) .mode-btn[data-mode="cozy"] kbd,
 html[data-theme="console"] .mode-btn[data-mode="console"] kbd {
@@ -217,6 +221,11 @@ html[data-theme="console"] .pagehead h1 { font-size: 22px; font-weight: 800; }
 .crumbs a { color: var(--flame-300); text-decoration: none; }
 .mt { margin-top: 12px; }
 .actions { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.actions.stable { flex-wrap: nowrap; }
+/* Both labels share one grid cell so the control stays as wide as the longer one. */
+.label-fit { display: inline-grid; }
+.label-fit > span { grid-area: 1 / 1; white-space: nowrap; }
+.label-fit > [aria-hidden="true"] { visibility: hidden; }
 
 .tile-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .sv {
@@ -413,13 +422,15 @@ html[data-theme="console"] .st {
 }
 html[data-theme="console"] .b { border-radius: 8px; font-size: 12px; }
 .b.p {
-  border: 0;
+  border-color: transparent;
   background: linear-gradient(135deg, var(--flame-900), var(--flame-500) 55%, var(--flame-300));
   color: var(--ink);
   font-weight: 800;
 }
 .b.sm { height: 26px; padding: 0 11px; font-size: 12px; }
 html[data-theme="console"] .b.sm { padding: 0 8px; font-size: 11.5px; }
+/* Active and inactive small buttons share weight, padding, and border width. */
+.b.sm.p { font-weight: 600; }
 .b.dg {
   border-color: rgba(255, 164, 138, 0.6);
   color: var(--danger);
@@ -435,7 +446,8 @@ html[data-theme="console"] .b.sm { padding: 0 8px; font-size: 11.5px; }
 .btn-primary, .btn-primary:hover {
   background-image: linear-gradient(135deg, var(--flame-900), var(--flame-500) 55%, var(--flame-300));
   background-color: transparent;
-  border: 0;
+  border-width: 1px;
+  border-color: transparent;
   color: var(--ink);
 }
 .btn-error, .btn-error:hover {
@@ -594,13 +606,20 @@ html[data-theme="console"] #editor-textarea { font-size: 12px; line-height: 19px
   align-items: center;
   gap: 18px;
   padding: 0 32px;
-  background: linear-gradient(90deg, var(--flame-900), var(--flame-600) 30%, var(--flame-400) 70%, var(--flame-300));
+  background: linear-gradient(135deg, var(--flame-900), var(--flame-500) 55%, var(--flame-300));
   color: var(--ink);
   font-size: 12px;
   font-weight: 600;
-  font-family: var(--mono);
+  font-family: var(--sans);
   flex: none;
+  white-space: nowrap;
+  overflow: hidden;
 }
+html[data-theme="console"] .sb {
+  font-family: var(--mono);
+  background: linear-gradient(90deg, var(--flame-900), var(--flame-600) 30%, var(--flame-400) 70%, var(--flame-300));
+}
+.sb-keys { display: inline-flex; align-items: center; gap: 10px; }
 .sb kbd {
   border-color: rgba(26, 11, 6, 0.35);
   color: var(--ink);
