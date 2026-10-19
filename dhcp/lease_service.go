@@ -38,13 +38,17 @@ func (s *DHCPLeaseService) AssignLease(ctx context.Context, serverID string, mac
 	s.allocMu.Lock()
 	defer s.allocMu.Unlock()
 
+	if canon, err := CanonicalMAC(mac); err == nil {
+		mac = canon
+	}
+
 	server, err := s.serverRepo.Get(ctx, serverID)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get server: %w", err)
 	}
 
 	// Check if MAC already has a lease
-	existingLease, err := s.leaseRepo.GetByMAC(ctx, mac)
+	existingLease, err := s.leaseByMAC(ctx, mac)
 	if err == nil {
 		// An existing lease may only be extended when it belongs to the
 		// requested server; a lease from another server is not ours to renew.
@@ -52,8 +56,14 @@ func (s *DHCPLeaseService) AssignLease(ctx context.Context, serverID string, mac
 			return nil, fmt.Errorf("MAC %s already has a lease on another server", mac)
 		}
 		if !existingLease.IsExpired() {
-			// Extend existing lease if not expired
+			// Extend existing lease if not expired. Keep provisioning state
+			// and the host token; fill a token in when an older row lacks one.
+			existingLease.MAC = mac
 			existingLease.Extend(server.LeaseDuration)
+			existingLease.LastSeen = time.Now()
+			if err := ensureProvisionToken(existingLease); err != nil {
+				return nil, err
+			}
 			if err := s.leaseRepo.Save(ctx, existingLease); err != nil {
 				return nil, fmt.Errorf("failed to extend existing lease: %w", err)
 			}
@@ -61,7 +71,7 @@ func (s *DHCPLeaseService) AssignLease(ctx context.Context, serverID string, mac
 		}
 		// The old lease is expired: delete it before creating its replacement.
 		// A not-found here just means someone else already removed it.
-		if err := s.leaseRepo.DeleteByMAC(ctx, mac); err != nil && !errors.Is(err, db.ErrNotFound) {
+		if err := s.leaseRepo.DeleteByMAC(ctx, existingLease.MAC); err != nil && !errors.Is(err, db.ErrNotFound) {
 			return nil, fmt.Errorf("failed to delete expired lease: %w", err)
 		}
 	} else if !errors.Is(err, db.ErrNotFound) {
@@ -101,6 +111,9 @@ func (s *DHCPLeaseService) AssignLease(ctx context.Context, serverID string, mac
 			{FromState: "", ToState: StateAssigned, Timestamp: now, Source: "dhcp"},
 		},
 	}
+	if err := ensureProvisionToken(lease); err != nil {
+		return nil, err
+	}
 
 	// Save lease
 	if err := s.leaseRepo.Save(ctx, lease); err != nil {
@@ -112,6 +125,9 @@ func (s *DHCPLeaseService) AssignLease(ctx context.Context, serverID string, mac
 
 // ReleaseLease releases a lease by MAC address
 func (s *DHCPLeaseService) ReleaseLease(ctx context.Context, mac string) error {
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+
 	if err := s.leaseRepo.DeleteByMAC(ctx, mac); err != nil {
 		return fmt.Errorf("failed to release lease: %w", err)
 	}
@@ -120,6 +136,13 @@ func (s *DHCPLeaseService) ReleaseLease(ctx context.Context, mac string) error {
 
 // ReserveLease reserves a specific IP for a MAC address
 func (s *DHCPLeaseService) ReserveLease(ctx context.Context, serverID string, mac string, ip net.IP) error {
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+
+	if canon, err := CanonicalMAC(mac); err == nil {
+		mac = canon
+	}
+
 	server, err := s.serverRepo.Get(ctx, serverID)
 	if err != nil {
 		return fmt.Errorf("failed to get server: %w", err)
@@ -156,6 +179,9 @@ func (s *DHCPLeaseService) ReserveLease(ctx context.Context, serverID string, ma
 			{FromState: "", ToState: StateAssigned, Timestamp: now, Source: "manual"},
 		},
 	}
+	if err := ensureProvisionToken(lease); err != nil {
+		return err
+	}
 
 	if err := s.leaseRepo.Save(ctx, lease); err != nil {
 		return fmt.Errorf("failed to save reserved lease: %w", err)
@@ -166,7 +192,10 @@ func (s *DHCPLeaseService) ReserveLease(ctx context.Context, serverID string, ma
 
 // UnreserveLease removes a reservation by MAC address
 func (s *DHCPLeaseService) UnreserveLease(ctx context.Context, mac string) error {
-	lease, err := s.leaseRepo.GetByMAC(ctx, mac)
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+
+	lease, err := s.leaseByMAC(ctx, mac)
 	if err != nil {
 		return fmt.Errorf("failed to get lease: %w", err)
 	}
@@ -179,9 +208,10 @@ func (s *DHCPLeaseService) UnreserveLease(ctx context.Context, mac string) error
 	return nil
 }
 
-// GetLeaseByMAC retrieves a lease by MAC address
+// GetLeaseByMAC retrieves a lease by MAC address.
+// The lookup accepts any conventional MAC spelling.
 func (s *DHCPLeaseService) GetLeaseByMAC(ctx context.Context, mac string) (*Lease, error) {
-	return s.leaseRepo.GetByMAC(ctx, mac)
+	return s.leaseByMAC(ctx, mac)
 }
 
 // GetLeasesByServer retrieves all leases for a server
@@ -189,27 +219,62 @@ func (s *DHCPLeaseService) GetLeasesByServer(ctx context.Context, serverID strin
 	return s.leaseRepo.GetByServerID(ctx, serverID)
 }
 
-// CleanupExpiredLeases removes expired leases
+// CleanupExpiredLeases removes expired leases.
+// The scan and the deletes share the allocation lock so a renewal cannot
+// be removed by a cleanup that observed the lease before it was extended.
 func (s *DHCPLeaseService) CleanupExpiredLeases(ctx context.Context) error {
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
 	return s.leaseRepo.CleanupExpired(ctx)
 }
 
-// UpdateLease updates an existing lease
+// UpdateLease saves a caller-modified lease.
+// The read of the stored row and the write share the allocation lock.
+// DHCP-owned fields that moved forward after the caller read the lease
+// (expiry, last seen, provisioning state) are kept, so a stale copy cannot
+// roll back a concurrent renewal.
 func (s *DHCPLeaseService) UpdateLease(ctx context.Context, lease *Lease) error {
+	if lease == nil {
+		return fmt.Errorf("lease is nil")
+	}
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+
+	fresh, err := s.leaseRepo.Get(ctx, lease.ID)
+	if err != nil && !errors.Is(err, db.ErrNotFound) {
+		return fmt.Errorf("failed to read lease: %w", err)
+	}
+	if fresh != nil {
+		preserveNewerDHCPFields(lease, fresh)
+	}
+	if err := ensureProvisionToken(lease); err != nil {
+		return err
+	}
 	if err := s.leaseRepo.Save(ctx, lease); err != nil {
 		return fmt.Errorf("failed to update lease: %w", err)
 	}
 	return nil
 }
 
-// UpdateLeaseState updates the state of a lease with state tracking
+// UpdateLeaseState updates the state of a lease with state tracking.
+// The read-modify-write runs under the allocation lock and inside the
+// repository's single save transaction.
 func (s *DHCPLeaseService) UpdateLeaseState(ctx context.Context, mac string, newState string, source string) error {
-	lease, err := s.leaseRepo.GetByMAC(ctx, mac)
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+
+	lease, err := s.leaseByMAC(ctx, mac)
 	if err != nil {
 		return fmt.Errorf("failed to get lease: %w", err)
 	}
 
 	lease.UpdateState(LeaseState(newState), source)
+	if err := ensureProvisionToken(lease); err != nil {
+		return err
+	}
 	if err := s.leaseRepo.Save(ctx, lease); err != nil {
 		return fmt.Errorf("failed to save lease state: %w", err)
 	}
@@ -217,9 +282,14 @@ func (s *DHCPLeaseService) UpdateLeaseState(ctx context.Context, mac string, new
 	return nil
 }
 
-// RecordHeartbeat records a heartbeat from a machine, updating LastSeen
+// RecordHeartbeat records a heartbeat from a machine, updating LastSeen.
+// The read-modify-write runs under the allocation lock so it cannot clobber
+// a DHCP renewal that is extending the same row.
 func (s *DHCPLeaseService) RecordHeartbeat(ctx context.Context, mac string) error {
-	lease, err := s.leaseRepo.GetByMAC(ctx, mac)
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+
+	lease, err := s.leaseByMAC(ctx, mac)
 	if err != nil {
 		return fmt.Errorf("failed to get lease: %w", err)
 	}
@@ -228,6 +298,9 @@ func (s *DHCPLeaseService) RecordHeartbeat(ctx context.Context, mac string) erro
 	// If lease was offline and now checking in, mark it as needing attention
 	if lease.State == StateOffline {
 		lease.UpdateState(StateAssigned, "heartbeat")
+	}
+	if err := ensureProvisionToken(lease); err != nil {
+		return err
 	}
 
 	if err := s.leaseRepo.Save(ctx, lease); err != nil {
@@ -239,7 +312,7 @@ func (s *DHCPLeaseService) RecordHeartbeat(ctx context.Context, mac string) erro
 
 // GetLeaseStateHistory returns the state transition history for a lease
 func (s *DHCPLeaseService) GetLeaseStateHistory(ctx context.Context, mac string) ([]StateTransition, error) {
-	lease, err := s.leaseRepo.GetByMAC(ctx, mac)
+	lease, err := s.leaseByMAC(ctx, mac)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get lease: %w", err)
 	}
@@ -271,8 +344,15 @@ func (s *DHCPLeaseService) GetLeasesByState(ctx context.Context, state string) (
 	return result, nil
 }
 
-// MarkOfflineLeases marks leases as offline if they haven't been seen recently
+// MarkOfflineLeases marks leases as offline if they haven't been seen recently.
+// Each read-modify-write shares the allocation lock with renewals and heartbeats.
 func (s *DHCPLeaseService) MarkOfflineLeases(ctx context.Context, offlineThreshold time.Duration) error {
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
 	servers, err := s.serverRepo.GetAll(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get servers: %w", err)
@@ -287,6 +367,9 @@ func (s *DHCPLeaseService) MarkOfflineLeases(ctx context.Context, offlineThresho
 		}
 
 		for _, lease := range leases {
+			if err := ctx.Err(); err != nil {
+				return err
+			}
 			if lease.IsActive() && lease.LastSeen.Before(cutoffTime) {
 				lease.UpdateState(StateOffline, "heartbeat")
 				if err := s.leaseRepo.Save(ctx, lease); err != nil {
@@ -306,12 +389,55 @@ func (s *DHCPLeaseService) isIPAvailable(ctx context.Context, serverID string, i
 		return false
 	}
 
+	now := time.Now()
 	for _, lease := range leases {
-		if lease.IP.Equal(ip) && lease.MAC != excludeMAC && !lease.IsExpired() {
+		if lease.IP.Equal(ip) && lease.MAC != excludeMAC && lease.OccupiesAddress(now) {
 			return false
 		}
 	}
 	return true
+}
+
+// leaseByMAC loads a lease, accepting any conventional MAC spelling.
+// A canonical hit wins. When the row was stored under a different spelling,
+// the original string is tried so older rows remain reachable.
+func (s *DHCPLeaseService) leaseByMAC(ctx context.Context, mac string) (*Lease, error) {
+	if canon, err := CanonicalMAC(mac); err == nil {
+		lease, lerr := s.leaseRepo.GetByMAC(ctx, canon)
+		if lerr == nil {
+			return lease, nil
+		}
+		if !errors.Is(lerr, db.ErrNotFound) {
+			return nil, lerr
+		}
+		if canon == mac {
+			return nil, lerr
+		}
+	}
+	return s.leaseRepo.GetByMAC(ctx, mac)
+}
+
+// preserveNewerDHCPFields copies DHCP-owned fields from fresh onto incoming
+// when fresh is strictly newer. The caller's other edits (boot menu, IPMI,
+// reservation flag) stay in place.
+func preserveNewerDHCPFields(incoming, fresh *Lease) {
+	if incoming == nil || fresh == nil {
+		return
+	}
+	if fresh.Expiry.After(incoming.Expiry) {
+		incoming.Expiry = fresh.Expiry
+	}
+	if fresh.LastSeen.After(incoming.LastSeen) {
+		incoming.LastSeen = fresh.LastSeen
+	}
+	if fresh.StateUpdatedAt.After(incoming.StateUpdatedAt) {
+		incoming.State = fresh.State
+		incoming.StateUpdatedAt = fresh.StateUpdatedAt
+		incoming.StateHistory = append([]StateTransition(nil), fresh.StateHistory...)
+	}
+	if incoming.ProvisionToken == "" {
+		incoming.ProvisionToken = fresh.ProvisionToken
+	}
 }
 
 // findAvailableIP finds the next available IP in the server's range

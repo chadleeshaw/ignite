@@ -41,6 +41,11 @@ type Lease struct {
 	StateUpdatedAt time.Time         `json:"state_updated_at"`
 	LastSeen       time.Time         `json:"last_seen"`
 	StateHistory   []StateTransition `json:"state_history"`
+	// ProvisionToken authenticates provisioning callbacks for this lease.
+	// It is a per-lease secret, not an admin session. Empty means the lease
+	// was stored before tokens existed; callbacks are rejected until a token
+	// is issued.
+	ProvisionToken string `json:"provision_token,omitempty"`
 }
 
 // StateTransition represents a state change event
@@ -149,6 +154,19 @@ type IPMI struct {
 // IsExpired checks if the lease has expired
 func (l *Lease) IsExpired() bool {
 	return time.Now().After(l.Expiry)
+}
+
+// OccupiesAddress reports whether the lease holds its IP against other
+// clients at the given time. A reservation keeps the address after Expiry;
+// cleanup does not delete reserved leases.
+func (l *Lease) OccupiesAddress(now time.Time) bool {
+	if l == nil || l.IP == nil {
+		return false
+	}
+	if l.Reserved {
+		return true
+	}
+	return !now.After(l.Expiry)
 }
 
 // Extend extends the lease expiry time
