@@ -81,7 +81,7 @@ func TestPreferenceModeEndpoints(t *testing.T) {
 	})
 }
 
-func TestPageRenderIncludesStoredUIMode(t *testing.T) {
+func TestPageRenderKeepsBodyClass(t *testing.T) {
 	chdirRepoRoot(t)
 	prev := preferenceStore
 	SetPreferenceStore(&memoryPrefs{mode: ConsoleUIMode})
@@ -92,7 +92,12 @@ func TestPageRenderIncludesStoredUIMode(t *testing.T) {
 	renderCachedTemplate(rec, req, "index", map[string]string{"Title": "Ignite"}, "Unable to render the home page")
 
 	require.Equal(t, http.StatusOK, rec.Code)
-	require.Contains(t, rec.Body.String(), `class="bg-base-100 console"`)
+	body := rec.Body.String()
+	require.Contains(t, body, `<body class="bg-base-100">`)
+	require.Contains(t, body, `data-theme="ignite"`)
+	require.NotContains(t, body, `bg-base-100 console`)
+	require.NotContains(t, body, `bg-base-100 cozy`)
+	require.NotContains(t, body, `{{.Mode}}`)
 }
 
 func TestApplyUIModeUsesStoredPreference(t *testing.T) {
