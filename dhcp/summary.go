@@ -41,6 +41,8 @@ type PoolStat struct {
 	Used   int    `json:"used"`
 	Free   int    `json:"free"`
 	Total  int    `json:"total"`
+	// Status is the listener state from CurrentServerState.
+	Status ServerState `json:"status"`
 }
 
 // DashboardSummary is the Overview card payload.
@@ -126,6 +128,11 @@ func PoolStatForServer(server *Server, leases []*Lease, now time.Time) PoolStat 
 	stat.Free = stat.Total - stat.Used
 	if stat.Free < 0 {
 		stat.Free = 0
+	}
+	if server != nil {
+		stat.Status = CurrentServerState(server.ID)
+	} else {
+		stat.Status = ServerStateConfigured
 	}
 	return stat
 }

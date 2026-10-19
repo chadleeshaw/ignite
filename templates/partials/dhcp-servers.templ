@@ -5,7 +5,7 @@
 <article class="bg-base-200 p-4 rounded-lg shadow">
     <div class="flex items-center justify-between mb-2">
         <h3 class="font-semibold">{{.TFTPIP}}</h3>
-        <span class="badge {{.Status}}">{{if eq .Status "badge-success"}}running{{else}}stopped{{end}}</span>
+        <span class="badge {{if eq .Status "running"}}badge-success{{else if eq .Status "configured"}}badge-warning{{else}}badge-error{{end}}">{{.Status}}</span>
     </div>
     <p class="text-sm text-base-content/80">{{.Used}} used / {{.Free}} free / {{.LeaseRange}} total</p>
     <ul class="mt-2 text-sm">

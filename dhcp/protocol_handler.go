@@ -18,6 +18,12 @@ import (
 // (or has already been stopped).
 var ErrHandlerNotRunning = errors.New("DHCP handler is not running")
 
+// listenDHCP binds the DHCP socket. Tests replace it so a start can succeed
+// or fail without owning UDP port 67.
+var listenDHCP = func(network, address string) (net.PacketConn, error) {
+	return net.ListenPacket(network, address)
+}
+
 // ProtocolBootFiles carries the boot-file settings a ProtocolHandler needs.
 // The values are loaded once at construction time (see WithBootFiles) so the
 // packet path never pays for config.LoadDefault() per packet.
@@ -97,7 +103,7 @@ func (h *ProtocolHandler) Start() error {
 
 	// Bind first; only publish state after the bind succeeds.
 	ctx, cancel := context.WithCancel(context.Background())
-	conn, err := net.ListenPacket("udp4", ":67")
+	conn, err := listenDHCP("udp4", ":67")
 	if err != nil {
 		cancel()
 		return fmt.Errorf("failed to listen on UDP port 67: %w", err)

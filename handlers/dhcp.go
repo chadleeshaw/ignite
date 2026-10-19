@@ -62,7 +62,7 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 	return DHCPServerView{
 		ID:         server.ID,
 		TFTPIP:     server.IP.String(),
-		Status:     h.getServerStatusBadge(isDHCPRunning(server.ID, server.Started)),
+		Status:     string(dhcp.CurrentServerState(server.ID)),
 		Leases:     h.convertLeasesToViews(leases),
 		LeaseRange: server.LeaseRange,
 		Used:       used,
@@ -184,7 +184,6 @@ func (h *DHCPHandlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	setDHCPRunning(serverID, true)
 
 	// Redirect back to DHCP page to show the updated server list
 	w.Header().Set("HX-Redirect", "/dhcp")
@@ -209,7 +208,6 @@ func (h *DHCPHandlers) StopDHCPServer(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	setDHCPRunning(serverID, false)
 
 	// Redirect back to DHCP page to show the updated server list
 	w.Header().Set("HX-Redirect", "/dhcp")
@@ -234,7 +232,6 @@ func (h *DHCPHandlers) DeleteDHCPServer(w http.ResponseWriter, r *http.Request) 
 		))
 		return
 	}
-	forgetDHCPServer(serverID)
 
 	// Redirect back to DHCP page to show the updated server list
 	w.Header().Set("HX-Redirect", "/dhcp")
@@ -737,14 +734,6 @@ func (h *DHCPHandlers) GetLeaseStateHistory(w http.ResponseWriter, r *http.Reque
 		"history": history,
 	}
 	json.NewEncoder(w).Encode(response)
-}
-
-// Helper methods
-func (h *DHCPHandlers) getServerStatusBadge(started bool) string {
-	if started {
-		return "badge-success"
-	}
-	return "badge-error"
 }
 
 // sortServerViewsByIP sorts server views by IP address for consistent ordering.

@@ -194,7 +194,7 @@ htmx. Add `?format=json`, or send `Accept: application/json` without
     {
       "id": "server-id",
       "tftpip": "192.168.1.1",
-      "status": "badge-success",
+      "status": "running",
       "lease_range": 50,
       "used": 1,
       "free": 49,
@@ -213,9 +213,18 @@ htmx. Add `?format=json`, or send `Accept: application/json` without
 }
 ```
 
-`status` is `badge-success` when the server is running and `badge-error` when
-it is stopped. `used` and `free` follow `dhcp.PoolOccupancy` (reserved or
-unexpired). `menu`, `ipmi`, and `last_seen` are also present on each lease.
+`status` is the listener state, and the same value on `/status/content`,
+`/dashboard/summary` (`pools[].status`), and the DHCP page:
+
+| Value | Meaning |
+|-------|---------|
+| `running` | The listener is bound and serving. |
+| `stopped` | It was started and then stopped, or the last start failed. |
+| `configured` | It is defined and has not been started since this process booted. |
+
+A `configured` server does not make overall health `partial`. `used` and
+`free` follow `dhcp.PoolOccupancy` (reserved or unexpired). `menu`, `ipmi`,
+and `last_seen` are also present on each lease.
 
 ### POST Routes
 

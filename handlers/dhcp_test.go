@@ -296,7 +296,7 @@ func TestDHCPHandlers_GetDHCPServers_JSON(t *testing.T) {
 	require.Len(t, body.Servers, 1)
 	assert.Equal(t, "server-1", body.Servers[0].ID)
 	assert.Equal(t, "192.168.1.1", body.Servers[0].TFTPIP)
-	assert.Equal(t, "badge-success", body.Servers[0].Status)
+	assert.Equal(t, "configured", body.Servers[0].Status)
 	assert.Equal(t, 50, body.Servers[0].LeaseRange)
 	assert.Equal(t, 0, body.Servers[0].Used)
 	assert.Equal(t, 50, body.Servers[0].Free)
@@ -545,17 +545,4 @@ func TestDHCPHandlers_GetLeaseStateHistory_Success(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
 
 	mockLeaseService.AssertExpectations(t)
-}
-
-// Test utility functions
-func TestDHCPHandlers_getServerStatusBadge(t *testing.T) {
-	handlers := &DHCPHandlers{}
-
-	// Test started server
-	badge := handlers.getServerStatusBadge(true)
-	assert.Equal(t, "badge-success", badge)
-
-	// Test stopped server
-	badge = handlers.getServerStatusBadge(false)
-	assert.Equal(t, "badge-error", badge)
 }
