@@ -3,8 +3,8 @@
     <header class="pagehead" style="grid-column: 1 / -1;">
         <div>
             <h1><span class="only-cozy">Provision</span><span class="only-console">provision</span></h1>
-            <p class="sub only-cozy">{{len .Files}} files</p>
-            <p class="sub only-console">{{len .Files}} files</p>
+            <p class="sub only-cozy">{{countPhrase (len .Files) "file" "files"}}</p>
+            <p class="sub only-console">{{countPhrase (len .Files) "file" "files"}}</p>
         </div>
         <div class="actions">
             <button class="b p" hx-get="/open_modal?template=provision-new-file" hx-target="#modal-content">New file</button>

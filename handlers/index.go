@@ -46,6 +46,10 @@ func (h *IndexHandlers) Index(w http.ResponseWriter, r *http.Request) {
 	}
 
 	cozy, console := describeStatus(status)
+	if status != nil {
+		annotateStatus(status)
+		cozy, console = status.AttentionCozy, status.AttentionConsole
+	}
 	page := OverviewPage{
 		Title:           "Overview",
 		Page:            "overview",

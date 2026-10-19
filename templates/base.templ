@@ -265,6 +265,37 @@
             return url.indexOf("/dashboard/summary") !== -1 || url.indexOf(IGNITE_MODE_URL) !== -1;
         }
 
+        function igniteFormatTimes(root) {
+            var scope = root && root.querySelectorAll ? root : document;
+            scope.querySelectorAll("time[datetime]").forEach(function (node) {
+                var date = new Date(node.getAttribute("datetime"));
+                if (isNaN(date.getTime())) return;
+                var kind = node.getAttribute("data-time") || "datetime";
+                if (kind === "title") {
+                    node.title = date.toLocaleString();
+                    return;
+                }
+                node.textContent = kind === "time" ? date.toLocaleTimeString() : date.toLocaleString();
+            });
+        }
+
+        function igniteSyncAttention() {
+            var head = document.querySelector("#status-services [data-attention-cozy]");
+            if (!head) return;
+            var cozy = document.getElementById("overview-sub-cozy");
+            var consoleSub = document.getElementById("overview-sub-console");
+            if (cozy) cozy.textContent = head.getAttribute("data-attention-cozy") || "";
+            if (consoleSub) consoleSub.textContent = head.getAttribute("data-attention-console") || "";
+        }
+
+        igniteFormatTimes(document);
+
+        document.body.addEventListener("htmx:afterSwap", function (evt) {
+            var target = evt.detail && evt.detail.target;
+            igniteFormatTimes(target || document);
+            if (target && target.id === "status-services") igniteSyncAttention();
+        });
+
         document.body.addEventListener("htmx:afterRequest", function (evt) {
             if (igniteSilent(evt)) return;
             if (evt.detail.failed) {

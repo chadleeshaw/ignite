@@ -1,14 +1,16 @@
-<div class="flex justify-between items-center mb-4">
+<div class="overview-head"
+     data-attention-cozy="{{.AttentionCozy}}"
+     data-attention-console="{{.AttentionConsole}}">
     <div>
         <h2 class="font-bold">{{.Title}}</h2>
-        <span class="text-sm mu">Last Updated: {{.LastUpdated}}</span>
+        <span class="text-sm mu">Last Updated: {{if .UpdatedAt}}<time datetime="{{.UpdatedAt}}" data-time="time">{{.LastUpdated}}</time>{{else}}{{.LastUpdated}}{{end}}</span>
     </div>
-    <span class="st {{if eq .OverallStatus "healthy"}}ok{{else if eq .OverallStatus "partial"}}wa{{else}}er{{end}}">
+    <span class="st {{if eq .OverallStatus "healthy"}}ok{{else if eq .OverallStatus "partial"}}wa{{else}}er{{end}}" title="{{if .AttentionCozy}}{{.AttentionCozy}}{{else}}{{.OverallStatus}}{{end}}">
         {{if eq .OverallStatus "healthy"}}System Healthy{{else if eq .OverallStatus "partial"}}Partial Service{{else}}System Down{{end}}
     </span>
 </div>
 
-<div class="tile-row">
+<div class="overview-cards">
     <article class="sv {{if eq .HTTPServer.Status "running"}}on{{end}}">
         <div class="fire {{if ne .HTTPServer.Status "running"}}off{{end}}"><img src="/public/http/img/flame.svg" alt=""></div>
         <div>
@@ -27,31 +29,23 @@
             <small>{{.TFTPServer.Description}}</small>
         </div>
     </article>
-</div>
-
-<div class="mt">
-    <h2 class="font-bold mb-2">DHCP Servers</h2>
-    {{if .DHCPServers}}
-    <div class="tile-row">
-        {{range .DHCPServers}}
-        <article class="sv {{if eq .Status "running"}}on{{end}}">
-            <div class="fire {{if ne .Status "running"}}off{{end}}"><img src="/public/http/img/flame.svg" alt=""></div>
-            <div>
-                <small>Server {{.IP}}</small>
-                <b>{{.Status}}</b>
-                <p>Active Leases: {{.LeaseCount}}</p>
-                <small>{{.Description}}</small>
-                <small>Server ID: {{.ID}}</small>
-            </div>
-        </article>
-        {{end}}
-    </div>
+    {{range .DHCPServers}}
+    <article class="sv {{if eq .Status "running"}}on{{end}}">
+        <div class="fire {{if ne .Status "running"}}off{{end}}"><img src="/public/http/img/flame.svg" alt=""></div>
+        <div>
+            <small>Server {{.IP}}</small>
+            <b>{{.Status}}</b>
+            <p>Active Leases: {{.LeaseCount}}</p>
+            <small>{{.Description}}</small>
+            <small>Server ID: {{.ID}}</small>
+        </div>
+    </article>
     {{else}}
-    <div class="note">
+    <div class="note overview-full">
         <p>No DHCP servers configured</p>
         <a href="/dhcp" class="b p sm mt">Configure DHCP Server</a>
     </div>
     {{end}}
 </div>
 
-<p class="text-xs mu mt">Status automatically refreshes every 10 seconds</p>
+<p class="text-xs mu overview-full">Status automatically refreshes every 10 seconds</p>

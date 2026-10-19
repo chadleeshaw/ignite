@@ -2,29 +2,30 @@
 <header class="pagehead">
     <div>
         <h1><span class="only-cozy">Overview</span><span class="only-console">overview</span></h1>
-        <p class="sub only-cozy">{{.CozySubtitle}}</p>
-        <p class="sub only-console">{{.ConsoleSubtitle}}</p>
+        <p class="sub only-cozy" id="overview-sub-cozy">{{.CozySubtitle}}</p>
+        <p class="sub only-console" id="overview-sub-console">{{.ConsoleSubtitle}}</p>
     </div>
 </header>
 
+<div class="overview-board">
 {{if .Status}}
-<div id="status-services" hx-get="/status/content" hx-trigger="every 10s">
+<div id="status-services" class="overview-span" hx-get="/status/content" hx-trigger="every 10s">
     {{template "status-content.templ" .Status}}
 </div>
 {{else}}
-<p class="note">Service status is unavailable</p>
+<p class="note overview-full">Service status is unavailable</p>
 {{end}}
 
 <div id="overview-summary"
-     class="mt"
+     class="overview-span"
      hx-get="{{summaryURL}}"
      hx-trigger="load, every 10s"
     >
-    <section class="stats" aria-label="Services on this host">
+    <section class="stats overview-full" aria-label="Services on this host">
         <div class="stat">
             <div class="stat-title">Leases</div>
             <div class="stat-value">{{.LeaseTotal}}</div>
-            <div class="stat-desc">{{.ServerCount}} DHCP servers, {{.DHCPRunning}} running</div>
+            <div class="stat-desc">{{countPhrase .ServerCount "DHCP server" "DHCP servers"}}, {{.DHCPRunning}} running</div>
         </div>
         <div class="stat">
             <div class="stat-title">HTTP</div>
@@ -37,5 +38,6 @@
             <div class="stat-desc">Boot file server</div>
         </div>
     </section>
+</div>
 </div>
 {{ end }}

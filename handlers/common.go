@@ -51,6 +51,9 @@ func LoadTemplates() map[string]*template.Template {
 var templateFuncs = template.FuncMap{
 	"formatBytes":       formatBytes,
 	"relTime":           relTime,
+	"rfc3339":           rfc3339,
+	"utcLabel":          utcLabel,
+	"countPhrase":       countPhrase,
 	"uiMode":            uiMode,
 	"pageID":            pageID,
 	"fieldString":       fieldString,

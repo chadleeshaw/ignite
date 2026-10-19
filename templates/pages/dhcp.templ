@@ -2,8 +2,8 @@
 <header class="pagehead">
     <div>
         <h1><span class="only-cozy">DHCP</span><span class="only-console">dhcp</span></h1>
-        <p class="sub only-cozy">{{len .Servers}} servers</p>
-        <p class="sub only-console">{{len .Servers}} servers</p>
+        <p class="sub only-cozy">{{countPhrase (len .Servers) "server" "servers"}}</p>
+        <p class="sub only-console">{{countPhrase (len .Servers) "server" "servers"}}</p>
     </div>
     <div class="actions">
         <button id="new-dhcp-btn"
@@ -53,7 +53,8 @@
                 data-ip="{{.IP}}"
                 data-state="{{.StateDisplayName}}"
                 data-seen="{{relTime .LastSeen}}"
-                data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}"
+                data-seen-at="{{rfc3339 .LastSeen}}"
+                data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
                 data-menu="{{if .Menu.Filename}}{{.Menu.OS}} {{.Menu.Version}}{{else}}none{{end}}"
                 data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
                 data-reserved="{{if .Static}}yes{{else}}no{{end}}"
@@ -65,7 +66,7 @@
                 <div class="kv">
                     <span>MAC</span><span class="mono">{{.MAC}}</span>
                     <span>Seen</span>
-                    <span title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</span>
+                    <time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time>
                     <span>Menu</span><span>{{if .Menu.Filename}}{{.Menu.Filename}}{{else}}—{{end}}</span>
                 </div>
             </button>
@@ -97,7 +98,8 @@
                     data-ip="{{.IP}}"
                     data-state="{{.StateDisplayName}}"
                     data-seen="{{relTime .LastSeen}}"
-                    data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}"
+                    data-seen-at="{{rfc3339 .LastSeen}}"
+                    data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
                     data-menu="{{if .Menu.Filename}}{{.Menu.OS}} {{.Menu.Version}}{{else}}none{{end}}"
                     data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
                     data-reserved="{{if .Static}}yes{{else}}no{{end}}"
@@ -106,7 +108,7 @@
                     <td class="mono">{{.MAC}}</td>
                     <td class="ip">{{.IP}}</td>
                     <td><span class="badge lease-state {{.StateBadgeClass}}" data-mac="{{.MAC}}">{{.StateDisplayName}}</span></td>
-                    <td title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</td>
+                    <td><time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time></td>
                     <td>{{if .Static}}yes{{else}}no{{end}}</td>
                     <td>{{if .Menu.Filename}}{{.Menu.Filename}}{{else}}—{{end}}</td>
                     <td>{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}—{{end}}</td>
@@ -212,7 +214,13 @@ function selectLease(el) {
     document.getElementById('det-state').textContent = el.getAttribute('data-state');
     var seen = document.getElementById('det-seen');
     seen.textContent = el.getAttribute('data-seen');
-    seen.title = el.getAttribute('data-seen-title') || '';
+    var seenAt = el.getAttribute('data-seen-at');
+    if (seenAt) {
+        var seenDate = new Date(seenAt);
+        seen.title = isNaN(seenDate.getTime()) ? (el.getAttribute('data-seen-title') || '') : seenDate.toLocaleString();
+    } else {
+        seen.title = el.getAttribute('data-seen-title') || '';
+    }
     document.getElementById('det-reserved').textContent = el.getAttribute('data-reserved');
     document.getElementById('det-menu').textContent = el.getAttribute('data-menu');
     document.getElementById('det-ipmi').textContent = el.getAttribute('data-ipmi');

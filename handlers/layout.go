@@ -94,37 +94,127 @@ func relTime(t time.Time) string {
 	}
 }
 
+// rfc3339 renders a timestamp for a <time datetime> attribute.
+// Zero and unusable values return an empty string.
+func rfc3339(v any) string {
+	t, ok := asTime(v)
+	if !ok || t.IsZero() {
+		return ""
+	}
+	return t.UTC().Format(time.RFC3339)
+}
+
+// utcLabel is the no-JS fallback for an absolute timestamp. The zone is
+// written out so the string is not mistaken for the browser's local time.
+func utcLabel(v any, layout string) string {
+	t, ok := asTime(v)
+	if !ok || t.IsZero() {
+		return ""
+	}
+	if layout == "" {
+		layout = "2006-01-02 15:04:05"
+	}
+	return t.UTC().Format(layout) + " UTC"
+}
+
+func asTime(v any) (time.Time, bool) {
+	switch t := v.(type) {
+	case time.Time:
+		return t, true
+	case *time.Time:
+		if t == nil {
+			return time.Time{}, false
+		}
+		return *t, true
+	default:
+		return time.Time{}, false
+	}
+}
+
 // describeStatus turns tracked service state into the Overview subtitle.
 // It only names services the status data actually reports.
 func describeStatus(s *StatusPageData) (cozy, console string) {
 	if s == nil {
 		return "Service status is unavailable", "status unavailable"
 	}
-	var parts []string
+	copy := *s
+	annotateStatus(&copy)
+	return copy.AttentionCozy, copy.AttentionConsole
+}
+
+// annotateStatus fills OverallStatus and the subtitle from one issue list.
+// A service counts when its reported status is not "running". HTTP not
+// running is "down"; any other issue is "partial".
+func annotateStatus(s *StatusPageData) {
+	if s == nil {
+		return
+	}
+	issues := statusIssues(s)
+	switch {
+	case s.HTTPServer.Status != "running":
+		s.OverallStatus = "down"
+	case len(issues) > 0:
+		s.OverallStatus = "partial"
+	default:
+		s.OverallStatus = "healthy"
+	}
+	if len(issues) == 0 {
+		s.AttentionCozy = "All services are up"
+		s.AttentionConsole = "services up"
+		return
+	}
+	joined := strings.Join(issues, " · ")
+	s.AttentionCozy = attentionLead(len(issues)) + ": " + joined
+	s.AttentionConsole = joined
+}
+
+// statusIssues lists services whose status is not running. DHCP servers that
+// share a status are one issue, and the status word is the value the tile shows.
+func statusIssues(s *StatusPageData) []string {
+	if s == nil {
+		return nil
+	}
+	var issues []string
 	if s.HTTPServer.Status != "running" {
-		parts = append(parts, "HTTP "+s.HTTPServer.Status)
+		issues = append(issues, "HTTP "+statusWord(s.HTTPServer.Status))
 	}
 	if s.TFTPServer.Status != "running" {
-		parts = append(parts, "TFTP "+s.TFTPServer.Status)
+		issues = append(issues, "TFTP "+statusWord(s.TFTPServer.Status))
 	}
-	var stopped []string
-	for _, dhcp := range s.DHCPServers {
-		if dhcp.Status != "running" {
-			stopped = append(stopped, dhcp.IP)
+	grouped := map[string][]string{}
+	var order []string
+	for _, srv := range s.DHCPServers {
+		if srv.Status == "running" {
+			continue
 		}
+		word := statusWord(srv.Status)
+		if _, ok := grouped[word]; !ok {
+			order = append(order, word)
+		}
+		label := srv.IP
+		if label == "" {
+			label = srv.ID
+		}
+		grouped[word] = append(grouped[word], label)
 	}
-	if len(stopped) > 0 {
-		parts = append(parts, "DHCP "+strings.Join(stopped, ", "))
+	for _, word := range order {
+		issues = append(issues, "DHCP "+strings.Join(grouped[word], ", ")+" "+word)
 	}
-	if len(parts) == 0 {
-		return "All services are up", "services up"
+	return issues
+}
+
+func statusWord(status string) string {
+	if strings.TrimSpace(status) == "" {
+		return "unknown"
 	}
-	noun := "things"
-	if len(parts) == 1 {
-		noun = "thing"
+	return status
+}
+
+func attentionLead(n int) string {
+	if n == 1 {
+		return "1 thing needs attention"
 	}
-	joined := strings.Join(parts, " · ")
-	return fmt.Sprintf("%d %s need attention: %s", len(parts), noun, joined), joined
+	return fmt.Sprintf("%d things need attention", n)
 }
 
 // statusKey is one console shortcut drawn in the shared status bar.

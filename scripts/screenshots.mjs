@@ -43,7 +43,8 @@ async function settle(page) {
 
 async function setMode(page, mode) {
   await page.evaluate((next) => igniteSetMode(next), mode);
-  await new Promise((r) => setTimeout(r, 200));
+  await page.waitForFunction((next) => document.documentElement.getAttribute("data-theme") === next, {}, mode);
+  await new Promise((r) => setTimeout(r, 250));
 }
 
 async function openProvisionFile(page) {
@@ -89,6 +90,8 @@ try {
   for (const [path, cozyFile, consoleFile] of pages) {
     await page.goto(base + path, { waitUntil: "networkidle0" });
     await settle(page);
+    // Mode is stored on the server, so a navigation keeps the last choice.
+    await setMode(page, "cozy");
     if (path === "/provision") await openProvisionFile(page);
     await save(page, cozyFile);
     await setMode(page, "console");

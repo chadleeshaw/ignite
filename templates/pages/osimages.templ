@@ -2,8 +2,8 @@
 <header class="pagehead">
     <div>
         <h1><span class="only-cozy">OS Images</span><span class="only-console">osimages</span></h1>
-        <p class="sub only-cozy">{{len .OSImages}} images on disk</p>
-        <p class="sub only-console">{{len .OSImages}} images</p>
+        <p class="sub only-cozy">{{countPhrase (len .OSImages) "image" "images"}} on disk</p>
+        <p class="sub only-console">{{countPhrase (len .OSImages) "image" "images"}}</p>
     </div>
     <div class="actions">
         <button class="b p" type="button" onclick="document.getElementById('downloadModal').showModal()">Download image</button>
@@ -30,7 +30,7 @@
                     <td class="mono">{{.Version}}</td>
                     <td><span class="st in">{{.Status}}</span></td>
                     <td><span class="prog"><i style="width: {{.Progress}}%"></i></span> {{.Progress}}%</td>
-                    <td>{{.StartedAt.Format "15:04:05"}}</td>
+                    <td><time datetime="{{rfc3339 .StartedAt}}" data-time="time">{{utcLabel .StartedAt "15:04:05"}}</time></td>
                     <td>
                         {{if or (eq .Status "downloading") (eq .Status "queued")}}
                         <button class="b dg sm" hx-post="/osimages/cancel/{{.ID}}" hx-confirm="Cancel this download?">Cancel</button>
@@ -59,7 +59,7 @@
                 <span>Arch</span><span>{{.Architecture}}</span>
                 <span>Kernel</span><span>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</span>
                 <span>Initrd</span><span>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</span>
-                <span>Added</span><span>{{.CreatedAt.Format "2006-01-02 15:04"}}</span>
+                <span>Added</span><span><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></span>
             </div>
             <div class="actions">
                 <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
@@ -89,7 +89,7 @@
                     <td>{{.Architecture}}</td>
                     <td>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</td>
                     <td>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</td>
-                    <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
+                    <td><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></td>
                     <td>
                         <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
                         {{if not .Active}}

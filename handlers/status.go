@@ -1,9 +1,11 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
 	"sync"
 	"time"
@@ -115,17 +117,20 @@ type DHCPServerStatus struct {
 // Mode is the server UI preference. Empty means cozy until the preference
 // layer sets it. Page highlights Overview, where this content lives.
 type StatusPageData struct {
-	Title         string             `json:"title"`
-	Mode          string             `json:"-"`
-	Page          string             `json:"-"`
-	CSRFToken     string             `json:"-"`
-	HTTPServer    ServiceStatus      `json:"http_server"`
-	TFTPServer    ServiceStatus      `json:"tftp_server"`
-	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
-	LastUpdated   string             `json:"last_updated"`
-	OverallStatus string             `json:"overall_status"`
-	AutoRefresh   bool               `json:"auto_refresh"`
-	RefreshSecs   int                `json:"refresh_secs"`
+	Title            string             `json:"title"`
+	Mode             string             `json:"-"`
+	Page             string             `json:"-"`
+	CSRFToken        string             `json:"-"`
+	HTTPServer       ServiceStatus      `json:"http_server"`
+	TFTPServer       ServiceStatus      `json:"tftp_server"`
+	DHCPServers      []DHCPServerStatus `json:"dhcp_servers"`
+	LastUpdated      string             `json:"last_updated"`
+	UpdatedAt        string             `json:"updated_at"`
+	OverallStatus    string             `json:"overall_status"`
+	AttentionCozy    string             `json:"-"`
+	AttentionConsole string             `json:"-"`
+	AutoRefresh      bool               `json:"auto_refresh"`
+	RefreshSecs      int                `json:"refresh_secs"`
 }
 
 // getStatusData builds the status page data from tracked runtime state.
@@ -173,35 +178,41 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 			LastCheck:   now,
 		})
 	}
+	sort.Slice(dhcpServers, func(i, j int) bool {
+		return lessIP(dhcpServers[i].IP, dhcpServers[j].IP)
+	})
 
-	// Overall status: the page itself is served over HTTP, so a failed HTTP
-	// check means something is seriously wrong; anything else degraded is
-	// "partial".
-	overallStatus := "healthy"
-	if httpStatus.Status != "running" {
-		overallStatus = "down"
-	} else if tftpStatus.Status != "running" {
-		overallStatus = "partial"
-	} else {
-		for _, s := range dhcpServers {
-			if s.Status != "running" {
-				overallStatus = "partial"
-				break
-			}
-		}
+	// Overall status and the subtitle share statusIssues. HTTP not running
+	// is "down"; TFTP or DHCP not running is "partial".
+	data := &StatusPageData{
+		Title:       "System Status",
+		Page:        "overview",
+		HTTPServer:  httpStatus,
+		TFTPServer:  tftpStatus,
+		DHCPServers: dhcpServers,
+		LastUpdated: now.UTC().Format("2006-01-02 15:04:05") + " UTC",
+		UpdatedAt:   now.UTC().Format(time.RFC3339),
+		AutoRefresh: true,
+		RefreshSecs: 5,
 	}
+	annotateStatus(data)
+	return data, nil
+}
 
-	return &StatusPageData{
-		Title:         "System Status",
-		Page:          "overview",
-		HTTPServer:    httpStatus,
-		TFTPServer:    tftpStatus,
-		DHCPServers:   dhcpServers,
-		LastUpdated:   now.Format("2006-01-02 15:04:05"),
-		OverallStatus: overallStatus,
-		AutoRefresh:   true,
-		RefreshSecs:   5,
-	}, nil
+// lessIP orders dotted IPv4 addresses numerically. Unparseable values sort last.
+func lessIP(a, b string) bool {
+	ipa := net.ParseIP(a).To4()
+	ipb := net.ParseIP(b).To4()
+	switch {
+	case ipa == nil && ipb == nil:
+		return a < b
+	case ipa == nil:
+		return false
+	case ipb == nil:
+		return true
+	default:
+		return bytes.Compare(ipa, ipb) < 0
+	}
 }
 
 // HandleStatusContent serves status content for HTMX updates.

@@ -61,6 +61,45 @@ func TestDescribeStatus(t *testing.T) {
 	}
 }
 
+func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
+	one := &StatusPageData{
+		HTTPServer: ServiceStatus{Status: "running"},
+		TFTPServer: ServiceStatus{Status: "running"},
+		DHCPServers: []DHCPServerStatus{
+			{IP: "192.168.1.2", Status: "configured"},
+			{IP: "10.0.1.2", Status: "configured"},
+		},
+	}
+	annotateStatus(one)
+	if one.OverallStatus != "partial" {
+		t.Fatalf("overall %q", one.OverallStatus)
+	}
+	const wantOne = "1 thing needs attention: DHCP 192.168.1.2, 10.0.1.2 configured"
+	if one.AttentionCozy != wantOne || one.AttentionConsole != "DHCP 192.168.1.2, 10.0.1.2 configured" {
+		t.Fatalf("one issue: %q / %q", one.AttentionCozy, one.AttentionConsole)
+	}
+
+	two := &StatusPageData{
+		HTTPServer:  ServiceStatus{Status: "running"},
+		TFTPServer:  ServiceStatus{Status: "stopped"},
+		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "configured"}},
+	}
+	annotateStatus(two)
+	const wantTwo = "2 things need attention: TFTP stopped · DHCP 10.0.0.1 configured"
+	if two.OverallStatus != "partial" || two.AttentionCozy != wantTwo {
+		t.Fatalf("two issues: %s %q", two.OverallStatus, two.AttentionCozy)
+	}
+
+	down := &StatusPageData{
+		HTTPServer: ServiceStatus{Status: "down"},
+		TFTPServer: ServiceStatus{Status: "running"},
+	}
+	annotateStatus(down)
+	if down.OverallStatus != "down" || down.AttentionCozy != "1 thing needs attention: HTTP down" {
+		t.Fatalf("down: %s %q", down.OverallStatus, down.AttentionCozy)
+	}
+}
+
 func renderNamed(t *testing.T, name string, data any) string {
 	t.Helper()
 	chdirRepoRoot(t)
@@ -190,7 +229,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(console, "insertAdjacentHTML") {
 		t.Error("lease history still builds HTML from strings")
 	}
-	if !strings.Contains(console, `data-seen-title="2026-01-02 03:04:05"`) {
+	if !strings.Contains(console, `data-seen-title="2026-01-02 03:04:05 UTC"`) || !strings.Contains(console, `datetime="2026-01-02T03:04:05Z"`) {
 		t.Error("missing absolute last-seen title")
 	}
 	if !strings.Contains(console, "No heartbeat recorded") {

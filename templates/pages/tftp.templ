@@ -2,8 +2,8 @@
 <header class="pagehead">
     <div>
         <h1><span class="only-cozy">TFTP</span><span class="only-console">tftp</span></h1>
-        <p class="sub only-cozy">{{.FileCount}} files · {{.DirCount}} folders · server {{.ServerStatus}}</p>
-        <p class="sub only-console">{{.FileCount}} files · {{.DirCount}} dirs · {{.ServerStatus}}</p>
+        <p class="sub only-cozy">{{countPhrase .FileCount "file" "files"}} · {{countPhrase .DirCount "folder" "folders"}} · server {{.ServerStatus}}</p>
+        <p class="sub only-console">{{countPhrase .FileCount "file" "files"}} · {{countPhrase .DirCount "dir" "dirs"}} · server {{.ServerStatus}}</p>
         <nav class="crumbs" aria-label="TFTP directory">
             <a href="/tftp">{{if .Root}}{{.Root}}{{else}}root{{end}}</a>
             {{range .Breadcrumbs}}
