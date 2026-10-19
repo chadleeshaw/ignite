@@ -19,6 +19,11 @@ import (
 // TFTPDir holds the directory path for TFTP server operations.
 var TFTPDir string
 
+// SetTFTPRoot records the resolved TFTP directory used by file handlers.
+func SetTFTPRoot(dir string) {
+	TFTPDir = dir
+}
+
 // HTTPDir holds the directory path for HTTP server operations.
 var HTTPDir string
 

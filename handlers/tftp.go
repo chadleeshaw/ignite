@@ -302,6 +302,7 @@ type TFTPData struct {
 	ServerRunning   bool
 	ServerDirectory string
 	PrevDirectory   string
+	Root            string
 	Files           []FileInfo
 }
 
@@ -362,6 +363,7 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		ServerRunning:   isTFTPRunning(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
+		Root:            TFTPDir,
 		Files:           fileInfos,
 	}, nil
 }

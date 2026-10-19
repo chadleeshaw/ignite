@@ -2,6 +2,7 @@ package app
 
 import (
 	"embed"
+	"path/filepath"
 	"testing"
 
 	"ignite/handlers"
@@ -27,6 +28,7 @@ func TestStartAndStopRecordTFTPStatus(t *testing.T) {
 	t.Setenv("DB_PATH", t.TempDir())
 	t.Setenv("DB_FILE", "tftp-status.db")
 	t.Setenv("HTTP_PORT", "18081")
+	t.Setenv("TFTP_DIR", filepath.Join(t.TempDir(), "tftp"))
 
 	app, err := NewApplicationWithStatic(embed.FS{})
 	require.NoError(t, err)
