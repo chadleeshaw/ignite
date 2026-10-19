@@ -147,7 +147,13 @@ func SendHTMLError(w http.ResponseWriter, r *http.Request, err *AppError) {
 		Heading:    heading,
 		Message:    message,
 	}
-	tmpl := LoadTemplates()["error"]
+	// Unauthenticated 404/405 handlers run outside AuthMiddleware. They must
+	// not render the admin shell (nav links to /dhcp and the rest).
+	name := "error"
+	if !isAuthenticated(r) {
+		name = "error-public"
+	}
+	tmpl := LoadTemplates()[name]
 	if tmpl == nil {
 		http.Error(w, message, code)
 		return

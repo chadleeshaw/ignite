@@ -2,10 +2,11 @@ package handlers
 
 import (
 	"context"
-	"crypto/subtle"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"net/http"
 	"sort"
@@ -44,11 +45,28 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		return DHCPServerView{}, fmt.Errorf("failed to get leases for server %s: %w", server.ID, err)
 	}
 
+	// Free addresses use the same occupancy rule as /dashboard/summary:
+	// a lease counts only when it is reserved or not yet expired.
+	used := 0
+	free := 0
+	if server != nil {
+		used = dhcp.PoolOccupancy(leases, time.Now())
+		if server.LeaseRange > 0 {
+			free = server.LeaseRange - used
+			if free < 0 {
+				free = 0
+			}
+		}
+	}
+
 	return DHCPServerView{
-		ID:     server.ID,
-		TFTPIP: server.IP.String(),
-		Status: h.getServerStatusBadge(isDHCPRunning(server.ID, server.Started)),
-		Leases: h.convertLeasesToViews(leases),
+		ID:         server.ID,
+		TFTPIP:     server.IP.String(),
+		Status:     h.getServerStatusBadge(isDHCPRunning(server.ID, server.Started)),
+		Leases:     h.convertLeasesToViews(leases),
+		LeaseRange: server.LeaseRange,
+		Used:       used,
+		Free:       free,
 	}, nil
 }
 
@@ -445,6 +463,13 @@ func (h *DHCPHandlers) AddManualLease(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	canonMAC, err := dhcp.CanonicalMAC(macStr)
+	if err != nil {
+		HandleError(w, r, NewValidationError("invalid MAC address", "The MAC address is invalid"))
+		return
+	}
+	macStr = canonMAC
+
 	// Find the server by network IP via the shared lookup helper.
 	server, err := findServerByIP(ctx, h.serverService, networkStr)
 	if err != nil {
@@ -516,35 +541,29 @@ func (h *DHCPHandlers) UpdateLeaseState(w http.ResponseWriter, r *http.Request) 
 	source := r.FormValue("source")
 
 	if mac == "" || newState == "" {
-		HandleError(w, r, NewValidationError("Missing parameters", "MAC address and state are required"))
+		writeJSONMessage(w, http.StatusBadRequest, false, "MAC address and state are required")
 		return
 	}
 
 	// Only real DHCP provisioning states are accepted.
 	if !validLeaseStates[newState] {
-		HandleError(w, r, NewValidationError(
-			fmt.Sprintf("Unknown lease state %q", newState),
-			"The requested lease state is not valid",
-		))
+		writeJSONMessage(w, http.StatusBadRequest, false, "The requested lease state is not valid")
 		return
 	}
-
-	if source == "" {
-		source = "manual"
-	}
-
-	err := h.leaseService.UpdateLeaseState(ctx, mac, newState, source)
+	source, err := acceptCallbackSource(source, "manual")
 	if err != nil {
-		HandleError(w, r, NewInternalError(
-			fmt.Sprintf("Failed to update lease state: %v", err),
-			"Unable to update the lease state. Please try again later.",
-		))
+		writeJSONMessage(w, http.StatusBadRequest, false, err.Error())
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status": "success", "message": "Lease state updated successfully"}`))
+	err = h.leaseService.UpdateLeaseState(ctx, mac, newState, source)
+	if err != nil {
+		log.Printf("Failed to update lease state: %v", err)
+		writeJSONMessage(w, http.StatusInternalServerError, false, "Unable to update the lease state. Please try again later.")
+		return
+	}
+
+	writeJSONMessage(w, http.StatusOK, true, "Lease state updated successfully")
 }
 
 // RecordHeartbeat handles POST /dhcp/lease/{mac}/heartbeat.
@@ -562,9 +581,7 @@ func (h *DHCPHandlers) RecordHeartbeat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status": "success", "message": "Heartbeat recorded"}`))
+	writeJSONMessage(w, http.StatusOK, true, "Heartbeat recorded")
 }
 
 // HostUpdateLeaseState handles POST /dhcp/lease/{mac}/state.
@@ -578,11 +595,11 @@ func (h *DHCPHandlers) HostUpdateLeaseState(w http.ResponseWriter, r *http.Reque
 	}
 
 	newState, source, err := readHostState(r)
-	if err != nil {
-		writeHostJSONError(w, http.StatusBadRequest, "MAC address and state are required")
+	if errors.Is(err, errInvalidJSON) {
+		writeHostJSONError(w, http.StatusBadRequest, "The request body is not valid JSON")
 		return
 	}
-	if newState == "" {
+	if err != nil || newState == "" {
 		writeHostJSONError(w, http.StatusBadRequest, "MAC address and state are required")
 		return
 	}
@@ -590,8 +607,10 @@ func (h *DHCPHandlers) HostUpdateLeaseState(w http.ResponseWriter, r *http.Reque
 		writeHostJSONError(w, http.StatusBadRequest, "The requested lease state is not valid")
 		return
 	}
-	if source == "" {
-		source = "provision"
+	source, err = acceptCallbackSource(source, "provision")
+	if err != nil {
+		writeHostJSONError(w, http.StatusBadRequest, err.Error())
+		return
 	}
 
 	if err := h.leaseService.UpdateLeaseState(r.Context(), mac, newState, source); err != nil {
@@ -599,9 +618,7 @@ func (h *DHCPHandlers) HostUpdateLeaseState(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte(`{"status": "success", "message": "Lease state updated successfully"}`))
+	writeJSONMessage(w, http.StatusOK, true, "Lease state updated successfully")
 }
 
 // authorizedHostMAC checks the per-lease provision token and returns the
@@ -640,10 +657,7 @@ func hostTokenMatches(r *http.Request, leases dhcp.LeaseService, mac string) boo
 	if err != nil || lease == nil || lease.ProvisionToken == "" {
 		return false
 	}
-	if len(token) != len(lease.ProvisionToken) {
-		return false
-	}
-	return subtle.ConstantTimeCompare([]byte(token), []byte(lease.ProvisionToken)) == 1
+	return tokensEqual(token, lease.ProvisionToken)
 }
 
 func hostTokenFromRequest(r *http.Request) string {
@@ -668,7 +682,7 @@ func readHostState(r *http.Request) (string, string, error) {
 			Source string `json:"source"`
 		}
 		if err := json.Unmarshal(body, &payload); err != nil {
-			return "", "", err
+			return "", "", errInvalidJSON
 		}
 		return strings.TrimSpace(payload.State), strings.TrimSpace(payload.Source), nil
 	}
@@ -679,12 +693,7 @@ func readHostState(r *http.Request) (string, string, error) {
 }
 
 func writeHostJSONError(w http.ResponseWriter, status int, message string) {
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	_ = json.NewEncoder(w).Encode(map[string]any{
-		"success": false,
-		"message": message,
-	})
+	writeJSONMessage(w, status, false, message)
 }
 
 // GetLeaseStateHistory handles GET /dhcp/lease/history
@@ -786,10 +795,13 @@ func getStateBadgeClass(state dhcp.LeaseState) string {
 
 // View models for templates
 type DHCPServerView struct {
-	ID     string      `json:"id"`
-	TFTPIP string      `json:"tftpip"`
-	Status string      `json:"status"`
-	Leases []LeaseView `json:"leases"`
+	ID         string      `json:"id"`
+	TFTPIP     string      `json:"tftpip"`
+	Status     string      `json:"status"`
+	Leases     []LeaseView `json:"leases"`
+	LeaseRange int         `json:"lease_range"`
+	Used       int         `json:"used"`
+	Free       int         `json:"free"`
 }
 
 type LeaseView struct {

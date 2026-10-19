@@ -150,7 +150,7 @@ function updateLeaseState(mac, newState) {
     })
     .then(response => response.json())
     .then(data => {
-        if (data.status === 'success') {
+        if (data.success) {
             // Update the badge in place instead of reloading the page
             const badge = document.getElementById('lease-state-' + mac);
             if (badge) {

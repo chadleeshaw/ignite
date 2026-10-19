@@ -14,7 +14,7 @@ func TestErrorPageIncludesUIMode(t *testing.T) {
 	prev := preferenceStore
 	t.Cleanup(func() { SetPreferenceStore(prev) })
 
-	t.Run("no session uses cozy", func(t *testing.T) {
+	t.Run("no session does not render the admin shell", func(t *testing.T) {
 		SetPreferenceStore(&memoryPrefs{mode: ConsoleUIMode})
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/missing", nil)
@@ -23,15 +23,15 @@ func TestErrorPageIncludesUIMode(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, rec.Code)
 		body := rec.Body.String()
-		require.Contains(t, body, `data-theme="cozy"`)
+		require.Contains(t, body, `data-theme="ignite"`)
 		require.Contains(t, body, "The page you requested was not found.")
 		require.Contains(t, body, "Not Found")
 		require.NotContains(t, body, "secret-internal-detail")
-		require.NotContains(t, body, `data-theme="console"`)
+		require.NotContains(t, body, `href="/dhcp"`)
 		require.NotContains(t, body, `{{.Mode}}`)
 	})
 
-	t.Run("signed in uses the stored mode", func(t *testing.T) {
+	t.Run("signed in keeps the admin shell and the ignite theme", func(t *testing.T) {
 		SetPreferenceStore(&memoryPrefs{mode: ConsoleUIMode})
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/broken", nil)
@@ -41,37 +41,44 @@ func TestErrorPageIncludesUIMode(t *testing.T) {
 
 		require.Equal(t, http.StatusInternalServerError, rec.Code)
 		body := rec.Body.String()
-		require.Contains(t, body, `data-theme="console"`)
+		require.Contains(t, body, `data-theme="ignite"`)
+		require.Contains(t, body, `href="/dhcp"`)
 		require.Contains(t, body, "Something went wrong.")
 		require.Contains(t, body, "Internal Server Error")
 		require.NotContains(t, body, "database exploded")
+		require.Equal(t, ConsoleUIMode, modeOf(applyUIMode(req, struct {
+			Title string
+			Mode  string
+		}{})))
 	})
 
-	t.Run("lookup failure uses cozy", func(t *testing.T) {
+	t.Run("lookup failure falls back to cozy in the template data", func(t *testing.T) {
 		SetPreferenceStore(errorPrefs{})
-		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/broken", nil)
 		req.Header.Set("Accept", "text/html")
 		req.AddCookie(testSessionCookie(t))
-		HandleError(rec, req, NewInternalError("lookup exploded", "Something went wrong."))
+		require.Equal(t, DefaultUIMode, modeOf(applyUIMode(req, struct {
+			Title string
+			Mode  string
+		}{})))
 
-		require.Equal(t, http.StatusInternalServerError, rec.Code)
-		require.Contains(t, rec.Body.String(), `data-theme="cozy"`)
+		rec := httptest.NewRecorder()
+		HandleError(rec, req, NewInternalError("lookup exploded", "Something went wrong."))
+		require.Contains(t, rec.Body.String(), `data-theme="ignite"`)
 	})
 
-	t.Run("unknown stored mode uses cozy", func(t *testing.T) {
+	t.Run("unknown stored mode falls back to cozy in the template data", func(t *testing.T) {
 		SetPreferenceStore(fixedPrefs{mode: "neon"})
-		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/missing", nil)
-		req.Header.Set("Accept", "text/html")
 		req.AddCookie(testSessionCookie(t))
-		HandleError(rec, req, NewNotFoundError("missing", "The page you requested was not found."))
-
-		require.Contains(t, rec.Body.String(), `data-theme="cozy"`)
+		require.Equal(t, DefaultUIMode, modeOf(applyUIMode(req, struct {
+			Title string
+			Mode  string
+		}{})))
 	})
 }
 
-func TestLoginPageUsesCozyWithoutSession(t *testing.T) {
+func TestLoginPageKeepsIgniteThemeAndStoredMode(t *testing.T) {
 	chdirRepoRoot(t)
 	prev := preferenceStore
 	SetPreferenceStore(&memoryPrefs{mode: ConsoleUIMode})
@@ -83,9 +90,24 @@ func TestLoginPageUsesCozyWithoutSession(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	require.Contains(t, body, `data-theme="cozy"`)
+	require.Contains(t, body, `data-theme="ignite"`)
 	require.NotContains(t, body, `data-theme="console"`)
 	require.NotContains(t, body, `{{.Mode}}`)
+	require.Equal(t, ConsoleUIMode, modeOf(applyUIMode(req, struct {
+		Title string
+		Mode  string
+	}{})))
+}
+
+func modeOf(data any) string {
+	page, ok := data.(*struct {
+		Title string
+		Mode  string
+	})
+	if !ok {
+		return ""
+	}
+	return page.Mode
 }
 
 type errorPrefs struct{}

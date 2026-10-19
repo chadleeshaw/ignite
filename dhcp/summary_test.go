@@ -142,6 +142,17 @@ func TestPoolFreeFloorsAtZero(t *testing.T) {
 	assert.Equal(t, 1, stat.Total)
 }
 
+func TestPoolOccupancyIgnoresExpired(t *testing.T) {
+	now := time.Now()
+	leases := []*Lease{
+		{IP: net.ParseIP("10.0.0.1"), Expiry: now.Add(time.Hour)},
+		{IP: net.ParseIP("10.0.0.2"), Expiry: now.Add(-time.Hour)},
+		{IP: net.ParseIP("10.0.0.3"), Reserved: true, Expiry: now.Add(-time.Hour)},
+		nil,
+	}
+	assert.Equal(t, 2, PoolOccupancy(leases, now))
+}
+
 func TestOccupiesAddressReservedPastExpiry(t *testing.T) {
 	now := time.Now()
 	reserved := &Lease{Reserved: true, Expiry: now.Add(-time.Hour), IP: net.ParseIP("192.168.1.9")}

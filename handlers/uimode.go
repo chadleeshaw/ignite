@@ -28,7 +28,13 @@ func currentUsername() string {
 }
 
 func currentUIMode(r *http.Request) string {
-	if r == nil || !isAuthenticated(r) {
+	if r == nil {
+		return DefaultUIMode
+	}
+	// Login has no session yet. It still reads the stored preference so the
+	// page matches the density the user saved. Every other anonymous page
+	// stays on the default until they sign in.
+	if !isAuthenticated(r) && r.URL.Path != "/login" {
 		return DefaultUIMode
 	}
 	prefMu.RLock()
@@ -45,10 +51,12 @@ func currentUIMode(r *http.Request) string {
 }
 
 // applyUIMode returns data with Mode set to the signed-in user's density.
-// A request with no session, a failed lookup, or an unknown stored value
-// gets DefaultUIMode. Maps gain a "Mode" key. Structs with an exported Mode
-// string field are updated (a non-pointer struct is copied first). Nil data
-// becomes a small struct carrying Title and Mode so base templates can render.
+// A request with no session (except GET /login), a failed lookup, or an
+// unknown stored value gets DefaultUIMode. Maps gain a "Mode" key. Structs
+// with an exported Mode string field are updated (a non-pointer struct is
+// copied first). Nil data becomes a small struct carrying Title and Mode
+// so base templates can render. The HTML data-theme attribute stays
+// "ignite" until the per-mode themes exist; Mode is still passed through.
 func applyUIMode(r *http.Request, data any) any {
 	mode := currentUIMode(r)
 	if data == nil {

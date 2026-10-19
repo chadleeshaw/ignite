@@ -56,6 +56,20 @@ type DashboardSummary struct {
 	Mode string `json:"-"`
 }
 
+// PoolOccupancy counts leases that occupy an address.
+// Used is reserved or unexpired. Expired non-reserved leases do not count.
+// Nil entries are skipped. This is the only occupancy rule; the dashboard
+// pool row and the DHCP page both call it.
+func PoolOccupancy(leases []*Lease, now time.Time) int {
+	used := 0
+	for _, lease := range leases {
+		if lease != nil && lease.OccupiesAddress(now) {
+			used++
+		}
+	}
+	return used
+}
+
 // ClassifyLease assigns a lease to exactly one bucket.
 //
 // Precedence, first match wins:
@@ -101,14 +115,14 @@ func PoolStatForServer(server *Server, leases []*Lease, now time.Time) PoolStat 
 	if server != nil && server.LeaseRange > 0 {
 		stat.Total = server.LeaseRange
 	}
+	var owned []*Lease
 	for _, lease := range leases {
 		if lease == nil || server == nil || lease.ServerID != server.ID {
 			continue
 		}
-		if lease.OccupiesAddress(now) {
-			stat.Used++
-		}
+		owned = append(owned, lease)
 	}
+	stat.Used = PoolOccupancy(owned, now)
 	stat.Free = stat.Total - stat.Used
 	if stat.Free < 0 {
 		stat.Free = 0

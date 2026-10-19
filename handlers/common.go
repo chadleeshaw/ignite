@@ -109,6 +109,7 @@ func parseTemplates() map[string]*template.Template {
 		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
 		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
 		"error":              {baseTemplate, "templates/pages/error.templ"},
+		"error-public":       {"templates/pages/error-public.templ"},
 		"dhcpmodal":          {"templates/modals/dhcpmodal.templ"},
 		"reservemodal":       {"templates/modals/reservemodal.templ"},
 		"bootmodal":          {"templates/modals/bootmodal.templ"},
@@ -134,6 +135,10 @@ func parseTemplates() map[string]*template.Template {
 // renderCachedTemplate executes a cached template by name. A missing entry
 // (parse failure) or an execution error produces a generic error response
 // instead of a nil-pointer panic or an internal-error leak.
+//
+// Every page render goes through applyUIMode here, which replaces any Mode
+// the handler put on the data. A hardcoded cozy or console cannot win over
+// the stored preference.
 func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, data any, userMessage string) {
 	tmpl, ok := LoadTemplates()[name]
 	if !ok || tmpl == nil {
