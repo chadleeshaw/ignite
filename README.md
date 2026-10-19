@@ -159,6 +159,51 @@ Ignite can be configured via environment variables. Here are the available optio
 
 Startup logs the resolved TFTP root (`TFTP root: ...`). `TFTP_DIR` overrides the default. The directory is created if it is missing. When that directory cannot be created, Ignite falls back to a temporary directory named `ignite-tftp.*` under the system temp dir and logs a warning that boot files, OS images, and per-MAC configs will not survive a restart. The same warning is logged when `TFTP_DIR` itself points at a temp directory; the override is still used. The TFTP page shows this resolved path as the root.
 
+Both container images declare `VOLUME /app/public/tftp` after `./public` is copied in. A fresh named volume starts with the TFTP files shipped in the image (`boot.ipxe` and the OS directories). Mount it by name so boot files, downloaded OS images, and per-MAC configs survive a container recreate:
+
+```bash
+docker run -d \
+  --name ignite \
+  -p 8080:8080 \
+  -p 69:69/udp \
+  -v ignite-tftp:/app/public/tftp \
+  ghcr.io/chadleeshaw/ignite:v3.0.0
+```
+
+Compose and a Swarm stack use the same syntax (`docker stack deploy -c docker-compose.yml ignite`):
+
+```yaml
+services:
+  ignite:
+    image: ghcr.io/chadleeshaw/ignite:v3.0.0
+    ports:
+      - "8080:8080"
+      - "69:69/udp"
+    volumes:
+      - ignite-tftp:/app/public/tftp
+volumes:
+  ignite-tftp:
+```
+
+A bind mount of an empty host directory (`-v /path/on/host:/app/public/tftp` when `/path/on/host` is empty) hides those shipped files. Seed the host directory from the image, give it to the `ignite` user (uid 1001), then start Ignite with the bind mount. `docker cp` onto the host writes the files as root, and the app cannot create boot files in a directory it does not own. A named volume keeps the `ignite` ownership on its own.
+
+```bash
+mkdir -p /path/on/host
+docker create --name ignite-seed ghcr.io/chadleeshaw/ignite:v3.0.0
+docker cp ignite-seed:/app/public/tftp/. /path/on/host
+docker rm ignite-seed
+sudo chown -R 1001:1001 /path/on/host
+```
+
+Upgrading a v2.x container that was started without a TFTP mount: copy the directory out before removing the container, recreate it with the named volume, and restore the files. `docker cp` into the new container writes as root, so return ownership to the `ignite` user (uid 1001) afterward.
+
+```bash
+docker cp <container>:/app/public/tftp ./tftp-backup
+# remove the old container, then start the new one with -v ignite-tftp:/app/public/tftp
+docker cp ./tftp-backup/. <container>:/app/public/tftp
+docker exec -u root <container> chown -R ignite:ignite /app/public/tftp
+```
+
 ## API Reference
 
 Ignite exposes a set of RESTful APIs to control and manage the server.
@@ -379,9 +424,26 @@ docker run -d \
   -p 8080:8080 \
   -p 69:69/udp \
   -v $(pwd)/data:/app/data \
-  -v $(pwd)/public:/app/public \
+  -v ignite-tftp:/app/public/tftp \
   ghcr.io/chadleeshaw/ignite:v3.0.0
 ```
+
+Compose and a Swarm stack (`docker stack deploy -c docker-compose.yml ignite`) mount the same named TFTP volume. The `./data` bind in the `docker run` example above is the database directory (`/app/data/ignite.db`). Generated provisioning files stay in `/app/public/provision`. The image does not declare a volume for either path.
+
+```yaml
+services:
+  ignite:
+    image: ghcr.io/chadleeshaw/ignite:v3.0.0
+    ports:
+      - "8080:8080"
+      - "69:69/udp"
+    volumes:
+      - ignite-tftp:/app/public/tftp
+volumes:
+  ignite-tftp:
+```
+
+A bind mount of an empty host directory onto `/app/public/tftp` hides the boot files shipped in the image. Seed that directory from the image first, as described next to `TFTP_DIR` above. The same section has the v2.x upgrade steps: `docker cp <container>:/app/public/tftp ./tftp-backup`, then recreate with `ignite-tftp` and copy the backup back.
 
 #### **Option 2: Build from Source**
 ```bash
@@ -390,7 +452,7 @@ docker build -t ignite:local .
 
 # Quick build using release binary (faster, smaller image)
 docker build -f Dockerfile.release -t ignite:release .
-docker run -d --name ignite -p 8080:8080 -p 69:69/udp ignite:release
+docker run -d --name ignite -p 8080:8080 -p 69:69/udp -v ignite-tftp:/app/public/tftp ignite:release
 ```
 
 ### **Binary Installation**

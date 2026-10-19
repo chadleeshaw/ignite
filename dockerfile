@@ -44,6 +44,9 @@ COPY --chown=ignite:ignite ./public ./public
 # Create data directory for database
 RUN mkdir -p /app/data && chown ignite:ignite /app/data
 
+# Declared after COPY so a new named volume is seeded from ./public/tftp.
+VOLUME /app/public/tftp
+
 # Switch to non-root user
 USER ignite
 
