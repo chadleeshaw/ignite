@@ -288,10 +288,11 @@ func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 // FileInfo represents file metadata for display
 type FileInfo struct {
-	Name         string
-	Size         string
-	LastModified string
-	IsDir        bool
+	Name           string
+	Size           string
+	LastModified   string
+	LastModifiedAt string
+	IsDir          bool
 }
 
 // TFTPData holds information for rendering the TFTP management page
@@ -352,10 +353,11 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		}
 
 		fileInfos = append(fileInfos, FileInfo{
-			Name:         relativePath,
-			Size:         humanReadableSize(fileInfo.Size()),
-			LastModified: fileInfo.ModTime().Format("2006-01-02 15:04:05"),
-			IsDir:        fileInfo.IsDir(),
+			Name:           relativePath,
+			Size:           humanReadableSize(fileInfo.Size()),
+			LastModified:   fileInfo.ModTime().Format("2006-01-02 15:04:05"),
+			LastModifiedAt: formatRFC3339(fileInfo.ModTime()),
+			IsDir:          fileInfo.IsDir(),
 		})
 	}
 

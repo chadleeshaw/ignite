@@ -4,7 +4,7 @@
         <span class="badge badge-{{if eq .OverallStatus "healthy"}}success{{else if eq .OverallStatus "partial"}}warning{{else}}error{{end}} badge-lg">
             {{if eq .OverallStatus "healthy"}}System Healthy{{else if eq .OverallStatus "partial"}}Partial Service{{else}}System Down{{end}}
         </span>
-        <span class="text-sm text-base-content/70">Last Updated: {{.LastUpdated}}</span>
+        <span class="text-sm text-base-content/70" data-updated="{{.LastUpdatedAt}}">Last Updated: {{.LastUpdated}}</span>
     </div>
 </div>
 
@@ -19,7 +19,7 @@
         <p class="text-sm text-base-content/80 mb-2">{{.HTTPServer.Description}}</p>
         <div class="text-xs text-base-content/60">
             <p>{{.HTTPServer.Details}}</p>
-            <p>Last Check: {{.HTTPServer.LastCheck.Format "15:04:05"}}</p>
+            <p data-checked="{{.HTTPServer.LastCheck.Format "2006-01-02T15:04:05Z07:00"}}">Last Check: {{.HTTPServer.LastCheck.Format "15:04:05"}}</p>
         </div>
     </div>
 
@@ -32,7 +32,7 @@
         <p class="text-sm text-base-content/80 mb-2">{{.TFTPServer.Description}}</p>
         <div class="text-xs text-base-content/60">
             <p>{{.TFTPServer.Details}}</p>
-            <p>Last Check: {{.TFTPServer.LastCheck.Format "15:04:05"}}</p>
+            <p data-checked="{{.TFTPServer.LastCheck.Format "2006-01-02T15:04:05Z07:00"}}">Last Check: {{.TFTPServer.LastCheck.Format "15:04:05"}}</p>
         </div>
     </div>
 </div>
@@ -52,7 +52,7 @@
                 <div class="text-xs text-base-content/60">
                     <p>Active Leases: {{.LeaseCount}}</p>
                     <p>Server ID: {{.ID}}</p>
-                    <p>Last Check: {{.LastCheck.Format "15:04:05"}}</p>
+                    <p data-checked="{{.LastCheck.Format "2006-01-02T15:04:05Z07:00"}}">Last Check: {{.LastCheck.Format "15:04:05"}}</p>
                 </div>
             </div>
             {{end}}

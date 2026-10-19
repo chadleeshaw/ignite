@@ -94,6 +94,7 @@ type StatusPageData struct {
 	TFTPServer    ServiceStatus      `json:"tftp_server"`
 	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
 	LastUpdated   string             `json:"last_updated"`
+	LastUpdatedAt string             `json:"last_updated_at"`
 	OverallStatus string             `json:"overall_status"`
 	AutoRefresh   bool               `json:"auto_refresh"`
 	RefreshSecs   int                `json:"refresh_secs"`
@@ -150,6 +151,7 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 		TFTPServer:    tftpStatus,
 		DHCPServers:   dhcpServers,
 		LastUpdated:   now.Format("2006-01-02 15:04:05"),
+		LastUpdatedAt: formatRFC3339(now),
 		OverallStatus: overallStatus,
 		AutoRefresh:   true,
 		RefreshSecs:   5,

@@ -36,7 +36,7 @@
                 <tr>
                     <td>{{.Name}}</td>
                     <td>{{if .IsDir}}--{{else}}{{.Size}}{{end}}</td>
-                    <td>{{.LastModified}}</td>
+                    <td data-modified="{{.LastModifiedAt}}">{{.LastModified}}</td>
                     <td>
                         {{if .IsDir}}
                             <button class="btn btn-xs btn-success" onclick="window.location.href='/tftp/open?dir={{.Name}}'">Open Dir</button>

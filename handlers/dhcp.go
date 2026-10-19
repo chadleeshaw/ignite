@@ -775,6 +775,7 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 			StateBadgeClass:  getStateBadgeClass(lease.State),
 			StateDisplayName: lease.GetStateDisplayName(),
 			LastSeen:         lease.LastSeen,
+			LastSeenAt:       formatRFC3339(lease.LastSeen),
 		})
 	}
 
@@ -835,6 +836,7 @@ type LeaseView struct {
 	StateBadgeClass  string        `json:"state_badge_class"`
 	StateDisplayName string        `json:"state_display_name"`
 	LastSeen         time.Time     `json:"last_seen"`
+	LastSeenAt       string        `json:"last_seen_at"`
 }
 
 // getMaskBits converts a dotted-decimal subnet mask to its CIDR prefix length.
