@@ -47,6 +47,8 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 
 	// Free addresses use the same occupancy rule as /dashboard/summary:
 	// a lease counts only when it is reserved or not yet expired.
+	// In-flight and failed totals use CountProvision and are independent
+	// of that occupancy rule.
 	used := 0
 	free := 0
 	if server != nil {
@@ -58,6 +60,7 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 			}
 		}
 	}
+	provision := dhcp.CountProvision(leases)
 
 	return DHCPServerView{
 		ID:         server.ID,
@@ -67,6 +70,8 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		LeaseRange: server.LeaseRange,
 		Used:       used,
 		Free:       free,
+		InFlight:   provision.InFlight,
+		Failed:     provision.Failed,
 	}, nil
 }
 
@@ -156,7 +161,8 @@ func (h *DHCPHandlers) GetDHCPServers(w http.ResponseWriter, r *http.Request) {
 
 	// htmx and browsers get the HTML fragment. JSON clients (Accept:
 	// application/json without text/html, or ?format=json) get the same
-	// server views: id, tftpip, status, lease_range, used, free, leases.
+	// server views: id, tftpip, status, lease_range, used, free,
+	// in_flight, failed, leases.
 	if wantsDashboardJSON(r) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -823,6 +829,8 @@ type DHCPServerView struct {
 	LeaseRange int         `json:"lease_range"`
 	Used       int         `json:"used"`
 	Free       int         `json:"free"`
+	InFlight   int         `json:"in_flight"`
+	Failed     int         `json:"failed"`
 }
 
 type LeaseView struct {

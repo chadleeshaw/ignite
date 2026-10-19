@@ -75,6 +75,47 @@ func TestCountLeasesPartitionsExactlyOnce(t *testing.T) {
 	assert.Equal(t, 5, counts.Active+counts.Expired+counts.Reserved)
 }
 
+func TestCountProvisionStates(t *testing.T) {
+	inFlight := []LeaseState{
+		StatePXERequested,
+		StateBooting,
+		StateImaging,
+		StateImaged,
+		StateConfiguring,
+	}
+	var leases []*Lease
+	for _, state := range inFlight {
+		leases = append(leases, &Lease{State: state})
+	}
+	leases = append(leases,
+		&Lease{State: StateFailed},
+		&Lease{State: StateAssigned},
+		&Lease{State: StateComplete},
+		&Lease{State: StateOffline},
+		nil,
+	)
+	counts := CountProvision(leases)
+	assert.Equal(t, len(inFlight), counts.InFlight)
+	assert.Equal(t, 1, counts.Failed)
+}
+
+func TestProvisionCountsIgnoreOccupancyPrecedence(t *testing.T) {
+	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	reservedImaging := &Lease{Reserved: true, Expiry: now.Add(-time.Hour), State: StateImaging}
+	expiredFailed := &Lease{Expiry: now.Add(-time.Hour), State: StateFailed}
+	assert.Equal(t, BucketReserved, ClassifyLease(reservedImaging, now))
+	assert.Equal(t, BucketExpired, ClassifyLease(expiredFailed, now))
+
+	counts := CountProvision([]*Lease{reservedImaging, expiredFailed})
+	assert.Equal(t, 1, counts.InFlight)
+	assert.Equal(t, 1, counts.Failed)
+
+	partition := CountLeases([]*Lease{reservedImaging, expiredFailed}, now)
+	assert.Equal(t, 1, partition.Reserved)
+	assert.Equal(t, 1, partition.Expired)
+	assert.Equal(t, 0, partition.Active)
+}
+
 func TestPoolStatForServer(t *testing.T) {
 	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
 	server := &Server{
@@ -127,6 +168,38 @@ func TestBuildDashboardSummaryOrdersPoolsAndCounts(t *testing.T) {
 	assert.Equal(t, 1, summary.Active)
 	assert.Equal(t, 1, summary.Expired)
 	assert.Equal(t, 1, summary.Reserved)
+	assert.Equal(t, 0, summary.InFlight)
+	assert.Equal(t, 0, summary.Failed)
+}
+
+func TestBuildDashboardSummaryCountsInFlightAndFailed(t *testing.T) {
+	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	server := &Server{ID: "srv", IP: net.ParseIP("10.1.0.1"), LeaseRange: 8}
+	owned := []*Lease{
+		{ServerID: "srv", Reserved: true, Expiry: now.Add(-time.Hour), State: StateImaging, IP: net.ParseIP("10.1.0.10")},
+		{ServerID: "srv", Expiry: now.Add(-time.Hour), State: StateFailed, IP: net.ParseIP("10.1.0.11")},
+		{ServerID: "srv", Expiry: now.Add(time.Hour), State: StateBooting, IP: net.ParseIP("10.1.0.12")},
+	}
+	summary := BuildDashboardSummary([]*Server{server}, map[string][]*Lease{"srv": owned}, now)
+	assert.Equal(t, 1, summary.Active)
+	assert.Equal(t, 1, summary.Expired)
+	assert.Equal(t, 1, summary.Reserved)
+	assert.Equal(t, 2, summary.InFlight)
+	assert.Equal(t, 1, summary.Failed)
+	require.Len(t, summary.Pools, 1)
+	assert.Equal(t, 2, summary.Pools[0].InFlight)
+	assert.Equal(t, 1, summary.Pools[0].Failed)
+	assert.Equal(t, 2, summary.Pools[0].Used)
+
+	withOther := append(append([]*Lease{}, owned...), &Lease{
+		ServerID: "other",
+		Expiry:   now.Add(time.Hour),
+		State:    StateFailed,
+		IP:       net.ParseIP("10.9.0.1"),
+	})
+	stat := PoolStatForServer(server, withOther, now)
+	assert.Equal(t, 2, stat.InFlight)
+	assert.Equal(t, 1, stat.Failed)
 }
 
 func TestPoolFreeFloorsAtZero(t *testing.T) {

@@ -248,6 +248,8 @@ htmx. Add `?format=json`, or send `Accept: application/json` without
       "lease_range": 50,
       "used": 1,
       "free": 49,
+      "in_flight": 0,
+      "failed": 0,
       "leases": [
         {
           "mac": "aa:bb:cc:dd:ee:ff",
@@ -273,7 +275,13 @@ htmx. Add `?format=json`, or send `Accept: application/json` without
 | `configured` | It is defined and has not been started since this process booted. |
 
 A `configured` server does not make overall health `partial`. `used` and
-`free` follow `dhcp.PoolOccupancy` (reserved or unexpired). Each lease
+`free` follow `dhcp.PoolOccupancy` (reserved or unexpired). `in_flight` and
+`failed` are separate from that partition, so a lease can be active,
+reserved, or expired and also in flight or failed. `in_flight` counts
+`pxe_requested`, `booting`, `imaging`, `imaged`, and `configuring`.
+`failed` counts `failed`. Both are on `GET /dashboard/summary` (the totals
+next to `active`, `expired`, and `reserved`, and each `pools[]` entry) and
+on each server from `GET /dhcp/servers`. Each lease
 includes `menu_name` (a friendly label such as `ubuntu 24.04`, or `""`
 when no menu is assigned) plus `menu`, `ipmi`, and `last_seen`. `menu`
 does not include a filesystem path.

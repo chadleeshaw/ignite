@@ -11,13 +11,21 @@
         <div class="stat-title">Reserved</div>
         <div class="stat-value">{{.Reserved}}</div>
     </div>
+    <div class="stat">
+        <div class="stat-title">In flight</div>
+        <div class="stat-value">{{.InFlight}}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Failed</div>
+        <div class="stat-value">{{.Failed}}</div>
+    </div>
 </section>
 <section class="stats" aria-label="DHCP pools">
     {{range .Pools}}
     <div class="stat">
         <div class="stat-title">{{.Server}}</div>
         <div class="stat-value">{{.Free}}</div>
-        <div class="stat-desc">{{.Status}} · {{.Used}} used / {{.Total}} total</div>
+        <div class="stat-desc">{{.Status}} · {{.Used}} used / {{.Total}} total · {{.InFlight}} in flight · {{.Failed}} failed</div>
     </div>
     {{else}}
     <div class="stat">

@@ -33,6 +33,25 @@
             </div>
         </div>
 
+        <section class="stats mb-4" aria-label="Lease counts">
+            <div class="stat">
+                <div class="stat-title">Used</div>
+                <div class="stat-value">{{.Used}}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">Free</div>
+                <div class="stat-value">{{.Free}}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">In flight</div>
+                <div class="stat-value">{{.InFlight}}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">Failed</div>
+                <div class="stat-value">{{.Failed}}</div>
+            </div>
+        </section>
+
         <div class="overflow-x-auto md:overflow-visible">
             <table class="table w-full">
                 <thead>
