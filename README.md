@@ -208,6 +208,23 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/prov/save`              | Saves a provisioning file.                    |
 | `/provision/save-file`    | Saves file content via API.                   |
 | `/provision/delete-file`  | Deletes a file from provision directories.    |
+| `/api/syslinux/activate/{version}` | Activates an already-downloaded SYSLINUX version. |
+
+`POST /api/syslinux/activate/{version}` does not download the archive. The
+version must already be downloaded, with its BIOS and EFI boot files on disk.
+Other downloaded versions stay downloaded.
+
+Success is `200` with:
+
+```json
+{"success": true, "message": "Syslinux 6.03 is active", "version": "6.03"}
+```
+
+| Status | When |
+|--------|------|
+| `409`  | The version exists but has not been downloaded. `error.user_message` is `This version is not downloaded. Download it before activating.` |
+| `404`  | No stored version has that number. |
+| `500`  | Boot files are missing or activation failed. |
 
 ## Architecture
 

@@ -954,6 +954,36 @@ func (s *service) cleanupActiveVersion(ctx context.Context) error {
 	return nil
 }
 
+// ActivateVersion makes an already-downloaded version the active one.
+// The boot files already on disk are recorded and the active flag is
+// flipped. Other downloaded versions stay downloaded: this does not run
+// cleanupActiveVersion, which deletes boot files and clears Downloaded.
+func (s *service) ActivateVersion(ctx context.Context, version string) error {
+	version = strings.TrimSpace(version)
+	if version == "" {
+		return fmt.Errorf("%w: empty version", ErrVersionNotFound)
+	}
+
+	sysVersion, err := s.repo.GetVersionByNumber(ctx, version)
+	if err != nil || sysVersion == nil {
+		return fmt.Errorf("%w: %s", ErrVersionNotFound, version)
+	}
+	if !sysVersion.Downloaded {
+		return fmt.Errorf("%w: %s", ErrVersionNotDownloaded, version)
+	}
+
+	if err := s.InstallBootFiles(ctx, version, "bios"); err != nil {
+		return err
+	}
+	if err := s.InstallBootFiles(ctx, version, "efi"); err != nil {
+		return err
+	}
+	if err := s.repo.SetActiveVersion(ctx, version); err != nil {
+		return fmt.Errorf("failed to activate version: %w", err)
+	}
+	return nil
+}
+
 // DeactivateVersion deactivates and removes the currently active version
 func (s *service) DeactivateVersion(ctx context.Context, version string) error {
 	// Get the version to deactivate
