@@ -83,15 +83,66 @@ func TestActivateVersionMissingBootFiles(t *testing.T) {
 		Downloaded: true,
 	}))
 
+	live := filepath.Join(svc.config.TFTPDir, svc.config.BiosDir, "pxelinux.0")
+	require.NoError(t, os.MkdirAll(filepath.Dir(live), 0o755))
+	require.NoError(t, os.WriteFile(live, []byte("still-booting"), 0o644))
+
 	err := svc.ActivateVersion(ctx, "6.03")
 	require.Error(t, err)
 	require.False(t, errors.Is(err, ErrVersionNotDownloaded))
 	require.Contains(t, err.Error(), "missing stored")
 
+	body, err := os.ReadFile(live)
+	require.NoError(t, err)
+	require.Equal(t, "still-booting", string(body))
+
 	got, err := repo.GetVersionByNumber(ctx, "6.03")
 	require.NoError(t, err)
 	require.True(t, got.Downloaded)
 	require.False(t, got.Active)
+}
+
+func TestActivateVersionCopyFailureKeepsLiveFiles(t *testing.T) {
+	svc, repo := testSyslinuxService(t)
+	ctx := context.Background()
+	live := filepath.Join(svc.config.TFTPDir, svc.config.BiosDir, "pxelinux.0")
+	require.NoError(t, os.MkdirAll(filepath.Dir(live), 0o755))
+	require.NoError(t, os.WriteFile(live, []byte("still-booting"), 0o644))
+	writeExtractedBootFiles(t, svc.config, "6.04", "stored-6.04")
+	require.NoError(t, repo.SaveVersion(ctx, &SyslinuxVersion{
+		ID:         "6.04",
+		Version:    "6.04",
+		Downloaded: true,
+	}))
+
+	orig := stageBootFile
+	calls := 0
+	stageBootFile = func(src, dst string) error {
+		calls++
+		if calls == 2 {
+			return errors.New("injected copy failure")
+		}
+		return orig(src, dst)
+	}
+	t.Cleanup(func() { stageBootFile = orig })
+
+	err := svc.ActivateVersion(ctx, "6.04")
+	require.Error(t, err)
+	require.Contains(t, err.Error(), "injected copy failure")
+	require.GreaterOrEqual(t, calls, 2)
+
+	body, err := os.ReadFile(live)
+	require.NoError(t, err)
+	require.Equal(t, "still-booting", string(body))
+	got, err := repo.GetVersionByNumber(ctx, "6.04")
+	require.NoError(t, err)
+	require.False(t, got.Active)
+
+	entries, err := os.ReadDir(svc.config.TFTPDir)
+	require.NoError(t, err)
+	for _, entry := range entries {
+		require.NotContains(t, entry.Name(), ".activate-")
+	}
 }
 
 func TestActivateVersionKeepsOtherDownloads(t *testing.T) {
