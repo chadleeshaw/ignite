@@ -259,10 +259,16 @@ Success is `200` with:
 ## CSRF
 
 Session-authenticated `POST`, `PUT`, and `DELETE` requests must send the
-per-session token. A missing or wrong token is `403` with
-`error.user_message` `CSRF token mismatch`. `POST /auth/login` and the
+per-session token and a same-host `Origin`. This includes logout,
+change-password, and every htmx POST. A missing or wrong token is `403`
+with `error.user_message` `CSRF token mismatch`. A missing `Origin`, a
+foreign `Origin`, or `Sec-Fetch-Site: cross-site` is `403` with
+`Cross-site requests are not allowed`. `POST /auth/login` and the
 per-lease host callbacks (`POST /dhcp/lease/{mac}/heartbeat` and
 `POST /dhcp/lease/{mac}/state`) are exempt. `GET` does not require a token.
+
+`ignite_mode` is an HttpOnly cookie. Page theme comes from `.Mode` in the
+HTML, not from reading that cookie in JavaScript.
 
 Every HTML render that uses the base page data includes `.CSRFToken`. The
 frontend sends it in either place:

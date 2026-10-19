@@ -300,10 +300,21 @@ func TestSetModeRejectsCrossSite(t *testing.T) {
 
 	req = httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader("{"))
 	req.Header.Set("Content-Type", "application/json")
+	req.Host = "example.com"
+	req.Header.Set("Origin", "http://example.com")
 	rec = httptest.NewRecorder()
 	h.SetMode(rec, req)
 	require.Equal(t, http.StatusBadRequest, rec.Code)
 	require.Contains(t, rec.Body.String(), "not valid JSON")
+
+	missing := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(`{"mode":"console"}`))
+	missing.Header.Set("Content-Type", "application/json")
+	missing.Host = "example.com"
+	rec = httptest.NewRecorder()
+	h.SetMode(rec, missing)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "Cross-site requests are not allowed")
+	require.Equal(t, DefaultUIMode, store.mode)
 }
 
 func TestRenderedConfigBypassesAuthButPublicConfigsDoNot(t *testing.T) {

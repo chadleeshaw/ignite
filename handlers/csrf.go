@@ -20,18 +20,20 @@ func isStateChanging(method string) bool {
 	}
 }
 
-// csrfAccepted reports whether a state-changing request presented the
-// session's CSRF token. Safe methods always pass. The token may arrive as
-// the X-CSRF-Token header or the csrf_token form field.
-func csrfAccepted(r *http.Request) bool {
+// csrfFailure is the user-facing reason a state-changing session request
+// was rejected. An empty string means the request may proceed.
+func csrfFailure(r *http.Request) string {
 	if r == nil || !isStateChanging(r.Method) {
-		return true
+		return ""
+	}
+	if crossSiteRequest(r) {
+		return "Cross-site requests are not allowed"
 	}
 	cookie, err := r.Cookie("ignite_session")
-	if err != nil {
-		return false
+	if err != nil || !tokensEqual(submittedCSRFToken(r), sessionCSRF(cookie.Value)) {
+		return "CSRF token mismatch"
 	}
-	return tokensEqual(submittedCSRFToken(r), sessionCSRF(cookie.Value))
+	return ""
 }
 
 func submittedCSRFToken(r *http.Request) string {
@@ -47,11 +49,14 @@ func submittedCSRFToken(r *http.Request) string {
 	return ""
 }
 
-func rejectCSRF(w http.ResponseWriter, r *http.Request) {
+func rejectCSRF(w http.ResponseWriter, r *http.Request, message string) {
+	if message == "" {
+		message = "CSRF token mismatch"
+	}
 	HandleError(w, r, NewAppError(
 		ErrorTypeForbidden,
-		"csrf token mismatch",
-		"CSRF token mismatch",
+		message,
+		message,
 		http.StatusForbidden,
 	))
 }

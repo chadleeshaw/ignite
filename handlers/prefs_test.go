@@ -29,6 +29,13 @@ func TestNewBoltPreferenceStoreBucketFailure(t *testing.T) {
 	require.ErrorContains(t, err, "disk full")
 }
 
+func sameOrigin(req *http.Request) {
+	if req.Host == "" {
+		req.Host = "example.com"
+	}
+	req.Header.Set("Origin", "http://"+req.Host)
+}
+
 func TestPreferenceModeEndpoints(t *testing.T) {
 	cfg, err := config.NewConfigBuilder().
 		WithDBPath(t.TempDir()).
@@ -57,7 +64,9 @@ func TestPreferenceModeEndpoints(t *testing.T) {
 	t.Run("rejects unknown mode", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(`{"mode":"compact"}`))
 		req.Header.Set("Content-Type", "application/json")
+		sameOrigin(req)
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusBadRequest, rec.Code)
 	})
@@ -65,7 +74,9 @@ func TestPreferenceModeEndpoints(t *testing.T) {
 	t.Run("stores console from json", func(t *testing.T) {
 		req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", strings.NewReader(`{"mode":"console"}`))
 		req.Header.Set("Content-Type", "application/json")
+		sameOrigin(req)
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusNoContent, rec.Code)
 		require.Empty(t, rec.Body.String())
@@ -73,6 +84,7 @@ func TestPreferenceModeEndpoints(t *testing.T) {
 		require.NotEmpty(t, cookie)
 		require.Equal(t, "ignite_mode", cookie[0].Name)
 		require.Equal(t, "console", cookie[0].Value)
+		require.True(t, cookie[0].HttpOnly)
 
 		got, err := store.GetUIMode(req.Context(), currentUsername())
 		require.NoError(t, err)
@@ -85,6 +97,7 @@ func TestPreferenceModeEndpoints(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusNoContent, rec.Code)
 
@@ -194,6 +207,7 @@ func TestSetModeContentNegotiation(t *testing.T) {
 		req.Header.Set("Content-Type", "application/json")
 		req.Host = "example.com"
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusNoContent, rec.Code)
 		require.Equal(t, ConsoleUIMode, store.mode)
@@ -205,6 +219,7 @@ func TestSetModeContentNegotiation(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("Accept", "application/json")
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusNoContent, rec.Code)
 		require.Equal(t, DefaultUIMode, store.mode)
@@ -216,6 +231,7 @@ func TestSetModeContentNegotiation(t *testing.T) {
 		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 		req.Header.Set("HX-Request", "true")
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusNoContent, rec.Code)
 	})
@@ -227,6 +243,7 @@ func TestSetModeContentNegotiation(t *testing.T) {
 		req.Host = "example.com"
 		req.Header.Set("Referer", "http://example.com/dhcp?tab=leases")
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusSeeOther, rec.Code)
 		require.Equal(t, "/dhcp?tab=leases", rec.Header().Get("Location"))
@@ -240,6 +257,7 @@ func TestSetModeContentNegotiation(t *testing.T) {
 		req.Host = "example.com"
 		req.Header.Set("Referer", "http://evil.example/phish")
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusSeeOther, rec.Code)
 		require.Equal(t, "/", rec.Header().Get("Location"))
@@ -252,6 +270,7 @@ func TestSetModeContentNegotiation(t *testing.T) {
 		req.Host = "example.com"
 		req.Header.Set("Referer", "http://example.com/dhcp")
 		rec := httptest.NewRecorder()
+		sameOrigin(req)
 		h.SetMode(rec, req)
 		require.Equal(t, http.StatusBadRequest, rec.Code)
 		require.Empty(t, rec.Header().Get("Location"))

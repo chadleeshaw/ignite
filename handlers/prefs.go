@@ -150,6 +150,7 @@ func (h *PreferenceHandlers) SetMode(w http.ResponseWriter, r *http.Request) {
 		Name:     uiModeCookie,
 		Value:    mode,
 		Path:     "/",
+		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 		MaxAge:   60 * 60 * 24 * 365,
 	})

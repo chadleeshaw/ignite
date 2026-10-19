@@ -394,9 +394,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Logout stays reachable without a session. A live session must
 		// still present its CSRF token.
 		if r.URL.Path == "/auth/logout" {
-			if isAuthenticated(r) && !csrfAccepted(r) {
-				rejectCSRF(w, r)
-				return
+			if isAuthenticated(r) {
+				if message := csrfFailure(r); message != "" {
+					rejectCSRF(w, r, message)
+					return
+				}
 			}
 			next.ServeHTTP(w, r)
 			return
@@ -440,8 +442,8 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		if !csrfAccepted(r) {
-			rejectCSRF(w, r)
+		if message := csrfFailure(r); message != "" {
+			rejectCSRF(w, r, message)
 			return
 		}
 

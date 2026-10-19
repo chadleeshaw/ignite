@@ -10,6 +10,11 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+func withSameOrigin(req *http.Request) {
+	req.Host = "example.com"
+	req.Header.Set("Origin", "http://example.com")
+}
+
 func TestCSRFRejectsSessionMutationWithoutToken(t *testing.T) {
 	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)
@@ -19,6 +24,7 @@ func TestCSRFRejectsSessionMutationWithoutToken(t *testing.T) {
 
 	for _, method := range []string{http.MethodPost, http.MethodPut, http.MethodDelete} {
 		req := httptest.NewRequest(method, "/dhcp/start", nil)
+		withSameOrigin(req)
 		req.AddCookie(cookie)
 		req.Header.Set("Accept", "application/json")
 		rec := httptest.NewRecorder()
@@ -38,6 +44,7 @@ func TestCSRFAcceptsHeaderAndFormField(t *testing.T) {
 	require.NotEmpty(t, token)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/preferences/mode", nil)
+	withSameOrigin(req)
 	req.AddCookie(cookie)
 	req.Header.Set(csrfHeader, token)
 	rec := httptest.NewRecorder()
@@ -46,6 +53,7 @@ func TestCSRFAcceptsHeaderAndFormField(t *testing.T) {
 
 	form := url.Values{csrfFormField: {token}, "mode": {"cozy"}}
 	req = httptest.NewRequest(http.MethodPut, "/dhcp/start", strings.NewReader(form.Encode()))
+	withSameOrigin(req)
 	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	req.AddCookie(cookie)
 	rec = httptest.NewRecorder()
@@ -53,6 +61,7 @@ func TestCSRFAcceptsHeaderAndFormField(t *testing.T) {
 	require.Equal(t, http.StatusNoContent, rec.Code)
 
 	req = httptest.NewRequest(http.MethodPost, "/dhcp/start", nil)
+	withSameOrigin(req)
 	req.AddCookie(cookie)
 	req.Header.Set(csrfHeader, "not-the-token")
 	req.Header.Set("Accept", "application/json")
@@ -94,6 +103,7 @@ func TestCSRFLogoutRequiresTokenWhenSessionExists(t *testing.T) {
 	cookie := testSessionCookie(t)
 
 	req := httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	withSameOrigin(req)
 	req.AddCookie(cookie)
 	req.Header.Set("Accept", "application/json")
 	rec := httptest.NewRecorder()
@@ -101,6 +111,7 @@ func TestCSRFLogoutRequiresTokenWhenSessionExists(t *testing.T) {
 	require.Equal(t, http.StatusForbidden, rec.Code)
 
 	req = httptest.NewRequest(http.MethodPost, "/auth/logout", nil)
+	withSameOrigin(req)
 	req.AddCookie(cookie)
 	req.Header.Set(csrfHeader, sessionCSRF(cookie.Value))
 	rec = httptest.NewRecorder()
@@ -144,6 +155,44 @@ func TestApplyUIModeSetsCSRFToken(t *testing.T) {
 		CSRFToken string
 	})
 	require.Empty(t, got.CSRFToken)
+}
+
+func TestCSRFRejectsMissingOriginAndCoversPasswordChange(t *testing.T) {
+	next := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusNoContent)
+	})
+	wrapped := AuthMiddleware(next)
+	cookie := testSessionCookie(t)
+	token := sessionCSRF(cookie.Value)
+
+	req := httptest.NewRequest(http.MethodPost, "/dhcp/start", nil)
+	req.Host = "example.com"
+	req.AddCookie(cookie)
+	req.Header.Set(csrfHeader, token)
+	req.Header.Set("Accept", "application/json")
+	rec := httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "Cross-site requests are not allowed")
+
+	req = httptest.NewRequest(http.MethodPost, "/auth/change-password", nil)
+	withSameOrigin(req)
+	req.AddCookie(cookie)
+	req.Header.Set("HX-Request", "true")
+	req.Header.Set("Accept", "application/json")
+	rec = httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusForbidden, rec.Code)
+	require.Contains(t, rec.Body.String(), "CSRF token mismatch")
+
+	req = httptest.NewRequest(http.MethodPost, "/auth/change-password", nil)
+	withSameOrigin(req)
+	req.AddCookie(cookie)
+	req.Header.Set(csrfHeader, token)
+	req.Header.Set("HX-Request", "true")
+	rec = httptest.NewRecorder()
+	wrapped.ServeHTTP(rec, req)
+	require.Equal(t, http.StatusNoContent, rec.Code)
 }
 
 func TestSafeMethodsSkipCSRF(t *testing.T) {
