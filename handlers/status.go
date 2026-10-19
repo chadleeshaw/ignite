@@ -189,6 +189,12 @@ func (h *StatusHandlers) CurrentOverallStatus(r *http.Request) string {
 	return data.OverallStatus
 }
 
+// HandleStatusPage redirects a bookmark for /status to Overview.
+// GET /status/content remains the fragment Overview polls.
+func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
 // HandleStatusContent serves status content for HTMX updates.
 func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Request) {
 	if !requireConfig(w, r, h.container) {

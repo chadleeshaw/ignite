@@ -214,6 +214,8 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | Endpoint                | Description                              |
 |-------------------------|------------------------------------------|
 | `/`                     | Serves the main index page.              |
+| `/status`               | Redirects to Overview (`/`).             |
+| `/status/content`       | Status fragment Overview polls.          |
 | `/open_modal`           | Opens a modal dialog.                    |
 | `/close_modal`          | Closes a modal dialog.                   |
 | `/dhcp`                 | Serves the DHCP management page.         |
