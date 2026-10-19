@@ -24,11 +24,7 @@
     <div class="pad" style="justify-content: space-between;">
         <div>
             <span class="ip">{{.TFTPIP}}</span>
-            {{if eq .StatusWord "running"}}
-            <span class="st ok">running</span>
-            {{else}}
-            <span class="st er">stopped</span>
-            {{end}}
+            <span class="st {{if eq .StatusWord "running"}}ok{{else if eq .StatusWord "stopped"}}er{{end}}">{{.StatusWord}}</span>
             <p class="mu" style="margin-top:4px">
                 {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}
             </p>

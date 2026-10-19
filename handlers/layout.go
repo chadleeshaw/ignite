@@ -277,20 +277,11 @@ func cozyHealth(overall string) string {
 func derivedHealth(data any, page string) string {
 	switch page {
 	case "dhcp":
-		servers, running, ok := dhcpRunning(data)
+		words, ok := dhcpStateWords(data)
 		if !ok {
 			return ""
 		}
-		switch {
-		case servers == 0:
-			return "No DHCP servers yet"
-		case running == 0:
-			return "DHCP is stopped"
-		case running == servers:
-			return "DHCP is running"
-		default:
-			return "Some DHCP servers are stopped"
-		}
+		return dhcpStateHealth(words)
 	case "tftp":
 		switch fieldString(data, "ServerStatus") {
 		case "running":
@@ -433,9 +424,56 @@ func fieldLen(data any, name string) (int, bool) {
 	return f.Len(), true
 }
 
-func dhcpRunning(data any) (servers, running int, ok bool) {
-	servers, running, _, ok = dhcpTotals(data)
-	return servers, running, ok
+// dhcpStateWords reads StatusWord from each DHCP server view. The status
+// bar uses those words as stored and does not rename one state to another.
+func dhcpStateWords(data any) ([]string, bool) {
+	f, found := structField(data, "Servers")
+	if !found || f.Kind() != reflect.Slice {
+		return nil, false
+	}
+	words := make([]string, 0, f.Len())
+	for i := 0; i < f.Len(); i++ {
+		item := f.Index(i)
+		for item.Kind() == reflect.Pointer || item.Kind() == reflect.Interface {
+			if item.IsNil() {
+				item = reflect.Value{}
+				break
+			}
+			item = item.Elem()
+		}
+		if !item.IsValid() || item.Kind() != reflect.Struct {
+			continue
+		}
+		word := item.FieldByName("StatusWord")
+		if word.IsValid() && word.Kind() == reflect.String {
+			words = append(words, strings.TrimSpace(word.String()))
+		}
+	}
+	return words, true
+}
+
+// dhcpStateHealth is the DHCP status-bar sentence. Every server sharing one
+// word reads "DHCP is <word>". Mixed words are listed in server order.
+func dhcpStateHealth(words []string) string {
+	if len(words) == 0 {
+		return "No DHCP servers yet"
+	}
+	var order []string
+	seen := map[string]bool{}
+	for _, word := range words {
+		if word == "" || seen[word] {
+			continue
+		}
+		seen[word] = true
+		order = append(order, word)
+	}
+	if len(order) == 0 {
+		return "No DHCP servers yet"
+	}
+	if len(order) == 1 {
+		return "DHCP is " + order[0]
+	}
+	return "DHCP is " + strings.Join(order, " and ")
 }
 
 func dhcpTotals(data any) (servers, running, leases int, ok bool) {

@@ -67,26 +67,26 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 		HTTPServer: ServiceStatus{Status: "running"},
 		TFTPServer: ServiceStatus{Status: "running"},
 		DHCPServers: []DHCPServerStatus{
-			{IP: "192.168.1.2", Status: "stopped"},
-			{IP: "10.0.1.2", Status: "stopped"},
+			{IP: "192.168.1.2", Status: "configured"},
+			{IP: "10.0.1.2", Status: "configured"},
 		},
 	}
 	annotateStatus(one)
 	if one.OverallStatus != "partial" {
 		t.Fatalf("overall %q", one.OverallStatus)
 	}
-	const wantOne = "1 thing needs attention: DHCP 192.168.1.2, 10.0.1.2 stopped"
-	if one.AttentionCozy != wantOne || one.AttentionConsole != "DHCP 192.168.1.2, 10.0.1.2 stopped" {
+	const wantOne = "1 thing needs attention: DHCP 192.168.1.2, 10.0.1.2 configured"
+	if one.AttentionCozy != wantOne || one.AttentionConsole != "DHCP 192.168.1.2, 10.0.1.2 configured" {
 		t.Fatalf("one issue: %q / %q", one.AttentionCozy, one.AttentionConsole)
 	}
 
 	two := &StatusPageData{
 		HTTPServer:  ServiceStatus{Status: "running"},
 		TFTPServer:  ServiceStatus{Status: "stopped"},
-		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "stopped"}},
+		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "configured"}},
 	}
 	annotateStatus(two)
-	const wantTwo = "2 things need attention: TFTP stopped · DHCP 10.0.0.1 stopped"
+	const wantTwo = "2 things need attention: TFTP stopped · DHCP 10.0.0.1 configured"
 	if two.OverallStatus != "partial" || two.AttentionCozy != wantTwo {
 		t.Fatalf("two issues: %s %q", two.OverallStatus, two.AttentionCozy)
 	}
@@ -203,7 +203,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Servers: []DHCPServerView{{
 			TFTPIP:     "192.168.1.2",
 			Running:    false,
-			StatusWord: "stopped",
+			StatusWord: "configured",
 			LeaseRange: 50,
 			Used:       1,
 			Free:       49,
@@ -218,19 +218,23 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 					OS:       "ubuntu",
 					Version:  "24.04",
 				},
-				MenuLabel: "ubuntu 24.04",
-				LastSeen:  time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+				MenuLabel: menuLabel(dhcp.BootMenu{
+					Filename: "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
+					OS:       "ubuntu",
+					Version:  "24.04",
+				}),
+				LastSeen: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 			}, {
 				MAC:              "11:22:33:44:55:66",
 				IP:               "192.168.1.101",
 				StateDisplayName: "Offline",
 				StateBadgeClass:  "badge-ghost",
-				MenuLabel:        "Custom menu",
+				MenuLabel:        menuLabel(dhcp.BootMenu{Filename: "lab-menu"}),
 			}},
 		}, {
 			TFTPIP:     "10.0.1.2",
 			Running:    false,
-			StatusWord: "stopped",
+			StatusWord: "configured",
 			LeaseRange: 25,
 		}},
 	})
@@ -257,13 +261,12 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="sb"`,
-		"DHCP is stopped",
+		"DHCP is configured",
 		"2 servers · 2 leases",
 		"Select a lease to see details",
 		`id="det-title"`,
 		"Last seen",
-		"ubuntu 24.04",
-		"Custom menu",
+		"lab-menu",
 		"No leases on this server.",
 		`class="main"`,
 		"CONSOLE",
@@ -283,8 +286,8 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(console, "/tmp/") || strings.Contains(console, "pxelinux.cfg") {
 		t.Error("dhcp page renders an internal menu path")
 	}
-	if strings.Contains(console, ">configured<") {
-		t.Error("dhcp page still says configured")
+	if !strings.Contains(console, ">configured<") {
+		t.Error("dhcp page did not show the server state")
 	}
 
 	tftp := renderNamed(t, "tftp", &TFTPData{

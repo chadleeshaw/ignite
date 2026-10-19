@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 )
@@ -83,14 +84,20 @@ func isDHCPRunning(serverID string, modelStarted bool) bool {
 	return modelStarted
 }
 
-// dhcpStatusWord is the only status word for a DHCP server. Overview tiles,
-// the DHCP page badge, and the status bar all use it. A server that is not
-// running is "stopped"; stored leases do not make it "configured".
-func dhcpStatusWord(running bool) string {
+// dhcpServerState is the DHCP server word Overview, /status/content, the
+// DHCP page, and the status bar all display. A non-empty state from the
+// server record is returned unchanged, so running, configured, and stopped
+// stay distinct. Until that field is set, a live listener is "running" and
+// any other record keeps the word this status endpoint already used,
+// "configured".
+func dhcpServerState(state string, running bool) string {
+	if s := strings.TrimSpace(state); s != "" {
+		return s
+	}
 	if running {
 		return "running"
 	}
-	return "stopped"
+	return "configured"
 }
 
 // StatusHandlers handles status-related requests
@@ -174,7 +181,7 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	for _, server := range servers {
 		leases, _ := h.container.LeaseService.GetLeasesByServer(ctx, server.ID)
 
-		status := dhcpStatusWord(isDHCPRunning(server.ID, server.Started))
+		status := dhcpServerState("", isDHCPRunning(server.ID, server.Started))
 
 		dhcpServers = append(dhcpServers, DHCPServerStatus{
 			ID:          server.ID,

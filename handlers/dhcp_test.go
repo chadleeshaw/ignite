@@ -561,29 +561,29 @@ func TestDHCPHandlers_getServerStatusBadge(t *testing.T) {
 	assert.Equal(t, "badge-error", badge)
 }
 
-func TestDHCPStatusWord(t *testing.T) {
-	if dhcpStatusWord(true) != "running" || dhcpStatusWord(false) != "stopped" {
-		t.Fatalf("words: %q %q", dhcpStatusWord(true), dhcpStatusWord(false))
+func TestDHCPServerState(t *testing.T) {
+	if dhcpServerState("", true) != "running" || dhcpServerState("", false) != "configured" {
+		t.Fatalf("fallback: %q %q", dhcpServerState("", true), dhcpServerState("", false))
+	}
+	if dhcpServerState("stopped", true) != "stopped" || dhcpServerState(" configured ", false) != "configured" {
+		t.Fatalf("passthrough: %q %q", dhcpServerState("stopped", true), dhcpServerState(" configured ", false))
 	}
 }
 
 func TestMenuLabel(t *testing.T) {
-	friendly := menuLabel(dhcp.BootMenu{
+	path := menuLabel(dhcp.BootMenu{
 		Filename: "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
 		OS:       "ubuntu",
 		Version:  "24.04",
 	})
-	if friendly != "ubuntu 24.04" {
-		t.Fatalf("os label: %q", friendly)
+	if path != "" {
+		t.Fatalf("tmp path: %q", path)
 	}
-	if got := menuLabel(dhcp.BootMenu{Filename: `/var/lib/tftp/pxelinux.cfg/01-aa`}); got != "Custom menu" {
-		t.Fatalf("path only: %q", got)
-	}
-	if got := menuLabel(dhcp.BootMenu{Filename: `ubuntu/24.04/vmlinuz`}); got != "Custom menu" {
+	if got := menuLabel(dhcp.BootMenu{Filename: `ubuntu/24.04/vmlinuz`, OS: "ubuntu", Version: "24.04"}); got != "" {
 		t.Fatalf("relative path: %q", got)
 	}
-	if got := menuLabel(dhcp.BootMenu{Filename: "custom.cfg"}); got != "custom.cfg" {
-		t.Fatalf("bare file: %q", got)
+	if got := menuLabel(dhcp.BootMenu{Filename: "lab-menu"}); got != "lab-menu" {
+		t.Fatalf("name: %q", got)
 	}
 	if got := menuLabel(dhcp.BootMenu{}); got != "" {
 		t.Fatalf("empty: %q", got)

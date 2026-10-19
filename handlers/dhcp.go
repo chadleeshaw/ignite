@@ -61,7 +61,7 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		ID:         server.ID,
 		TFTPIP:     server.IP.String(),
 		Status:     h.getServerStatusBadge(running),
-		StatusWord: dhcpStatusWord(running),
+		StatusWord: dhcpServerState("", running),
 		Leases:     h.convertLeasesToViews(leases),
 		LeaseRange: server.LeaseRange,
 		Used:       used,
@@ -782,22 +782,14 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 	return views
 }
 
-// menuLabel is the boot menu name shown on cards, tables, and the detail
-// panel. OS and version win over Filename, because a saved menu stores the
-// pxelinux.cfg path in Filename. A path with no OS or version is "Custom menu".
-// An empty menu returns "" so the template can print an em dash.
+// menuLabel is the lease menu text. Filename often holds a pxelinux.cfg
+// path, including /tmp paths written by the boot-menu form. A path is not
+// a name, so the template prints an em dash. A friendly name with no
+// directory separators is shown as stored.
 func menuLabel(menu dhcp.BootMenu) string {
-	osName := strings.TrimSpace(menu.OS)
-	version := strings.TrimSpace(menu.Version)
-	if osName != "" || version != "" {
-		return strings.TrimSpace(osName + " " + version)
-	}
 	file := strings.TrimSpace(menu.Filename)
-	if file == "" {
+	if file == "" || strings.ContainsAny(file, `/\`) {
 		return ""
-	}
-	if strings.ContainsAny(file, `/\`) {
-		return "Custom menu"
 	}
 	return file
 }
