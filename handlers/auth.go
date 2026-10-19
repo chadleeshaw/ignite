@@ -185,11 +185,11 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-// LoginResponse represents a login response
+// LoginResponse is the login and logout body. The session token stays in
+// the HttpOnly cookie and is not returned here.
 type LoginResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
-	Token   string `json:"token,omitempty"`
 }
 
 // Login handles user login
@@ -257,7 +257,6 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	json.NewEncoder(w).Encode(LoginResponse{
 		Success: true,
 		Message: "Login successful",
-		Token:   token,
 	})
 }
 
