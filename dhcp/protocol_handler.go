@@ -203,6 +203,19 @@ func (h *ProtocolHandler) newLease(mac string, ip net.IP) (*Lease, error) {
 	return lease, nil
 }
 
+// carryBootConfig copies the boot menu, IPMI settings, and provision token
+// onto a lease that replaced an older row for the same MAC.
+func carryBootConfig(dst, src *Lease) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.Menu = src.Menu
+	dst.IPMI = src.IPMI
+	if src.ProvisionToken != "" {
+		dst.ProvisionToken = src.ProvisionToken
+	}
+}
+
 // handleDiscover processes DHCP Discover messages
 func (h *ProtocolHandler) handleDiscover(p d4.Packet, options d4.Options) d4.Packet {
 	// Serialize with the allocation path so the scan below can't interleave
@@ -310,11 +323,17 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 		if derr := h.leaseRepo.DeleteByMAC(ctx, mac); derr != nil {
 			log.Printf("Failed to delete stale lease for MAC %s: %v", mac, derr)
 		}
+		previous := lease
 		lease, err = h.newLease(mac, requestedIP.To4())
 		if err != nil {
 			log.Printf("Failed to build lease for MAC %s: %v", mac, err)
 			return h.createNakPacket(p)
 		}
+		// The installer often requests its own address, which is not the
+		// address DHCP handed out. Replacing the row must keep the boot
+		// menu: otherwise the later imaging callback lands on a lease whose
+		// menu is empty.
+		carryBootConfig(lease, previous)
 		// Never ACK an unpersisted lease.
 		if err := h.leaseRepo.Save(ctx, lease); err != nil {
 			log.Printf("Failed to save lease for MAC %s: %v", mac, err)

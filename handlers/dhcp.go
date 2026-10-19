@@ -747,11 +747,28 @@ func (h *DHCPHandlers) sortServerViewsByIP(serverViews []DHCPServerView) {
 func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 	views := make([]LeaseView, 0, len(leases))
 	for _, lease := range leases {
+		menu := lease.Menu
+		storedName := dhcp.MenuName(menu)
+		// Filename is the on-disk PXE path. API and template output use
+		// menu_name instead, so a temp TFTP root never becomes the label.
+		menu.Filename = ""
+		name := storedName
+		if name == "" {
+			root := ""
+			if h.config != nil {
+				root = h.config.TFTP.Dir
+			}
+			if root == "" {
+				root = TFTPDir
+			}
+			name = dhcp.MenuNameForLease(lease.Menu, root, lease.MAC, lease.Menu.Filename)
+		}
 		views = append(views, LeaseView{
 			MAC:              lease.MAC,
 			IP:               lease.IP.String(),
 			Static:           lease.Reserved,
-			Menu:             lease.Menu,
+			Menu:             menu,
+			MenuName:         name,
 			IPMI:             lease.IPMI,
 			State:            string(lease.State),
 			StateBadgeClass:  getStateBadgeClass(lease.State),
@@ -811,6 +828,7 @@ type LeaseView struct {
 	IP               string        `json:"ip"`
 	Static           bool          `json:"static"`
 	Menu             dhcp.BootMenu `json:"menu"`
+	MenuName         string        `json:"menu_name"`
 	IPMI             dhcp.IPMI     `json:"ipmi"`
 	State            string        `json:"state"`
 	StateBadgeClass  string        `json:"state_badge_class"`

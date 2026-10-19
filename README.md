@@ -223,8 +223,10 @@ htmx. Add `?format=json`, or send `Accept: application/json` without
 | `configured` | It is defined and has not been started since this process booted. |
 
 A `configured` server does not make overall health `partial`. `used` and
-`free` follow `dhcp.PoolOccupancy` (reserved or unexpired). `menu`, `ipmi`,
-and `last_seen` are also present on each lease.
+`free` follow `dhcp.PoolOccupancy` (reserved or unexpired). Each lease
+includes `menu_name` (a friendly label such as `ubuntu 24.04`, or `""`
+when no menu is assigned) plus `menu`, `ipmi`, and `last_seen`. `menu`
+does not include a filesystem path.
 
 ### POST Routes
 
