@@ -115,6 +115,7 @@ type DHCPServerStatus struct {
 type StatusPageData struct {
 	Title         string             `json:"title"`
 	Mode          string             `json:"-"`
+	CSRFToken     string             `json:"-"`
 	HTTPServer    ServiceStatus      `json:"http_server"`
 	TFTPServer    ServiceStatus      `json:"tftp_server"`
 	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`

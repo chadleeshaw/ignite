@@ -79,6 +79,7 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Title     string
 		Mode      string
+		CSRFToken string
 		Versions  []*syslinux.SyslinuxVersion
 		Downloads []*syslinux.DownloadStatus
 	}{

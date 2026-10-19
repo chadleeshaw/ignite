@@ -298,6 +298,7 @@ type FileInfo struct {
 type TFTPData struct {
 	Title           string
 	Mode            string
+	CSRFToken       string
 	ServerRunning   bool
 	ServerDirectory string
 	PrevDirectory   string

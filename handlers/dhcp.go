@@ -109,9 +109,10 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Title   string
-		Mode    string
-		Servers []DHCPServerView
+		Title     string
+		Mode      string
+		CSRFToken string
+		Servers   []DHCPServerView
 	}{
 		Title:   "DHCP Management",
 		Servers: serverViews,
@@ -143,9 +144,10 @@ func (h *DHCPHandlers) GetDHCPServers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Title   string
-		Mode    string
-		Servers []DHCPServerView
+		Title     string
+		Mode      string
+		CSRFToken string
+		Servers   []DHCPServerView
 	}{
 		Title:   "DHCP Servers",
 		Servers: serverViews,

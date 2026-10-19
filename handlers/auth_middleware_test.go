@@ -232,7 +232,9 @@ func TestAuthMiddleware_POSTRequests(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			req := httptest.NewRequest("POST", tt.path, nil)
 			if tt.authenticated {
-				req.AddCookie(testSessionCookie(t))
+				cookie := testSessionCookie(t)
+				req.AddCookie(cookie)
+				req.Header.Set("X-CSRF-Token", sessionCSRF(cookie.Value))
 			}
 			w := httptest.NewRecorder()
 

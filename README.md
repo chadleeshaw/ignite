@@ -255,6 +255,44 @@ Success is `200` with:
 | `404`  | No stored version has that number. |
 | `500`  | Boot files are missing or activation failed. |
 
+## CSRF
+
+Session-authenticated `POST`, `PUT`, and `DELETE` requests must send the
+per-session token. A missing or wrong token is `403` with
+`error.user_message` `CSRF token mismatch`. `POST /auth/login` and the
+per-lease host callbacks (`POST /dhcp/lease/{mac}/heartbeat` and
+`POST /dhcp/lease/{mac}/state`) are exempt. `GET` does not require a token.
+
+Every HTML render that uses the base page data includes `.CSRFToken`. The
+frontend sends it in either place:
+
+- Header `X-CSRF-Token` (htmx and fetch)
+- Form field `csrf_token`
+
+Add this to the base document, without storing the token in a cookie:
+
+```html
+<meta name="csrf-token" content="{{.CSRFToken}}">
+```
+
+```html
+<body hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'>
+```
+
+State-changing forms also need:
+
+```html
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+```
+
+Fetch clients that do not use htmx read the meta tag:
+
+```js
+headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content }
+```
+
+`POST /auth/logout` needs the token when a session cookie is still present.
+
 ## Architecture
 
 Ignite follows a clean, modular architecture with clear separation of concerns:
