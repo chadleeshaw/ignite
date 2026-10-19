@@ -29,18 +29,22 @@ type DHCPOptions struct {
 
 // Lease represents an IP lease assignment
 type Lease struct {
-	ID             string            `json:"id"`
-	IP             net.IP            `json:"ip"`
-	MAC            string            `json:"mac"`
-	Expiry         time.Time         `json:"expiry"`
-	Reserved       bool              `json:"reserved"`
-	ServerID       string            `json:"server_id"`
-	Menu           BootMenu          `json:"menu"`
-	IPMI           IPMI              `json:"ipmi"`
-	State          LeaseState        `json:"state"`
-	StateUpdatedAt time.Time         `json:"state_updated_at"`
-	LastSeen       time.Time         `json:"last_seen"`
-	StateHistory   []StateTransition `json:"state_history"`
+	ID             string     `json:"id"`
+	IP             net.IP     `json:"ip"`
+	MAC            string     `json:"mac"`
+	Expiry         time.Time  `json:"expiry"`
+	Reserved       bool       `json:"reserved"`
+	ServerID       string     `json:"server_id"`
+	Menu           BootMenu   `json:"menu"`
+	IPMI           IPMI       `json:"ipmi"`
+	State          LeaseState `json:"state"`
+	StateUpdatedAt time.Time  `json:"state_updated_at"`
+	LastSeen       time.Time  `json:"last_seen"`
+	// LastHeartbeat is set only by an installer heartbeat, not by a DHCP
+	// renew. A zero time means this host has never heartbeated, so offline
+	// detection uses the full lease duration.
+	LastHeartbeat time.Time         `json:"last_heartbeat,omitempty"`
+	StateHistory  []StateTransition `json:"state_history"`
 	// ProvisionToken authenticates provisioning callbacks for this lease.
 	// It is a per-lease secret, not an admin session. Empty means the lease
 	// was stored before tokens existed; callbacks are rejected until a token
@@ -125,6 +129,82 @@ func (l *Lease) UpdateState(newState LeaseState, source string) {
 // purposes of heartbeat/offline tracking.
 func (l *Lease) IsActive() bool {
 	return l.State != StateOffline && l.State != StateFailed && l.State != StateComplete
+}
+
+// NoteActivity records a DHCP renew (or any non-heartbeat presence) and
+// clears an offline mark. The restored stage is the last non-offline state,
+// not a forced assigned.
+func (l *Lease) NoteActivity(source string) {
+	if l == nil {
+		return
+	}
+	l.LastSeen = time.Now()
+	if l.State == StateOffline {
+		l.RestoreFromOffline(source)
+	}
+}
+
+// RestoreFromOffline returns the lease to the last stage that was not
+// offline. With no such history it falls back to assigned.
+func (l *Lease) RestoreFromOffline(source string) {
+	if l == nil {
+		return
+	}
+	l.UpdateState(l.lastNonOfflineState(), source)
+}
+
+func (l *Lease) lastNonOfflineState() LeaseState {
+	for i := len(l.StateHistory) - 1; i >= 0; i-- {
+		state := l.StateHistory[i].ToState
+		if state != "" && state != StateOffline {
+			return state
+		}
+	}
+	return StateAssigned
+}
+
+// inProgress reports a stage that is mid-install. Those leases use the full
+// lease duration as the offline window so a long image is not flagged
+// between heartbeats.
+func (l *Lease) inProgress() bool {
+	if l == nil {
+		return false
+	}
+	switch l.State {
+	case StatePXERequested, StateBooting, StateImaging, StateImaged, StateConfiguring:
+		return true
+	default:
+		return false
+	}
+}
+
+// OfflineWindow is how long the lease may go without LastSeen activity
+// before it is marked offline.
+//
+// A host that has never heartbeated, or that is mid-install, uses the full
+// lease duration: DHCP renews typically arrive at T1 (half the lease), and
+// a 10-minute heartbeat cutoff would mark a 2-hour install offline.
+// Once heartbeats exist and the stage is not in progress, the window is the
+// greater of heartbeatThreshold and half the lease, so a renewing host is
+// not flagged in the gap between T1 renews.
+func (l *Lease) OfflineWindow(leaseDuration, heartbeatThreshold time.Duration) time.Duration {
+	if heartbeatThreshold < 0 {
+		heartbeatThreshold = 0
+	}
+	if l == nil {
+		return heartbeatThreshold
+	}
+	if l.LastHeartbeat.IsZero() || l.inProgress() {
+		if leaseDuration > 0 {
+			return leaseDuration
+		}
+		return heartbeatThreshold
+	}
+	half := leaseDuration / 2
+	if half > heartbeatThreshold {
+		return half
+	}
+	return heartbeatThreshold
 }
 
 // BootMenu contains PXE boot configuration

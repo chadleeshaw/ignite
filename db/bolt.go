@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"ignite/config"
 	"path/filepath"
@@ -180,6 +181,26 @@ func (t *boltKVTx) Delete(bucket string, key []byte) error {
 		return nil
 	}
 	return bkt.Delete(key)
+}
+
+// ForEach walks bucket. Mutating the same bucket from fn is undefined in
+// bbolt, so callers collect matches and write after ForEach returns.
+// ErrStopIteration ends the walk without failing the transaction.
+func (t *boltKVTx) ForEach(bucket string, fn func(k, v []byte) error) error {
+	if fn == nil {
+		return fmt.Errorf("foreach function is nil")
+	}
+	bkt := t.tx.Bucket([]byte(bucket))
+	if bkt == nil {
+		return nil
+	}
+	err := bkt.ForEach(func(k, v []byte) error {
+		return fn(k, v)
+	})
+	if errors.Is(err, ErrStopIteration) {
+		return nil
+	}
+	return err
 }
 
 // Update runs fn inside one read-write transaction.

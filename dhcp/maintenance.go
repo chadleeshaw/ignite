@@ -11,8 +11,10 @@ const (
 	// DefaultMaintenanceInterval is how often expired leases are removed and
 	// quiet hosts are marked offline.
 	DefaultMaintenanceInterval = time.Minute
-	// DefaultOfflineThreshold is how long a host can go without a heartbeat
-	// or DHCP renewal before it is marked offline.
+	// DefaultOfflineThreshold is the heartbeat quiet period passed to
+	// MarkOfflineLeases. It is not the only cutoff: a host with no
+	// heartbeats, or one that is mid-install, is judged against its lease
+	// duration so a long image is not marked offline between DHCP renews.
 	DefaultOfflineThreshold = 10 * time.Minute
 )
 

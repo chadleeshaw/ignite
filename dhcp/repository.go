@@ -141,30 +141,119 @@ func (r *BoltLeaseRepository) Get(ctx context.Context, id string) (*Lease, error
 }
 
 // GetByMAC retrieves a lease by MAC address, using the secondary index.
-// Falls back to a full scan (which repairs the index) when the index
-// misses — e.g. for leases written before the index existed.
+// A canonical miss scans inside one write transaction and, when the stored
+// spelling differs, rewrites the row and the index before returning. The
+// repair is not a separate PutKV: it commits with the scan or not at all.
+// Callers that already hold lockLease must not take it again here; the
+// bbolt write transaction is the lock for the index update.
 func (r *BoltLeaseRepository) GetByMAC(ctx context.Context, mac string) (*Lease, error) {
-	if id, err := r.db.GetKV(ctx, r.macIndexBucket(), []byte(mac)); err == nil && len(id) > 0 {
-		if lease, gerr := r.Get(ctx, string(id)); gerr == nil && lease != nil && lease.MAC == mac {
+	canon, canonErr := CanonicalMAC(mac)
+	keys := []string{mac}
+	if canonErr == nil {
+		keys = []string{canon}
+		if canon != mac {
+			keys = append(keys, mac)
+		}
+	}
+	for _, key := range keys {
+		if lease, ok := r.leaseByIndex(ctx, key, canon); ok {
 			return lease, nil
 		}
-		// Stale index entry: fall through to the full scan below.
 	}
 
-	leases, err := r.GetAll(ctx)
+	var found *Lease
+	err := r.db.Update(ctx, func(tx db.Tx) error {
+		for _, key := range keys {
+			id, gerr := tx.Get(r.macIndexBucket(), []byte(key))
+			if gerr != nil || len(id) == 0 {
+				continue
+			}
+			raw, gerr := tx.Get(r.bucket, id)
+			if gerr != nil || len(raw) == 0 {
+				continue
+			}
+			var lease Lease
+			if json.Unmarshal(raw, &lease) != nil {
+				continue
+			}
+			if macMatches(&lease, mac, canon) && (canonErr != nil || lease.MAC == canon) {
+				cp := lease
+				found = &cp
+				return nil
+			}
+		}
+
+		var match *Lease
+		err := tx.ForEach(r.bucket, func(k, v []byte) error {
+			var lease Lease
+			if json.Unmarshal(v, &lease) != nil {
+				return nil
+			}
+			if !macMatches(&lease, mac, canon) {
+				return nil
+			}
+			cp := lease
+			match = &cp
+			return db.ErrStopIteration
+		})
+		if err != nil {
+			return err
+		}
+		if match == nil {
+			return fmt.Errorf("%w: lease for MAC %s", db.ErrNotFound, mac)
+		}
+		// Rewrite after ForEach. bbolt forbids mutating the bucket being walked.
+		if canonErr == nil && match.MAC != canon {
+			match.MAC = canon
+		}
+		data, err := json.Marshal(match)
+		if err != nil {
+			return fmt.Errorf("failed to marshal lease: %w", err)
+		}
+		if err := writeLease(tx, r.bucket, r.macIndexBucket(), match, data); err != nil {
+			return err
+		}
+		found = match
+		return nil
+	})
 	if err != nil {
 		return nil, err
 	}
-
-	for _, lease := range leases {
-		if lease.MAC == mac {
-			// Repair the index for next time (best effort).
-			_ = r.db.PutKV(ctx, r.macIndexBucket(), []byte(mac), []byte(lease.ID))
-			return lease, nil
-		}
+	if found == nil {
+		return nil, fmt.Errorf("%w: lease for MAC %s", db.ErrNotFound, mac)
 	}
+	return found, nil
+}
 
-	return nil, fmt.Errorf("%w: lease for MAC %s", db.ErrNotFound, mac)
+// leaseByIndex returns the lease when the index key points at a row whose
+// MAC is already the canonical spelling. A legacy spelling falls through so
+// the write transaction can repair it.
+func (r *BoltLeaseRepository) leaseByIndex(ctx context.Context, key, canon string) (*Lease, bool) {
+	id, err := r.db.GetKV(ctx, r.macIndexBucket(), []byte(key))
+	if err != nil || len(id) == 0 {
+		return nil, false
+	}
+	lease, err := r.Get(ctx, string(id))
+	if err != nil || lease == nil || !macMatches(lease, key, canon) {
+		return nil, false
+	}
+	if canon != "" && lease.MAC != canon {
+		return nil, false
+	}
+	return lease, true
+}
+
+// macMatches reports whether lease.MAC is the requested spelling or the
+// same 48-bit address under another conventional spelling.
+func macMatches(lease *Lease, raw, canon string) bool {
+	if lease == nil || lease.MAC == "" {
+		return false
+	}
+	if lease.MAC == raw || (canon != "" && lease.MAC == canon) {
+		return true
+	}
+	got, err := CanonicalMAC(lease.MAC)
+	return err == nil && canon != "" && got == canon
 }
 
 // GetByServerID retrieves all leases for a specific server
@@ -271,6 +360,9 @@ func (r *BoltLeaseRepository) CleanupExpired(ctx context.Context) error {
 	}
 
 	for _, lease := range expiredLeases {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
 		if err := r.Delete(ctx, lease.ID); err != nil {
 			return fmt.Errorf("failed to delete expired lease %s: %w", lease.ID, err)
 		}

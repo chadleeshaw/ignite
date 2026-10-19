@@ -234,9 +234,46 @@ func (s *DHCPServerService) DeleteServer(ctx context.Context, serverID string) e
 	}
 	s.handlersMu.Unlock()
 
-	// Delete all leases for this server
-	if err := s.leaseRepo.DeleteByServerID(ctx, serverID); err != nil {
-		return fmt.Errorf("failed to delete server leases: %w", err)
+	// The handler is stopped before taking allocMu so an in-flight packet
+	// can finish its own allocMu -> lockLease sequence. Deletes then take
+	// the same order: the pool lock, then each lease lock, with a re-read.
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	leases, err := s.leaseRepo.GetByServerID(ctx, serverID)
+	if err != nil {
+		return fmt.Errorf("failed to list server leases: %w", err)
+	}
+	for _, lease := range leases {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if lease == nil {
+			continue
+		}
+		unlock, lerr := lockLease(ctx, lease.MAC)
+		if lerr != nil {
+			return lerr
+		}
+		fresh, gerr := s.leaseRepo.Get(ctx, lease.ID)
+		if errors.Is(gerr, db.ErrNotFound) {
+			unlock()
+			continue
+		}
+		if gerr != nil {
+			unlock()
+			return fmt.Errorf("failed to read lease %s: %w", lease.ID, gerr)
+		}
+		if fresh.ServerID == serverID {
+			gerr = s.leaseRepo.Delete(ctx, fresh.ID)
+		}
+		unlock()
+		if gerr != nil {
+			return fmt.Errorf("failed to delete lease %s: %w", lease.ID, gerr)
+		}
 	}
 
 	// Delete server
