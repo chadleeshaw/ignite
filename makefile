@@ -12,10 +12,10 @@ build: css
 run: build
 	@./bin/ignite
 
-# Development mode (no build, just run)
-dev:
+# Development mode. CSS is gitignored, so rebuild it before the server starts.
+dev: css
 	@echo "Starting development server..."
-	@go run cmd/main.go
+	@go run .
 
 # Run tests
 test:

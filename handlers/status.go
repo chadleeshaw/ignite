@@ -192,7 +192,6 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 
 	return &StatusPageData{
 		Title:         "System Status",
-		Mode:          "cozy",
 		Page:          "overview",
 		HTTPServer:    httpStatus,
 		TFTPServer:    tftpStatus,
@@ -204,22 +203,10 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	}, nil
 }
 
-// HandleStatusPage serves the status monitoring page
+// HandleStatusPage sends browsers to Overview. The route stays registered
+// until the backend removes it. Service detail remains on /status/content.
 func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
-	if !requireConfig(w, r, h.container) {
-		return
-	}
-
-	data, err := h.getStatusData(r)
-	if err != nil {
-		HandleError(w, r, NewInternalError(
-			fmt.Sprintf("failed to get status data: %v", err),
-			"Unable to load system status",
-		))
-		return
-	}
-
-	renderCachedTemplate(w, r, "status", data, "Unable to render the status page")
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // HandleStatusContent serves status content for HTMX updates

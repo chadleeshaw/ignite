@@ -163,7 +163,11 @@
 <script>
 function updateVersions(os) {
     const versionSelect = document.getElementById('versionSelect');
-    versionSelect.innerHTML = '<option value="">Select version</option>';
+    versionSelect.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select version';
+    versionSelect.appendChild(placeholder);
     if (!os) return;
     fetch('/osimages/available-versions?os=' + encodeURIComponent(os))
         .then(function (response) {
@@ -185,20 +189,35 @@ function showOSImageInfo(imageId) {
     fetch('/osimages/info/' + encodeURIComponent(imageId))
         .then(function (response) { return response.json(); })
         .then(function (data) {
-            document.getElementById('osImageInfo').innerHTML =
-                '<div class="kv">' +
-                '<span>ID</span><span class="mono">' + data.id + '</span>' +
-                '<span>OS</span><span>' + data.os + '</span>' +
-                '<span>Version</span><span>' + data.version + '</span>' +
-                '<span>Arch</span><span>' + data.architecture + '</span>' +
-                '<span>Kernel</span><span class="mono">' + data.kernel_path + '</span>' +
-                '<span>Initrd</span><span class="mono">' + data.initrd_path + '</span>' +
-                '<span>Kernel size</span><span>' + formatBytes(data.kernel_size) + '</span>' +
-                '<span>Initrd size</span><span>' + formatBytes(data.initrd_size) + '</span>' +
-                '</div>';
+            fillFacts(document.getElementById('osImageInfo'), [
+                ['ID', data.id, 'mono'],
+                ['OS', data.os, ''],
+                ['Version', data.version, ''],
+                ['Arch', data.architecture, ''],
+                ['Kernel', data.kernel_path, 'mono'],
+                ['Initrd', data.initrd_path, 'mono'],
+                ['Kernel size', formatBytes(data.kernel_size), ''],
+                ['Initrd size', formatBytes(data.initrd_size), '']
+            ]);
             document.getElementById('infoModal').showModal();
         })
         .catch(function () { alert('Failed to load OS image information'); });
+}
+
+function fillFacts(el, rows) {
+    el.replaceChildren();
+    var grid = document.createElement('div');
+    grid.className = 'kv';
+    rows.forEach(function (row) {
+        var label = document.createElement('span');
+        label.textContent = row[0];
+        var value = document.createElement('span');
+        if (row[2]) value.className = row[2];
+        value.textContent = row[1] == null ? '' : String(row[1]);
+        grid.appendChild(label);
+        grid.appendChild(value);
+    });
+    el.appendChild(grid);
 }
 
 function formatBytes(bytes) {
@@ -216,7 +235,7 @@ function handleDownloadResponse(event) {
         const response = JSON.parse(xhr.responseText);
         if (response.status === 'started') {
             document.getElementById('downloadModal').close();
-            Toastify({ text: response.message, duration: 5000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)" }).showToast();
+            igniteToast(response.message || "Download started", true);
             setTimeout(function () { window.location.reload(); }, 1000);
         }
     } catch (e) {
@@ -226,14 +245,10 @@ function handleDownloadResponse(event) {
 
 function handleIPXEResponse(event) {
     const xhr = event.detail.xhr;
-    Toastify({
-        text: xhr.status === 200 ? "iPXE configuration regenerated successfully" : "Failed to regenerate iPXE configuration",
-        duration: xhr.status === 200 ? 3000 : 5000,
-        close: true,
-        gravity: "top",
-        position: "right",
-        backgroundColor: xhr.status === 200 ? "linear-gradient(to right, #00b09b, #96c93d)" : "linear-gradient(to right, #ff5f6d, #ffc371)"
-    }).showToast();
+    igniteToast(
+        xhr.status === 200 ? "iPXE configuration regenerated successfully" : "Failed to regenerate iPXE configuration",
+        xhr.status === 200
+    );
 }
 </script>
 {{ end }}

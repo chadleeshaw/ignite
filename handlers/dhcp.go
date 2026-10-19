@@ -107,7 +107,6 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 		Servers []DHCPServerView
 	}{
 		Title:   "DHCP",
-		Mode:    "cozy",
 		Page:    "dhcp",
 		Servers: serverViews,
 	}

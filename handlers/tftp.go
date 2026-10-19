@@ -380,7 +380,6 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 
 	return &TFTPData{
 		Title:           "TFTP",
-		Mode:            "cozy",
 		Page:            "tftp",
 		ServerRunning:   isTFTPRunning(),
 		ServerStatus:    tftpStatusString(),

@@ -69,7 +69,6 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Architectures []string
 	}{
 		Title:         "OS Images",
-		Mode:          "cozy",
 		Page:          "osimages",
 		OSImages:      images,
 		Downloads:     downloads,

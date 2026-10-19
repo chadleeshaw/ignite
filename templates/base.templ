@@ -22,22 +22,22 @@
     <div class="app">
         <nav class="ignite-nav" aria-label="Primary">
             <a class="br" href="/"><img src="/public/http/img/flame.svg" alt="">Ignite</a>
-            <a class="n {{if eq (pageID .) "overview"}}on{{end}}" href="/">Overview<kbd class="only-console">1</kbd></a>
-            <a class="n {{if eq (pageID .) "dhcp"}}on{{end}}" href="/dhcp">DHCP<kbd class="only-console">2</kbd></a>
-            <a class="n {{if eq (pageID .) "tftp"}}on{{end}}" href="/tftp">TFTP<kbd class="only-console">3</kbd></a>
-            <a class="n {{if eq (pageID .) "osimages"}}on{{end}}" href="/osimages">OS Images<kbd class="only-console">4</kbd></a>
-            <a class="n {{if eq (pageID .) "syslinux"}}on{{end}}" href="/syslinux">Syslinux<kbd class="only-console">5</kbd></a>
-            <a class="n {{if eq (pageID .) "provision"}}on{{end}}" href="/provision">Provision<kbd class="only-console">6</kbd></a>
+            <a class="n {{if eq (pageID .) "overview"}}on{{end}}" href="/" {{if eq (pageID .) "overview"}}aria-current="page"{{end}}>Overview<kbd class="only-console">1</kbd></a>
+            <a class="n {{if eq (pageID .) "dhcp"}}on{{end}}" href="/dhcp" {{if eq (pageID .) "dhcp"}}aria-current="page"{{end}}>DHCP<kbd class="only-console">2</kbd></a>
+            <a class="n {{if eq (pageID .) "tftp"}}on{{end}}" href="/tftp" {{if eq (pageID .) "tftp"}}aria-current="page"{{end}}>TFTP<kbd class="only-console">3</kbd></a>
+            <a class="n {{if eq (pageID .) "osimages"}}on{{end}}" href="/osimages" {{if eq (pageID .) "osimages"}}aria-current="page"{{end}}>OS Images<kbd class="only-console">4</kbd></a>
+            <a class="n {{if eq (pageID .) "syslinux"}}on{{end}}" href="/syslinux" {{if eq (pageID .) "syslinux"}}aria-current="page"{{end}}>Syslinux<kbd class="only-console">5</kbd></a>
+            <a class="n {{if eq (pageID .) "provision"}}on{{end}}" href="/provision" {{if eq (pageID .) "provision"}}aria-current="page"{{end}}>Provision<kbd class="only-console">6</kbd></a>
             <div class="nav-end">
-                <div class="tog" role="group" aria-label="Display mode">
-                    <button type="button" class="mode-btn" data-mode="cozy" onclick="igniteSetMode('cozy')">Cozy</button>
-                    <button type="button" class="mode-btn" data-mode="console" onclick="igniteSetMode('console')">&gt;_ Console <kbd>\</kbd></button>
-                </div>
+                <form class="tog" method="post" action="{{modePreferenceURL}}" role="group" aria-label="Display mode">
+                    <button type="submit" name="mode" value="cozy" class="mode-btn" data-mode="cozy" aria-pressed="{{if eq (uiMode .) "console"}}false{{else}}true{{end}}">Cozy</button>
+                    <button type="submit" name="mode" value="console" class="mode-btn" data-mode="console" aria-pressed="{{if eq (uiMode .) "console"}}true{{else}}false{{end}}">&gt;_ Console <kbd>\</kbd></button>
+                </form>
                 <div class="dropdown dropdown-end">
                     <button type="button" tabindex="0" class="acct">Account</button>
                     <ul tabindex="0" class="dropdown-content menu menu-sm mt-2 z-[20] p-2 shadow rounded-box w-52">
-                        <li><a onclick="openChangePasswordModal()">Change password</a></li>
-                        <li><a onclick="logout()">Log out</a></li>
+                        <li><button type="button" onclick="openChangePasswordModal()">Change password</button></li>
+                        <li><button type="button" onclick="logout()">Log out</button></li>
                     </ul>
                 </div>
             </div>
@@ -88,14 +88,42 @@
     <script>
         var IGNITE_MODE_URL = "{{modePreferenceURL}}";
 
+        function igniteToast(message, ok) {
+            var node = document.createElement("span");
+            node.textContent = message;
+            Toastify({
+                node: node,
+                duration: 3000,
+                close: true,
+                gravity: "top",
+                position: "right",
+                backgroundColor: ok
+                    ? "linear-gradient(to right, #00b09b, #96c93d)"
+                    : "linear-gradient(to right, #FBBF24, #FF4500)"
+            }).showToast();
+        }
+
         function igniteSetMode(mode) {
             if (mode !== "cozy" && mode !== "console") return;
             document.documentElement.setAttribute("data-theme", mode);
+            document.querySelectorAll(".mode-btn").forEach(function (btn) {
+                btn.setAttribute("aria-pressed", btn.getAttribute("data-mode") === mode ? "true" : "false");
+            });
             fetch(IGNITE_MODE_URL, {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
                 body: JSON.stringify({ mode: mode })
             }).catch(function () {});
+        }
+
+        var modeForm = document.querySelector("form.tog");
+        if (modeForm) {
+            modeForm.addEventListener("submit", function (e) {
+                var mode = e.submitter && e.submitter.value;
+                if (mode !== "cozy" && mode !== "console") return;
+                e.preventDefault();
+                igniteSetMode(mode);
+            });
         }
 
         document.addEventListener("keydown", function (e) {
@@ -108,6 +136,7 @@
                 return;
             }
             if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+            if (document.querySelector("dialog[open], .modal.modal-open")) return;
             var pages = { "1": "/", "2": "/dhcp", "3": "/tftp", "4": "/osimages", "5": "/syslinux", "6": "/provision" };
             if (pages[e.key]) {
                 e.preventDefault();
@@ -135,11 +164,11 @@
             if (evt.detail.failed) {
                 var errorMessage = "An unknown error occurred.";
                 if (evt.detail.xhr && evt.detail.xhr.responseText) errorMessage = evt.detail.xhr.responseText;
-                Toastify({ text: errorMessage, duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)" }).showToast();
+                igniteToast(errorMessage, false);
             } else if (evt.detail.successful) {
                 var successMessage = evt.detail.xhr ? evt.detail.xhr.responseText : "";
-                if (successMessage && !successMessage.trim().startsWith("<")) {
-                    Toastify({ text: successMessage, duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)" }).showToast();
+                if (successMessage && successMessage.trim().charAt(0) !== "<") {
+                    igniteToast(successMessage, true);
                 }
             }
         });

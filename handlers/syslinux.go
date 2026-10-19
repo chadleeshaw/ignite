@@ -83,7 +83,6 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 		Downloads []*syslinux.DownloadStatus
 	}{
 		Title:     "Syslinux",
-		Mode:      "cozy",
 		Page:      "syslinux",
 		Versions:  versions,
 		Downloads: downloads,

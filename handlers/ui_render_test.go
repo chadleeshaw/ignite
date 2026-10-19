@@ -122,6 +122,19 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(overview, "localStorage") {
 		t.Error("overview still mentions localStorage")
 	}
+	for _, want := range []string{
+		`method="post"`,
+		`action="/api/preferences/mode"`,
+		`name="mode"`,
+		`value="cozy"`,
+		`value="console"`,
+		`aria-current="page"`,
+		`aria-pressed="true"`,
+	} {
+		if !strings.Contains(overview, want) {
+			t.Errorf("overview mode form missing %q", want)
+		}
+	}
 	if i := strings.Index(overview, "IGNITE_MODE_URL"); i >= 0 {
 		end := i + 120
 		if end > len(overview) {
@@ -167,6 +180,12 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	})
 	if !strings.Contains(console, `data-theme="console"`) {
 		t.Error("console mode did not set data-theme")
+	}
+	if !strings.Contains(console, `class="lease-pick"`) || !strings.Contains(console, `tabindex="0"`) {
+		t.Error("console lease row is not keyboard focusable")
+	}
+	if strings.Contains(console, "insertAdjacentHTML") {
+		t.Error("lease history still builds HTML from strings")
 	}
 	if !strings.Contains(console, `data-seen-title="2026-01-02 03:04:05"`) {
 		t.Error("missing absolute last-seen title")
@@ -233,6 +252,24 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	})
 	if !strings.Contains(sys, "6.03") || !strings.Contains(sys, "/api/syslinux/deactivate/6.03") || !strings.Contains(sys, "BIOS and EFI") {
 		t.Error("syslinux active version actions missing")
+	}
+	if strings.Contains(sys, "/api/syslinux/activate/") {
+		t.Error("activate control shown for the active version")
+	}
+	idle := renderNamed(t, "syslinux", struct {
+		Title     string
+		Mode      string
+		Page      string
+		Versions  []*syslinux.SyslinuxVersion
+		Downloads []*syslinux.DownloadStatus
+	}{
+		Title: "Syslinux", Page: "syslinux",
+		Versions: []*syslinux.SyslinuxVersion{{
+			Version: "6.04-pre1", Downloaded: true, Active: false, Size: 2048,
+		}},
+	})
+	if strings.Contains(idle, "/api/syslinux/activate/") {
+		t.Error("activate control shown before the route works")
 	}
 
 	prov := renderNamed(t, "provision", &ProvisionData{

@@ -73,7 +73,6 @@ func (h *ProvisionHandlers) getProvisionData() *ProvisionData {
 
 	data := &ProvisionData{
 		Title:      "Provision",
-		Mode:       "cozy",
 		Page:       "provision",
 		Files:      []*ProvisionFileInfo{},
 		Categories: []string{"autoyast", "bootmenu", "cloud-init", "ipxe", "kickstart", "preseed"},

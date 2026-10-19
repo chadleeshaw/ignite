@@ -92,6 +92,7 @@
             <tbody>
                 {{range .Leases}}
                 <tr class="lease-pick"
+                    tabindex="0"
                     data-mac="{{.MAC}}"
                     data-ip="{{.IP}}"
                     data-state="{{.StateDisplayName}}"
@@ -100,7 +101,8 @@
                     data-menu="{{if .Menu.Filename}}{{.Menu.OS}} {{.Menu.Version}}{{else}}none{{end}}"
                     data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
                     data-reserved="{{if .Static}}yes{{else}}no{{end}}"
-                    onclick="selectLease(this)">
+                    onclick="selectLease(this)"
+                    onkeydown="leasePickKey(event, this)">
                     <td class="mono">{{.MAC}}</td>
                     <td class="ip">{{.IP}}</td>
                     <td><span class="badge lease-state {{.StateBadgeClass}}" data-mac="{{.MAC}}">{{.StateDisplayName}}</span></td>
@@ -178,16 +180,13 @@
 
 <script>
 function toast(message, isSuccess) {
-    Toastify({
-        text: message,
-        duration: 3000,
-        close: true,
-        gravity: "top",
-        position: "right",
-        backgroundColor: isSuccess
-            ? "linear-gradient(to right, #00b09b, #96c93d)"
-            : "linear-gradient(to right, #FBBF24, #FF4500)",
-    }).showToast();
+    igniteToast(message, isSuccess);
+}
+
+function leasePickKey(event, el) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    selectLease(el);
 }
 
 var stateDisplayNames = {
@@ -245,19 +244,63 @@ function showLeaseHistory(mac) {
     fetch('/dhcp/lease/history?mac=' + encodeURIComponent(mac))
         .then(function (response) { return response.json(); })
         .then(function (data) {
-            var rows = (data.history && data.history.length)
-                ? data.history.map(function (entry) {
-                    return '<div class="flex justify-between items-center py-2 border-b"><div><span class="badge ' + getStateBadgeClass(entry.to_state) + '">' + entry.to_state + '</span> <span class="mu">' + (entry.source || '') + '</span></div><span class="mu">' + new Date(entry.timestamp).toLocaleString() + '</span></div>';
-                }).join('')
-                : '<p class="mu">No history available for this lease.</p>';
-            document.body.insertAdjacentHTML('beforeend',
-                '<div class="modal modal-open"><div class="modal-box"><h3 class="font-bold text-lg">Lease history for ' + mac + '</h3><div class="py-4">' + rows + '</div><div class="modal-action"><button class="btn" onclick="closeHistoryModal()">Close</button></div></div></div>');
+            closeHistoryModal();
+            var modal = document.createElement("div");
+            modal.id = "lease-history-modal";
+            modal.className = "modal modal-open";
+            var box = document.createElement("div");
+            box.className = "modal-box";
+            var title = document.createElement("h3");
+            title.className = "font-bold text-lg";
+            title.textContent = "Lease history for " + mac;
+            var body = document.createElement("div");
+            body.className = "py-4";
+            var history = data.history || [];
+            if (!history.length) {
+                var empty = document.createElement("p");
+                empty.className = "mu";
+                empty.textContent = "No history available for this lease.";
+                body.appendChild(empty);
+            } else {
+                history.forEach(function (entry) {
+                    var row = document.createElement("div");
+                    row.className = "flex justify-between items-center py-2 border-b";
+                    var left = document.createElement("div");
+                    var badge = document.createElement("span");
+                    badge.className = "badge " + getStateBadgeClass(entry.to_state);
+                    badge.textContent = stateDisplayNames[entry.to_state] || entry.to_state || "";
+                    var source = document.createElement("span");
+                    source.className = "mu";
+                    source.textContent = entry.source ? " " + entry.source : "";
+                    left.appendChild(badge);
+                    left.appendChild(source);
+                    var when = document.createElement("span");
+                    when.className = "mu";
+                    when.textContent = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "";
+                    row.appendChild(left);
+                    row.appendChild(when);
+                    body.appendChild(row);
+                });
+            }
+            var actions = document.createElement("div");
+            actions.className = "modal-action";
+            var close = document.createElement("button");
+            close.type = "button";
+            close.className = "btn";
+            close.textContent = "Close";
+            close.addEventListener("click", closeHistoryModal);
+            actions.appendChild(close);
+            box.appendChild(title);
+            box.appendChild(body);
+            box.appendChild(actions);
+            modal.appendChild(box);
+            document.body.appendChild(modal);
         })
         .catch(function () { toast('Failed to load lease history', false); });
 }
 
 function closeHistoryModal() {
-    var modal = document.querySelector('.modal.modal-open');
+    var modal = document.getElementById("lease-history-modal");
     if (modal) modal.remove();
 }
 

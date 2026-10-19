@@ -141,10 +141,13 @@ html[data-theme="console"] .n { border-radius: 8px; }
   color: var(--ink);
   background: transparent;
 }
-.n:focus-visible, .b:focus-visible, .tog button:focus-visible, .mode-btn:focus-visible {
+:focus-visible,
+.n:focus-visible, .b:focus-visible, .acct:focus-visible, .tog button:focus-visible, .mode-btn:focus-visible,
+.lease-pick:focus-visible, .dropdown-content button:focus-visible {
   outline: 2px solid var(--flame-400);
   outline-offset: 2px;
 }
+.lease-pick:focus-visible { outline-offset: -2px; }
 
 kbd {
   font-family: var(--mono);
@@ -161,6 +164,7 @@ kbd {
 
 .tog {
   display: flex;
+  margin: 0;
   background: rgba(0, 0, 0, 0.3);
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 999px;
@@ -666,3 +670,12 @@ html[data-theme="console"] .login-card { border-radius: 10px; }
   cursor: pointer;
 }
 html[data-theme="console"] .acct { border-radius: 8px; }
+.dropdown-content.menu li > button {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}

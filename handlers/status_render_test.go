@@ -88,7 +88,18 @@ func renderStatusTemplate(t *testing.T, name string, data *StatusPageData) strin
 }
 
 func TestStatusPageRendersFully(t *testing.T) {
-	out := renderStatusTemplate(t, "status", mockStatusPageData(true))
+	// The standalone status document is gone. Overview is the full page that
+	// still embeds the status partial, and it has to finish with </html>.
+	status := mockStatusPageData(true)
+	out := renderNamed(t, "index", OverviewPage{
+		Title:         "Overview",
+		Page:          "overview",
+		CozySubtitle:  "All services are up",
+		Status:        status,
+		HTTPStatus:    status.HTTPServer.Status,
+		TFTPStatus:    status.TFTPServer.Status,
+		OverallStatus: status.OverallStatus,
+	})
 
 	for _, want := range []string{
 		"System Healthy",   // OverallStatus badge

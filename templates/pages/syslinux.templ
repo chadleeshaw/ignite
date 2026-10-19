@@ -69,10 +69,6 @@
                                     hx-post="/api/syslinux/download/{{.Version}}"
                                     hx-swap="none"
                                     hx-confirm="Download Syslinux {{.Version}}? The download also becomes the active BIOS and EFI install.">Download</button>
-                            {{else if not .Active}}
-                            <button class="b sm"
-                                    hx-post="/api/syslinux/activate/{{.Version}}"
-                                    hx-swap="none">Activate</button>
                             {{end}}
                             {{if .Active}}
                             <button class="b sm" type="button" onclick="showVersionInfo('{{.Version}}')">Info</button>
@@ -126,17 +122,32 @@ function showVersionInfo(version) {
     fetch('/api/syslinux/versions/' + encodeURIComponent(version))
         .then(function (response) { return response.json(); })
         .then(function (data) {
-            document.getElementById('versionInfo').innerHTML =
-                '<div class="kv">' +
-                '<span>Version</span><span>' + data.version + '</span>' +
-                '<span>File</span><span class="mono">' + data.file_name + '</span>' +
-                '<span>Size</span><span>' + formatBytes(data.size) + '</span>' +
-                '<span>URL</span><span class="mono">' + data.download_url + '</span>' +
-                '<span>Covers</span><span>BIOS and EFI</span>' +
-                '</div>';
+            fillFacts(document.getElementById('versionInfo'), [
+                ['Version', data.version, ''],
+                ['File', data.file_name, 'mono'],
+                ['Size', formatBytes(data.size), ''],
+                ['URL', data.download_url, 'mono'],
+                ['Covers', 'BIOS and EFI', '']
+            ]);
             document.getElementById('infoModal').showModal();
         })
         .catch(function () { alert('Failed to load version information'); });
+}
+
+function fillFacts(el, rows) {
+    el.replaceChildren();
+    var grid = document.createElement('div');
+    grid.className = 'kv';
+    rows.forEach(function (row) {
+        var label = document.createElement('span');
+        label.textContent = row[0];
+        var value = document.createElement('span');
+        if (row[2]) value.className = row[2];
+        value.textContent = row[1] == null ? '' : String(row[1]);
+        grid.appendChild(label);
+        grid.appendChild(value);
+    });
+    el.appendChild(grid);
 }
 
 function formatBytes(bytes) {

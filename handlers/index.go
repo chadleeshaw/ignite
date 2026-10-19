@@ -46,7 +46,6 @@ func (h *IndexHandlers) Index(w http.ResponseWriter, r *http.Request) {
 	cozy, console := describeStatus(status)
 	page := OverviewPage{
 		Title:           "Overview",
-		Mode:            "cozy",
 		Page:            "overview",
 		CozySubtitle:    cozy,
 		ConsoleSubtitle: console,
