@@ -9,6 +9,15 @@ import (
 // Use errors.Is to distinguish it from real backend failures.
 var ErrNotFound = errors.New("entity not found")
 
+// Tx is a single read-write transaction. Values returned by Get are copies
+// and stay valid after the transaction ends. Put creates a missing bucket.
+// Delete of a missing bucket or key is a no-op.
+type Tx interface {
+	Get(bucket string, key []byte) ([]byte, error)
+	Put(bucket string, key, value []byte) error
+	Delete(bucket string, key []byte) error
+}
+
 // Database defines the interface for database operations
 type Database interface {
 	Close() error
@@ -18,6 +27,9 @@ type Database interface {
 	GetAllKV(ctx context.Context, bucket string) (map[string][]byte, error)
 	DeleteAllKV(ctx context.Context, bucket string) error
 	GetOrCreateBucket(ctx context.Context, name string) error
+	// Update runs fn inside one read-write transaction. Returning an error
+	// from fn rolls the whole transaction back.
+	Update(ctx context.Context, fn func(Tx) error) error
 }
 
 // Repository provides a generic repository interface

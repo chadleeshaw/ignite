@@ -147,6 +147,54 @@ func (b *BoltDB) DeleteAllKV(ctx context.Context, bucket string) error {
 	})
 }
 
+// boltKVTx adapts a bbolt transaction to Tx.
+type boltKVTx struct {
+	tx *bolt.Tx
+}
+
+func (t *boltKVTx) Get(bucket string, key []byte) ([]byte, error) {
+	bkt := t.tx.Bucket([]byte(bucket))
+	if bkt == nil {
+		return nil, nil
+	}
+	data := bkt.Get(key)
+	if data == nil {
+		return nil, nil
+	}
+	value := make([]byte, len(data))
+	copy(value, data)
+	return value, nil
+}
+
+func (t *boltKVTx) Put(bucket string, key, value []byte) error {
+	bkt, err := t.tx.CreateBucketIfNotExists([]byte(bucket))
+	if err != nil {
+		return fmt.Errorf("create bucket: %w", err)
+	}
+	return bkt.Put(key, value)
+}
+
+func (t *boltKVTx) Delete(bucket string, key []byte) error {
+	bkt := t.tx.Bucket([]byte(bucket))
+	if bkt == nil {
+		return nil
+	}
+	return bkt.Delete(key)
+}
+
+// Update runs fn inside one read-write transaction.
+func (b *BoltDB) Update(ctx context.Context, fn func(Tx) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return fmt.Errorf("transaction function is nil")
+	}
+	return b.db.Update(func(tx *bolt.Tx) error {
+		return fn(&boltKVTx{tx: tx})
+	})
+}
+
 // BatchPut stores multiple key-value pairs in a single bucket atomically,
 // i.e. inside one bbolt read-write transaction.
 func (b *BoltDB) BatchPut(ctx context.Context, bucket string, kvs map[string][]byte) error {

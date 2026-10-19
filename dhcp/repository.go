@@ -3,6 +3,7 @@ package dhcp
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"net"
 	"time"
@@ -91,16 +92,44 @@ func (r *BoltLeaseRepository) macIndexBucket() string {
 	return r.bucket + "_by_mac"
 }
 
-// Save saves a lease to the repository and maintains the MAC index
+// Save saves a lease and its MAC index in one transaction. A failure rolls
+// both writes back, so the index cannot point at a lease row that was not
+// committed (and a MAC change cannot leave the old index entry behind).
 func (r *BoltLeaseRepository) Save(ctx context.Context, lease *Lease) error {
-	// Drop any stale index entry if the lease's MAC changed since it was stored.
-	if existing, err := r.Get(ctx, lease.ID); err == nil && existing != nil && existing.MAC != lease.MAC {
-		_ = r.db.DeleteKV(ctx, r.macIndexBucket(), []byte(existing.MAC))
+	if lease == nil || lease.ID == "" {
+		return fmt.Errorf("lease id is required")
 	}
-	if err := r.repo.Save(ctx, lease.ID, lease); err != nil {
+	if lease.MAC == "" {
+		return fmt.Errorf("lease MAC is required")
+	}
+	data, err := json.Marshal(lease)
+	if err != nil {
+		return fmt.Errorf("failed to marshal lease: %w", err)
+	}
+	return r.db.Update(ctx, func(tx db.Tx) error {
+		return writeLease(tx, r.bucket, r.macIndexBucket(), lease, data)
+	})
+}
+
+// writeLease writes the lease row and the MAC index. When the stored MAC
+// changed, the previous index entry is removed in the same transaction.
+func writeLease(tx db.Tx, bucket, indexBucket string, lease *Lease, data []byte) error {
+	existing, err := tx.Get(bucket, []byte(lease.ID))
+	if err != nil {
 		return err
 	}
-	if err := r.db.PutKV(ctx, r.macIndexBucket(), []byte(lease.MAC), []byte(lease.ID)); err != nil {
+	if len(existing) > 0 {
+		var prev Lease
+		if err := json.Unmarshal(existing, &prev); err == nil && prev.MAC != "" && prev.MAC != lease.MAC {
+			if err := tx.Delete(indexBucket, []byte(prev.MAC)); err != nil {
+				return err
+			}
+		}
+	}
+	if err := tx.Put(bucket, []byte(lease.ID), data); err != nil {
+		return err
+	}
+	if err := tx.Put(indexBucket, []byte(lease.MAC), []byte(lease.ID)); err != nil {
 		return fmt.Errorf("failed to update MAC index: %w", err)
 	}
 	return nil
@@ -170,12 +199,23 @@ func (r *BoltLeaseRepository) GetAll(ctx context.Context) ([]*Lease, error) {
 	return leases, nil
 }
 
-// Delete removes a lease by ID and cleans up its MAC index entry
+// Delete removes a lease and its MAC index entry in one transaction.
 func (r *BoltLeaseRepository) Delete(ctx context.Context, id string) error {
-	if existing, err := r.Get(ctx, id); err == nil && existing != nil {
-		_ = r.db.DeleteKV(ctx, r.macIndexBucket(), []byte(existing.MAC))
-	}
-	return r.repo.Delete(ctx, id)
+	return r.db.Update(ctx, func(tx db.Tx) error {
+		existing, err := tx.Get(r.bucket, []byte(id))
+		if err != nil {
+			return err
+		}
+		if len(existing) > 0 {
+			var prev Lease
+			if json.Unmarshal(existing, &prev) == nil && prev.MAC != "" {
+				if err := tx.Delete(r.macIndexBucket(), []byte(prev.MAC)); err != nil {
+					return err
+				}
+			}
+		}
+		return tx.Delete(r.bucket, []byte(id))
+	})
 }
 
 // DeleteByMAC removes a lease by MAC address
