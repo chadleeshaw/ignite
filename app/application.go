@@ -92,6 +92,7 @@ func (a *Application) Start() error {
 	}
 	a.container.Config.TFTP.Dir = tftpRoot.Path
 	handlers.SetTFTPRoot(tftpRoot.Path)
+	handlers.SetTFTPDisplayRoot(tftpRoot.Display)
 	if a.container.SyslinuxService != nil {
 		slCfg := a.container.SyslinuxService.GetConfig()
 		slCfg.TFTPDir = tftpRoot.Path

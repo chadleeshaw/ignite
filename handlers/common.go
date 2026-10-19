@@ -16,12 +16,22 @@ import (
 	"ignite/dhcp"
 )
 
-// TFTPDir holds the directory path for TFTP server operations.
+// TFTPDir holds the absolute directory path for TFTP server operations.
 var TFTPDir string
+
+// TFTPDisplayRoot is the path label for the TFTP page. It is the configured
+// TFTP_DIR as given. Startup sets it to the temporary directory only when
+// that directory is what the server is actually serving.
+var TFTPDisplayRoot string
 
 // SetTFTPRoot records the resolved TFTP directory used by file handlers.
 func SetTFTPRoot(dir string) {
 	TFTPDir = dir
+}
+
+// SetTFTPDisplayRoot records the path shown on the TFTP page.
+func SetTFTPDisplayRoot(dir string) {
+	TFTPDisplayRoot = dir
 }
 
 // HTTPDir holds the directory path for HTTP server operations.

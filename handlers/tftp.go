@@ -305,7 +305,14 @@ type TFTPData struct {
 	ServerDirectory string
 	PrevDirectory   string
 	Root            string
+	Breadcrumbs     []TFTPCrumb
 	Files           []FileInfo
+}
+
+// TFTPCrumb is one step below the TFTP root in the page breadcrumb.
+type TFTPCrumb struct {
+	Dir  string
+	Name string
 }
 
 // getTFTP retrieves file information for the root TFTP directory.
@@ -366,9 +373,18 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		ServerRunning:   isTFTPRunning(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
-		Root:            TFTPDir,
+		Root:            tftpPageRoot(),
 		Files:           fileInfos,
 	}, nil
+}
+
+// tftpPageRoot is the path the TFTP page prints. File operations keep using
+// the absolute TFTPDir.
+func tftpPageRoot() string {
+	if TFTPDisplayRoot != "" {
+		return TFTPDisplayRoot
+	}
+	return TFTPDir
 }
 
 // mustAbs returns the absolute form of p, falling back to p itself on error.

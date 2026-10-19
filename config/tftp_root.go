@@ -13,7 +13,13 @@ const DefaultTFTPDir = "./public/tftp"
 
 // TFTPRoot is the directory the TFTP server will serve.
 type TFTPRoot struct {
+	// Path is the absolute directory the server reads and writes.
 	Path string
+	// Display is the path shown on the TFTP page. It is the configured
+	// TFTP_DIR string as given, or DefaultTFTPDir when that is unset.
+	// When the configured directory cannot be created, Display is the
+	// temporary directory that is actually served.
+	Display string
 	// Ephemeral is true when Path will not survive a process restart.
 	Ephemeral bool
 	// Warning is empty when Path is a normal persistent directory.
@@ -30,6 +36,7 @@ func ResolveTFTPRoot(configured string) (TFTPRoot, error) {
 	if configured == "" {
 		configured = DefaultTFTPDir
 	}
+	display := configured
 	if err := os.MkdirAll(configured, 0o755); err != nil {
 		fallback, ferr := os.MkdirTemp("", "ignite-tftp")
 		if ferr != nil {
@@ -37,6 +44,7 @@ func ResolveTFTPRoot(configured string) (TFTPRoot, error) {
 		}
 		return TFTPRoot{
 			Path:      fallback,
+			Display:   fallback,
 			Ephemeral: true,
 			Warning: fmt.Sprintf(
 				"WARNING: TFTP directory %q could not be created (%v). Falling back to temporary directory %s. Boot files, OS images, and per-MAC configs in this directory will not survive a restart",
@@ -48,7 +56,7 @@ func ResolveTFTPRoot(configured string) (TFTPRoot, error) {
 	if err != nil {
 		abs = configured
 	}
-	root := TFTPRoot{Path: abs}
+	root := TFTPRoot{Path: abs, Display: display}
 	if ephemeralPath(abs) {
 		root.Ephemeral = true
 		root.Warning = fmt.Sprintf(
