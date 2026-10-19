@@ -50,25 +50,35 @@ Servers, pool free space, and leases with state, reservation, boot menu, and las
 
 ![DHCP in Cozy mode](./public/http/img/dhcp_page.png)
 
+![DHCP in Console mode](./public/http/img/dhcp_console.png)
+
 ### **TFTP**
 Boot-file browser for the TFTP root, with upload, download, and view.
 
 ![TFTP in Cozy mode](./public/http/img/tftp_page.png)
+
+![TFTP in Console mode](./public/http/img/tftp_console.png)
 
 ### **Provision**
 Template and config file picker beside the editor.
 
 ![Provision in Cozy mode](./public/http/img/provision_page.png)
 
+![Provision in Console mode](./public/http/img/provision_console.png)
+
 ### **OS Images**
 Installed kernels and initrds.
 
 ![OS Images in Cozy mode](./public/http/img/osimage_page.png)
 
+![OS Images in Console mode](./public/http/img/osimage_console.png)
+
 ### **Syslinux**
 Versions available to install. One active version covers BIOS and EFI.
 
 ![Syslinux in Cozy mode](./public/http/img/syslinux_page.png)
+
+![Syslinux in Console mode](./public/http/img/syslinux_console.png)
 
 ## Getting Started
 
@@ -125,7 +135,7 @@ go run vmtest.go clean # Clean up test files
 
 **README screenshots**:
 
-Regenerate the images under `public/http/img/` with headless Chrome. TCP 8080 and UDP 69 must be free. The target builds Ignite, seeds a temporary database (DHCP leases, OS images, and Syslinux versions), and writes Cozy captures plus one Console overview.
+Regenerate the images under `public/http/img/` with headless Chrome. TCP 8080 and UDP 69 must be free. The target builds Ignite, seeds a temporary database (DHCP leases, OS images, and Syslinux versions), and writes a Cozy and a Console capture of each nav page.
 
 ```bash
 make screenshots

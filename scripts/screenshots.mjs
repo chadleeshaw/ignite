@@ -4,7 +4,9 @@
 //
 // Chrome is taken from CHROME_PATH, or google-chrome / chromium on PATH.
 // The server should already be logged-in-able as admin/admin and seeded
-// (scripts/seed-demo.go). Writes PNGs under public/http/img/.
+// (scripts/seed-demo.go). Writes a Cozy and a Console PNG for each nav
+// page under public/http/img/. Each navigation reloads Cozy from the
+// server, then the script switches to Console before the second capture.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, statSync } from "node:fs";
@@ -39,6 +41,22 @@ async function settle(page) {
   await new Promise((r) => setTimeout(r, 250));
 }
 
+async function setMode(page, mode) {
+  await page.evaluate((next) => igniteSetMode(next), mode);
+  await new Promise((r) => setTimeout(r, 200));
+}
+
+async function openProvisionFile(page) {
+  await page.evaluate(() => {
+    const item = document.querySelector(".file-item");
+    if (item && typeof selectFile === "function") selectFile(item);
+  });
+  await page.waitForFunction(() => {
+    const editor = document.getElementById("editor-textarea");
+    return editor && editor.value.length > 0;
+  });
+}
+
 const browser = await puppeteer.launch({
   executablePath: findChrome(),
   headless: true,
@@ -58,33 +76,28 @@ try {
   await settle(page);
 
   await save(page, "main_page.png");
-  await page.evaluate(() => igniteSetMode("console"));
-  await new Promise((r) => setTimeout(r, 200));
+  await setMode(page, "console");
   await save(page, "console_page.png");
 
   const pages = [
-    ["/dhcp", "dhcp_page.png"],
-    ["/tftp", "tftp_page.png"],
-    ["/osimages", "osimage_page.png"],
-    ["/syslinux", "syslinux_page.png"],
+    ["/dhcp", "dhcp_page.png", "dhcp_console.png"],
+    ["/tftp", "tftp_page.png", "tftp_console.png"],
+    ["/osimages", "osimage_page.png", "osimage_console.png"],
+    ["/syslinux", "syslinux_page.png", "syslinux_console.png"],
+    ["/provision", "provision_page.png", "provision_console.png"],
   ];
-  for (const [path, file] of pages) {
+  for (const [path, cozyFile, consoleFile] of pages) {
     await page.goto(base + path, { waitUntil: "networkidle0" });
     await settle(page);
-    await save(page, file);
+    if (path === "/provision") await openProvisionFile(page);
+    await save(page, cozyFile);
+    await setMode(page, "console");
+    if (path === "/provision") {
+      const stillOpen = await page.$eval("#editor-textarea", (el) => el.value.length > 0).catch(() => false);
+      if (!stillOpen) await openProvisionFile(page);
+    }
+    await save(page, consoleFile);
   }
-
-  await page.goto(`${base}/provision`, { waitUntil: "networkidle0" });
-  await settle(page);
-  await page.evaluate(() => {
-    const item = document.querySelector(".file-item");
-    if (item && typeof selectFile === "function") selectFile(item);
-  });
-  await page.waitForFunction(() => {
-    const editor = document.getElementById("editor-textarea");
-    return editor && editor.value.length > 0;
-  });
-  await save(page, "provision_page.png");
 } finally {
   await browser.close();
 }
