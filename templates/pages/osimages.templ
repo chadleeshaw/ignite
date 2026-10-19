@@ -9,8 +9,7 @@
         <button class="b p" type="button" onclick="document.getElementById('downloadModal').showModal()">Download image</button>
         <button class="b" type="button"
                 hx-post="/ipxe/update"
-                hx-swap="none"
-                hx-on::after-request="handleIPXEResponse(event)">Regenerate iPXE</button>
+                hx-swap="none">Regenerate iPXE</button>
     </div>
 </header>
 
@@ -237,7 +236,6 @@ function handleDownloadResponse(event) {
         const response = JSON.parse(xhr.responseText);
         if (response.status === 'started') {
             document.getElementById('downloadModal').close();
-            igniteToast(response.message || "Download started", true);
             setTimeout(function () { window.location.reload(); }, 1000);
         }
     } catch (e) {
@@ -245,12 +243,5 @@ function handleDownloadResponse(event) {
     }
 }
 
-function handleIPXEResponse(event) {
-    const xhr = event.detail.xhr;
-    igniteToast(
-        xhr.status === 200 ? "iPXE configuration regenerated successfully" : "Failed to regenerate iPXE configuration",
-        xhr.status === 200
-    );
-}
 </script>
 {{ end }}

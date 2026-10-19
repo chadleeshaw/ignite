@@ -689,7 +689,8 @@ html[data-theme="console"] .login-card { border-radius: 10px; }
   cursor: pointer;
 }
 html[data-theme="console"] .acct { border-radius: 8px; }
-.dropdown-content.menu li > button {
+.dropdown-content.menu li > button,
+.dropdown-content.menu li > form > button {
   width: 100%;
   text-align: left;
   background: transparent;

@@ -223,19 +223,22 @@ function updateLeaseState(mac, newState) {
     var formData = new FormData();
     formData.append('state', newState);
     formData.append('source', 'manual');
-    fetch('/dhcp/lease/state?mac=' + encodeURIComponent(mac), { method: 'POST', body: formData })
-        .then(function (response) { return response.json(); })
-        .then(function (data) {
-            if (data.success) {
-                document.querySelectorAll('.lease-state').forEach(function (badge) {
-                    if (badge.getAttribute('data-mac') !== mac) return;
-                    badge.className = 'badge lease-state ' + getStateBadgeClass(newState);
-                    badge.textContent = stateDisplayNames[newState] || newState;
-                });
-                toast('Lease state updated to ' + (stateDisplayNames[newState] || newState), true);
-            } else {
-                toast('Failed to update lease state: ' + (data.message || 'Unknown error'), false);
-            }
+    igniteFetch('/dhcp/lease/state?mac=' + encodeURIComponent(mac), { method: 'POST', body: formData })
+        .then(function (response) {
+            return response.text().then(function (text) {
+                var data = {};
+                try { data = JSON.parse(text); } catch (err) {}
+                if (response.ok && data.success) {
+                    document.querySelectorAll('.lease-state').forEach(function (badge) {
+                        if (badge.getAttribute('data-mac') !== mac) return;
+                        badge.className = 'badge lease-state ' + getStateBadgeClass(newState);
+                        badge.textContent = stateDisplayNames[newState] || newState;
+                    });
+                    toast('Lease state updated to ' + (stateDisplayNames[newState] || newState), true);
+                    return;
+                }
+                toast(igniteResponseMessage({ responseText: text }, 'Failed to update lease state'), false);
+            });
         })
         .catch(function () { toast('Failed to update lease state', false); });
 }

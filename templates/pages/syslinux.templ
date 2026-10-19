@@ -72,6 +72,13 @@
                                     hx-swap="none"
                                     hx-confirm="Download Syslinux {{.Version}}? The download also becomes the active BIOS and EFI install.">Download</button>
                             {{end}}
+                            {{if and .Downloaded (not .Active)}}
+                            <button class="b sm"
+                                    hx-post="/api/syslinux/activate/{{.Version}}"
+                                    hx-swap="none"
+                                    hx-confirm="Activate Syslinux {{.Version}}? It becomes the BIOS and EFI install."
+                                    hx-on::after-request="if (event.detail.successful) window.location.href='/syslinux'">Activate</button>
+                            {{end}}
                             {{if .Active}}
                             <button class="b sm" type="button" onclick="showVersionInfo('{{.Version}}')">Info</button>
                             <button class="b dg sm"

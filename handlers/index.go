@@ -34,9 +34,10 @@ func NewIndexHandlers(container *Container) *IndexHandlers {
 	return &IndexHandlers{container: container}
 }
 
-// Index serves the overview. Service tiles use the same status data as
-// /status. Lease and pool counts are filled by GET /dashboard/summary when
-// that route exists; the slot keeps real service figures until then.
+// Index serves the overview. Service tiles use the same status data Overview
+// polls from /status/content. Lease and pool counts are filled by
+// GET /dashboard/summary when that route exists; the slot keeps real service
+// figures until then.
 func (h *IndexHandlers) Index(w http.ResponseWriter, r *http.Request) {
 	status, err := NewStatusHandlers(h.container).getStatusData(r)
 	if err != nil {

@@ -83,6 +83,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		CozySubtitle:  "All services are up",
 		HTTPStatus:    "running",
 		TFTPStatus:    "unknown",
+		CSRFToken:     "session-token",
 		LeaseTotal:    5,
 		ServerCount:   2,
 		DHCPRunning:   0,
@@ -100,8 +101,8 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			t.Errorf("overview missing %q", want)
 		}
 	}
-	if strings.Contains(overview, "localStorage") {
-		t.Error("overview still mentions localStorage")
+	if strings.Contains(overview, "localStorage") || strings.Contains(overview, "document.cookie") || strings.Contains(overview, "ignite_mode") {
+		t.Error("overview still reads client storage or the mode cookie")
 	}
 	for _, want := range []string{
 		`class="sb"`,
@@ -124,6 +125,13 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		`value="console"`,
 		`aria-current="page"`,
 		`aria-pressed="true"`,
+		`name="csrf-token" content="session-token"`,
+		`name="csrf_token" value="session-token"`,
+		`id="logout-form"`,
+		`action="/auth/logout"`,
+		`hx-headers=`,
+		`X-CSRF-Token`,
+		`function igniteFetch`,
 	} {
 		if !strings.Contains(overview, want) {
 			t.Errorf("overview mode form missing %q", want)
@@ -143,10 +151,11 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 
 	console := renderNamed(t, "dhcp", struct {
-		Title   string
-		Mode    string
-		Page    string
-		Servers []DHCPServerView
+		Title     string
+		Mode      string
+		Page      string
+		CSRFToken string
+		Servers   []DHCPServerView
 	}{
 		Title: "DHCP",
 		Mode:  "console",
@@ -241,6 +250,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Title         string
 		Mode          string
 		Page          string
+		CSRFToken     string
 		OSImages      []*osimage.OSImage
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
@@ -262,6 +272,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Title     string
 		Mode      string
 		Page      string
+		CSRFToken string
 		Versions  []*syslinux.SyslinuxVersion
 		Downloads []*syslinux.DownloadStatus
 	}{
@@ -280,6 +291,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Title     string
 		Mode      string
 		Page      string
+		CSRFToken string
 		Versions  []*syslinux.SyslinuxVersion
 		Downloads []*syslinux.DownloadStatus
 	}{
@@ -288,8 +300,8 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			Version: "6.04-pre1", Downloaded: true, Active: false, Size: 2048,
 		}},
 	})
-	if strings.Contains(idle, "/api/syslinux/activate/") {
-		t.Error("activate control shown before the route works")
+	if !strings.Contains(idle, "/api/syslinux/activate/6.04-pre1") {
+		t.Error("activate control missing for a downloaded inactive version")
 	}
 	if !strings.Contains(sys, "1 version") || !strings.Contains(sys, `<kbd>5</kbd> syslinux`) {
 		t.Error("syslinux status bar missing")

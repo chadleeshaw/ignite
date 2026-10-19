@@ -3,6 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{.CSRFToken}}">
     <title>{{with fieldString . "Title"}}{{.}}{{else}}Ignite{{end}}</title>
     <link rel="stylesheet" href="/public/http/css/tailwind.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -10,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
-<body class="bg-base-100">
+<body class="bg-base-100" hx-headers="{{csrfHeaders .CSRFToken}}">
     <div class="sparks" aria-hidden="true">
         <span class="sp" style="left:8%;bottom:12%;width:3px;height:3px"></span>
         <span class="sp" style="left:22%;bottom:6%;width:2px;height:2px"></span>
@@ -30,6 +31,7 @@
             <a class="n {{if eq (pageID .) "provision"}}on{{end}}" href="/provision" {{if eq (pageID .) "provision"}}aria-current="page"{{end}}>Provision<kbd class="only-console">6</kbd></a>
             <div class="nav-end">
                 <form class="tog" method="post" action="{{modePreferenceURL}}" role="group" aria-label="Display mode">
+                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                     <button type="submit" name="mode" value="cozy" class="mode-btn" data-mode="cozy" aria-pressed="{{if eq (uiMode .) "console"}}false{{else}}true{{end}}">Cozy</button>
                     <button type="submit" name="mode" value="console" class="mode-btn" data-mode="console" aria-pressed="{{if eq (uiMode .) "console"}}true{{else}}false{{end}}">&gt;_ Console <kbd>\</kbd></button>
                 </form>
@@ -37,7 +39,12 @@
                     <button type="button" tabindex="0" class="acct">Account</button>
                     <ul tabindex="0" class="dropdown-content menu menu-sm mt-2 z-[20] p-2 shadow rounded-box w-52">
                         <li><button type="button" onclick="openChangePasswordModal()">Change password</button></li>
-                        <li><button type="button" onclick="logout()">Log out</button></li>
+                        <li>
+                            <form id="logout-form" method="post" action="/auth/logout">
+                                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                                <button type="submit">Log out</button>
+                            </form>
+                        </li>
                     </ul>
                 </div>
             </div>
@@ -68,7 +75,8 @@
     <div id="change-password-modal" class="modal">
         <div class="modal-box">
             <h3 class="font-bold text-lg mb-4">Change password</h3>
-            <form id="change-password-form">
+            <form id="change-password-form" method="post" action="/auth/change-password">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <div class="form-control mb-4">
                     <label class="label" for="current-password"><span class="label-text">Current password</span></label>
                     <input type="password" id="current-password" class="input input-bordered" required>
@@ -110,17 +118,64 @@
             }).showToast();
         }
 
-        function igniteSetMode(mode) {
-            if (mode !== "cozy" && mode !== "console") return;
+        function igniteCSRF() {
+            var meta = document.querySelector('meta[name="csrf-token"]');
+            return meta ? (meta.getAttribute("content") || "") : "";
+        }
+
+        function igniteFetch(url, options) {
+            var opts = options ? Object.assign({}, options) : {};
+            var headers = new Headers(opts.headers || {});
+            if (!headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", igniteCSRF());
+            opts.headers = headers;
+            return fetch(url, opts);
+        }
+
+        function igniteResponseMessage(xhr, fallback) {
+            var text = "";
+            if (xhr && typeof xhr.responseText === "string") text = xhr.responseText.trim();
+            if (!text) return fallback || "";
+            if (text.charAt(0) === "{") {
+                try {
+                    var data = JSON.parse(text);
+                    if (data && data.error) {
+                        if (data.error.user_message) return String(data.error.user_message);
+                        if (data.error.message) return String(data.error.message);
+                    }
+                    if (data && data.message) return String(data.message);
+                    if (data && data.user_message) return String(data.user_message);
+                } catch (e) {}
+                return fallback || "That action failed.";
+            }
+            if (text.charAt(0) === "<") return fallback || "";
+            return text;
+        }
+
+        function igniteApplyMode(mode) {
             document.documentElement.setAttribute("data-theme", mode);
             document.querySelectorAll(".mode-btn").forEach(function (btn) {
                 btn.setAttribute("aria-pressed", btn.getAttribute("data-mode") === mode ? "true" : "false");
             });
-            fetch(IGNITE_MODE_URL, {
+        }
+
+        function igniteSetMode(mode) {
+            if (mode !== "cozy" && mode !== "console") return;
+            var previous = document.documentElement.getAttribute("data-theme") === "console" ? "console" : "cozy";
+            igniteApplyMode(mode);
+            igniteFetch(IGNITE_MODE_URL, {
                 method: "POST",
                 headers: { "Content-Type": "application/json", "Accept": "application/json" },
                 body: JSON.stringify({ mode: mode })
-            }).catch(function () {});
+            }).then(function (response) {
+                if (response.ok) return;
+                igniteApplyMode(previous);
+                return response.text().then(function (text) {
+                    igniteToast(igniteResponseMessage({ responseText: text }, "Could not save the display mode."), false);
+                });
+            }).catch(function () {
+                igniteApplyMode(previous);
+                igniteToast("Could not save the display mode.", false);
+            });
         }
 
         var modeForm = document.querySelector("form.tog");
@@ -213,12 +268,10 @@
         document.body.addEventListener("htmx:afterRequest", function (evt) {
             if (igniteSilent(evt)) return;
             if (evt.detail.failed) {
-                var errorMessage = "An unknown error occurred.";
-                if (evt.detail.xhr && evt.detail.xhr.responseText) errorMessage = evt.detail.xhr.responseText;
-                igniteToast(errorMessage, false);
+                igniteToast(igniteResponseMessage(evt.detail.xhr, "An unknown error occurred."), false);
             } else if (evt.detail.successful) {
-                var successMessage = evt.detail.xhr ? evt.detail.xhr.responseText : "";
-                if (successMessage && successMessage.trim().charAt(0) !== "<") {
+                var successMessage = igniteResponseMessage(evt.detail.xhr, "");
+                if (successMessage && successMessage !== "That action failed.") {
                     igniteToast(successMessage, true);
                 }
             }
@@ -230,11 +283,27 @@
             if (slot) slot.removeAttribute("hx-trigger");
         });
 
-        function logout() {
-            fetch("/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" } })
-                .then(function (response) { return response.json(); })
-                .then(function (data) { if (data.success) window.location.href = "/login"; })
-                .catch(function () { window.location.href = "/login"; });
+        var logoutForm = document.getElementById("logout-form");
+        if (logoutForm) {
+            logoutForm.addEventListener("submit", function (e) {
+                e.preventDefault();
+                igniteFetch("/auth/logout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" }
+                }).then(function (response) {
+                    return response.text().then(function (text) {
+                        var data = {};
+                        try { data = JSON.parse(text); } catch (err) {}
+                        if (response.ok && data.success) {
+                            window.location.href = "/login";
+                            return;
+                        }
+                        igniteToast(igniteResponseMessage({ responseText: text }, "Could not log out."), false);
+                    });
+                }).catch(function () {
+                    igniteToast("Could not log out.", false);
+                });
+            });
         }
 
         function openChangePasswordModal() {
@@ -255,22 +324,19 @@
                 Toastify({ text: "New passwords do not match", duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)" }).showToast();
                 return;
             }
-            fetch("/auth/change-password", {
+            igniteFetch("/auth/change-password", {
                 method: "POST",
-                headers: { "Content-Type": "application/json" },
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
                 body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
-            }).then(function (response) { return response.json(); }).then(function (data) {
-                Toastify({
-                    text: data.message,
-                    duration: 3000,
-                    close: true,
-                    gravity: "top",
-                    position: "right",
-                    backgroundColor: data.success ? "linear-gradient(to right, #00b09b, #96c93d)" : "linear-gradient(to right, #FBBF24, #FF4500)"
-                }).showToast();
-                if (data.success) closeChangePasswordModal();
+            }).then(function (response) {
+                return response.text().then(function (text) {
+                    var data = {};
+                    try { data = JSON.parse(text); } catch (err) {}
+                    igniteToast(igniteResponseMessage({ responseText: text }, "An error occurred while changing password"), response.ok && !!data.success);
+                    if (response.ok && data.success) closeChangePasswordModal();
+                });
             }).catch(function () {
-                Toastify({ text: "An error occurred while changing password", duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)" }).showToast();
+                igniteToast("An error occurred while changing password", false);
             });
         });
     </script>

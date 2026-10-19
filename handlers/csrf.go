@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"strings"
 )
@@ -10,6 +11,16 @@ const csrfFormField = "csrf_token"
 
 // csrfHeader is the header htmx and fetch clients send.
 const csrfHeader = "X-CSRF-Token"
+
+// csrfHeaders is the hx-headers JSON object. Callers put it in an attribute
+// so html/template escapes quotes; json.Marshal keeps the token valid JSON.
+func csrfHeaders(token string) string {
+	encoded, err := json.Marshal(map[string]string{csrfHeader: token})
+	if err != nil {
+		return "{}"
+	}
+	return string(encoded)
+}
 
 func isStateChanging(method string) bool {
 	switch method {

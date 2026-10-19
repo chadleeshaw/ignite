@@ -285,13 +285,20 @@ function deleteFile(filePath, fileName, event) {
     const formData = new FormData();
     formData.append('path', filePath);
 
-    fetch('/provision/delete-file', {
+    igniteFetch('/provision/delete-file', {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
+    .then(function (response) {
+        return response.text().then(function (text) {
+            var data = {};
+            try { data = JSON.parse(text); } catch (err) {}
+            return { response: response, data: data, text: text };
+        });
+    })
+    .then(function (result) {
+        var data = result.data;
+        if (result.response.ok && data.success) {
             toast('File deleted successfully!', true);
 
             // Clear editor if the deleted file was currently open
@@ -305,7 +312,7 @@ function deleteFile(filePath, fileName, event) {
                 row.remove();
             }
         } else {
-            toast('Error deleting file: ' + data.error, false);
+            toast(igniteResponseMessage({ responseText: result.text }, 'Error deleting file'), false);
         }
     })
     .catch(error => {
@@ -325,19 +332,22 @@ function saveFile() {
     formData.append('path', currentFile.path);
     formData.append('content', content);
     
-    fetch('/provision/save-file', {
+    igniteFetch('/provision/save-file', {
         method: 'POST',
         body: formData
     })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            isModified = false;
-            updateFileStatus();
-            toast('File saved successfully!', true);
-        } else {
-            toast('Error saving file: ' + data.error, false);
-        }
+    .then(function (response) {
+        return response.text().then(function (text) {
+            var data = {};
+            try { data = JSON.parse(text); } catch (err) {}
+            if (response.ok && data.success) {
+                isModified = false;
+                updateFileStatus();
+                toast('File saved successfully!', true);
+                return;
+            }
+            toast(igniteResponseMessage({ responseText: text }, 'Error saving file'), false);
+        });
     })
     .catch(error => {
         console.error('Error saving file:', error);
