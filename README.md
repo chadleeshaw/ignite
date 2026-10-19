@@ -367,7 +367,7 @@ docker run -d \
   -p 69:69/udp \
   -v $(pwd)/data:/app/data \
   -v $(pwd)/public:/app/public \
-  ghcr.io/chadleeshaw/ignite:v2.0.0
+  ghcr.io/chadleeshaw/ignite:v3.0.0
 ```
 
 #### **Option 2: Build from Source**
@@ -383,12 +383,12 @@ docker run -d --name ignite -p 8080:8080 -p 69:69/udp ignite:release
 ### **Binary Installation**
 ```bash
 # Download for your platform
-wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-linux-amd64
+wget https://github.com/chadleeshaw/ignite/releases/download/v3.0.0/ignite-linux-amd64
 chmod +x ignite-linux-amd64
 ./ignite-linux-amd64
 
 # Or use the x86_64 variant
-wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-x86_64
+wget https://github.com/chadleeshaw/ignite/releases/download/v3.0.0/ignite-x86_64
 chmod +x ignite-x86_64
 ./ignite-x86_64
 ```
