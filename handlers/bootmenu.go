@@ -3,7 +3,6 @@ package handlers
 import (
 	"context"
 	"fmt"
-	"html/template"
 	"ignite/dhcp"
 	"log"
 	"net"
@@ -11,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"text/template"
 )
 
 // BootMenuHandlers handles boot menu-related requests
@@ -319,7 +319,10 @@ func (h *BootMenuHandlers) osToInitrd(os, version string) string {
 }
 
 // writeTemplateToDisk parses the template file and writes the rendered
-// output to disk. Parse failures are returned as errors — never panics.
+// output to disk. These files are installer and boot-loader text, so this
+// uses text/template. html/template treats an AutoYaST <script> body as
+// JavaScript and refuses to render it. Parse failures are returned as
+// errors — never panics.
 func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, filepath string, data interface{}) error {
 	tmpl, err := template.ParseFiles(templpath)
 	if err != nil {

@@ -37,35 +37,41 @@ packages:
   - curl
   - nmap
 
-# Run commands to apply network changes and partition the disk
+# Run commands to apply network changes and partition the disk.
+# Callbacks are best-effort: a missing server or a failed curl must not stop the install.
 runcmd:
-  - netplan apply
-  - parted /dev/sda --script mklabel gpt
-  - parted /dev/sda --script mkpart primary ext4 500MiB 2GiB
-  - parted /dev/sda --script mkpart primary ext4 10Gib 20GiB
-  - parted /dev/sda --script mkpart primary ext4 20GiB 100%
-
-# Format partitions
-  - mkfs.ext4 -L boot /dev/sda1
-  - mkfs.ext4 -L var /dev/sda2
-  - mkfs.ext4 -L root /dev/sda3
-
-# Mount partitions
-  - mkdir -p /mnt/boot /mnt/var /mnt/root
-  - mount /dev/sda1 /mnt/boot
-  - mount /dev/sda2 /mnt/var
-  - mount /dev/sda3 /mnt/root
-
-# Write fstab entries
-  - echo "/dev/sda1  /boot  ext4    defaults        0       1" >> /etc/fstab
-  - echo "/dev/sda2  /var   ext4    defaults        0       2" >> /etc/fstab
-  - echo "/dev/sda3  /      ext4    defaults        0       2" >> /etc/fstab
-
-# Ensure mounts are applied after reboot
-  - mount -a
-
-# Signal to cloud-init that the network configuration is done
-  - cloud-init status --wait
-
-# Optionally, reboot to apply all changes
-  - [ shutdown, -r, now ]
+  - |
+    #!/bin/sh
+    ignite_state() {
+      curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=$1" -d "source=cloud-init" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
+    }
+    ignite_heartbeat() {
+      curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+    }
+    ignite_state configuring
+    ignite_heartbeat
+    fail=0
+    netplan apply || fail=1
+    parted /dev/sda --script mklabel gpt || fail=1
+    parted /dev/sda --script mkpart primary ext4 500MiB 2GiB || fail=1
+    parted /dev/sda --script mkpart primary ext4 10Gib 20GiB || fail=1
+    parted /dev/sda --script mkpart primary ext4 20GiB 100% || fail=1
+    mkfs.ext4 -L boot /dev/sda1 || fail=1
+    mkfs.ext4 -L var /dev/sda2 || fail=1
+    mkfs.ext4 -L root /dev/sda3 || fail=1
+    mkdir -p /mnt/boot /mnt/var /mnt/root || fail=1
+    mount /dev/sda1 /mnt/boot || fail=1
+    mount /dev/sda2 /mnt/var || fail=1
+    mount /dev/sda3 /mnt/root || fail=1
+    echo "/dev/sda1  /boot  ext4    defaults        0       1" >> /etc/fstab || fail=1
+    echo "/dev/sda2  /var   ext4    defaults        0       2" >> /etc/fstab || fail=1
+    echo "/dev/sda3  /      ext4    defaults        0       2" >> /etc/fstab || fail=1
+    mount -a || fail=1
+    cloud-init status --wait || fail=1
+    if [ "$fail" -eq 0 ]; then
+      ignite_state complete
+    else
+      ignite_state failed
+    fi
+    ignite_heartbeat
+    shutdown -r now || true

@@ -41,35 +41,60 @@ curl
 nmap
 %end
 
+# Callbacks are best-effort. A missing curl or an unreachable server must not stop the install.
+%pre --log=/tmp/ks-pre.log
+curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=imaging" -d "source=kickstart" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
+curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+%end
+
 # Post installation script
 %post --log=/root/ks-post.log
+ignite_state() {
+  curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=$1" -d "source=kickstart" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
+}
+ignite_heartbeat() {
+  curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+}
+ignite_state configuring
+ignite_heartbeat
+fail=0
 # Update system
-dnf update -y
-dnf upgrade -y
+dnf update -y || fail=1
+dnf upgrade -y || fail=1
 
 # Install additional packages if not included in the package group
-dnf install -y apt-transport-https
+dnf install -y apt-transport-https || fail=1
 
 # Remove unnecessary packages
-dnf remove -y cups samba
+dnf remove -y cups samba || fail=1
 
 # Clean up
-dnf clean all
+dnf clean all || fail=1
 
 # Enable and start services
-systemctl enable sshd
-systemctl start sshd
+systemctl enable sshd || fail=1
+systemctl start sshd || fail=1
 
-systemctl enable firewalld
-systemctl start firewalld
+systemctl enable firewalld || fail=1
+systemctl start firewalld || fail=1
 
 # Set up basic firewall rules if needed
-firewall-cmd --permanent --add-service=ssh
-firewall-cmd --reload
+firewall-cmd --permanent --add-service=ssh || fail=1
+firewall-cmd --reload || fail=1
 
-# Optionally, reboot the system
+if [ "$fail" -eq 0 ]; then
+  ignite_state complete
+else
+  ignite_state failed
+fi
+ignite_heartbeat
 echo "Installation complete, rebooting..."
 reboot
+%end
+
+%onerror --log=/tmp/ks-error.log
+curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=failed" -d "source=kickstart" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
+curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
 %end
 
 # Additional configuration (if any)

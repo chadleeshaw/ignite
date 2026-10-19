@@ -59,8 +59,22 @@ d-i grub-installer/bootdev string /dev/sda
 # Finish installation
 d-i finish-install/reboot_in_progress note
 
+# Callbacks are best-effort. A missing curl or an unreachable server must not stop the install.
+d-i preseed/early_command string \
+    curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=imaging" -d "source=preseed" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true; \
+    curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+
 # Custom commands to run after installation
 d-i preseed/late_command string \
-    in-target systemctl enable ssh; \
-    in-target ufw enable; \
-    in-target echo 'admin ALL=(ALL) NOPASSWD:ALL' >> /target/etc/sudoers.d/admin
+    in-target curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=configuring" -d "source=preseed" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true; \
+    in-target curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true; \
+    fail=0; \
+    in-target systemctl enable ssh || fail=1; \
+    in-target ufw enable || fail=1; \
+    in-target echo 'admin ALL=(ALL) NOPASSWD:ALL' >> /target/etc/sudoers.d/admin || fail=1; \
+    if [ "$fail" -eq 0 ]; then \
+        in-target curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=complete" -d "source=preseed" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true; \
+    else \
+        in-target curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=failed" -d "source=preseed" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true; \
+    fi; \
+    in-target curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
