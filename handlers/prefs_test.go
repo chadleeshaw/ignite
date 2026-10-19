@@ -3,6 +3,7 @@ package handlers
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -15,6 +16,19 @@ import (
 	"github.com/stretchr/testify/require"
 )
 
+type failPrefBucket struct{ db.Database }
+
+func (failPrefBucket) GetOrCreateBucket(context.Context, string) error {
+	return errors.New("disk full")
+}
+
+func TestNewBoltPreferenceStoreBucketFailure(t *testing.T) {
+	store, err := NewBoltPreferenceStore(failPrefBucket{}, "prefs")
+	require.Nil(t, store)
+	require.ErrorContains(t, err, "preferences bucket")
+	require.ErrorContains(t, err, "disk full")
+}
+
 func TestPreferenceModeEndpoints(t *testing.T) {
 	cfg, err := config.NewConfigBuilder().
 		WithDBPath(t.TempDir()).
@@ -26,7 +40,8 @@ func TestPreferenceModeEndpoints(t *testing.T) {
 	require.NoError(t, err)
 	t.Cleanup(func() { _ = database.Close() })
 
-	store := NewBoltPreferenceStore(database, "test_prefs")
+	store, err := NewBoltPreferenceStore(database, "test_prefs")
+	require.NoError(t, err)
 	h := NewPreferenceHandlers(store)
 
 	t.Run("default is cozy", func(t *testing.T) {

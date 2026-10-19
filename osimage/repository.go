@@ -192,11 +192,15 @@ type DownloadStatusRepositoryImpl struct {
 	*db.GenericRepository[DownloadStatus]
 }
 
-// NewDownloadStatusRepository creates a new download status repository
-func NewDownloadStatusRepository(database db.Database) DownloadStatusRepository {
+// NewDownloadStatusRepository creates a new download status repository.
+// A bucket creation failure is returned so startup can stop.
+func NewDownloadStatusRepository(database db.Database) (DownloadStatusRepository, error) {
+	if err := database.GetOrCreateBucket(context.Background(), "download_status"); err != nil {
+		return nil, fmt.Errorf("failed to create download_status bucket: %w", err)
+	}
 	return &DownloadStatusRepositoryImpl{
 		GenericRepository: db.NewGenericRepository[DownloadStatus](database, "download_status"),
-	}
+	}, nil
 }
 
 // Save stores a download status record

@@ -27,6 +27,14 @@ func TestNewOSImageRepositoryBucketFailure(t *testing.T) {
 	require.ErrorContains(t, err, "disk full")
 }
 
+func TestNewDownloadStatusRepositoryBucketFailure(t *testing.T) {
+	repo, err := NewDownloadStatusRepository(failBucketDB{})
+	require.Nil(t, repo)
+	require.Error(t, err)
+	require.ErrorContains(t, err, "download_status")
+	require.ErrorContains(t, err, "disk full")
+}
+
 func TestNewOSImageRepositoryCreatesBucket(t *testing.T) {
 	cfg, err := config.NewConfigBuilder().
 		WithDBPath(t.TempDir()).
