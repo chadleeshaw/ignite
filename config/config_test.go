@@ -99,6 +99,27 @@ func TestOSVersion_ExpectedChecksum(t *testing.T) {
 	assert.Empty(t, empty.ExpectedChecksum)
 }
 
+func TestLoadDefault_BMCEnv(t *testing.T) {
+	t.Setenv("BMC_TLS_INSECURE", "")
+	t.Setenv("BMC_SYSTEM_ID", "")
+	cfg, err := LoadDefault()
+	assert.NoError(t, err)
+	assert.False(t, cfg.BMC.TLSInsecure)
+	assert.Empty(t, cfg.BMC.SystemID)
+
+	t.Setenv("BMC_TLS_INSECURE", "true")
+	t.Setenv("BMC_SYSTEM_ID", "System.Embedded.1")
+	cfg, err = LoadDefault()
+	assert.NoError(t, err)
+	assert.True(t, cfg.BMC.TLSInsecure)
+	assert.Equal(t, "System.Embedded.1", cfg.BMC.SystemID)
+
+	t.Setenv("BMC_TLS_INSECURE", "maybe")
+	cfg, err = LoadDefault()
+	assert.NoError(t, err)
+	assert.False(t, cfg.BMC.TLSInsecure)
+}
+
 func TestLoadDefault_ServerIPEnv(t *testing.T) {
 	t.Setenv("SERVER_IP", "10.11.12.13")
 	cfg, err := LoadDefault()

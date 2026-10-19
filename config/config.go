@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config represents the application configuration with immutable design
@@ -18,6 +19,20 @@ type Config struct {
 	// Empty means auto-detect; can also be set via the SERVER_IP environment
 	// variable, which takes precedence.
 	ServerIP string
+	// BMC controls Redfish connections to baseboard management controllers.
+	BMC BMCConfig
+}
+
+// BMCConfig controls how Ignite talks to a Redfish BMC.
+// TLS verification is on unless TLSInsecure is explicitly set.
+type BMCConfig struct {
+	// TLSInsecure skips certificate verification. The default is false.
+	// Set BMC_TLS_INSECURE to true, 1, yes, or on only for a self-signed BMC.
+	TLSInsecure bool
+	// SystemID is the Redfish ComputerSystem Id used when a BMC exposes more
+	// than one system. Empty means use the only system. A request can override
+	// this with the system_id form field. Env: BMC_SYSTEM_ID.
+	SystemID string
 }
 
 type DBConfig struct {
@@ -92,6 +107,10 @@ func NewConfigBuilder() *ConfigBuilder {
 			},
 			OSImages: getDefaultOSImageConfig(),
 			ServerIP: getEnv("SERVER_IP", ""),
+			BMC: BMCConfig{
+				TLSInsecure: getEnvBool("BMC_TLS_INSECURE", false),
+				SystemID:    getEnv("BMC_SYSTEM_ID", ""),
+			},
 		},
 	}
 }
@@ -189,6 +208,25 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// getEnvBool parses a boolean environment variable.
+// True values are 1, true, yes, and on. Anything else, including an unset
+// variable, returns fallback. An unrecognized set value returns false so a
+// typo cannot turn TLS verification off.
+func getEnvBool(key string, fallback bool) bool {
+	value, ok := os.LookupEnv(key)
+	if !ok {
+		return fallback
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "1", "true", "yes", "on":
+		return true
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return false
+	}
 }
 
 // getDefaultOSImageConfig returns the default OS image configuration

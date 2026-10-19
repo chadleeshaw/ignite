@@ -154,6 +154,8 @@ Ignite can be configured via environment variables. Here are the available optio
 | `HTTP_DIR`  | Directory for the HTTP server to serve files from. | `./public/http`   |
 | `HTTP_PORT` | Port for the HTTP server to listen on.         | `8080`             |
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
+| `BMC_TLS_INSECURE` | Skip TLS verification for Redfish BMCs. Set to `true`, `1`, `yes`, or `on` only for a self-signed BMC. Any other value verifies certificates. | verify TLS |
+| `BMC_SYSTEM_ID` | Redfish ComputerSystem `Id` when a BMC exposes more than one system. A `system_id` form field on `POST /pxe/submit_ipmi` overrides this. | first and only system |
 
 ## API Reference
 
@@ -230,7 +232,7 @@ unexpired). `menu`, `ipmi`, and `last_seen` are also present on each lease.
 | `/tftp/delete_file`       | Deletes a file from the TFTP directory.       |
 | `/tftp/upload_file`       | Uploads a file to the TFTP directory.         |
 | `/pxe/submit_menu`        | Submits a new PXE boot menu.                  |
-| `/pxe/submit_ipmi`        | Submits an IPMI command.                      |
+| `/pxe/submit_ipmi`        | Redfish power and one-time PXE boot. Verifies TLS unless `BMC_TLS_INSECURE` is set. Powers On when the host is off and ForceRestart only when it is on. With more than one system and no `system_id` / `BMC_SYSTEM_ID`, responds `409`. |
 | `/prov/newtemplate`       | Creates a new provisioning template.          |
 | `/prov/save`              | Saves a provisioning file.                    |
 | `/provision/save-file`    | Saves file content via API.                   |

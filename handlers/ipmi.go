@@ -2,24 +2,27 @@ package handlers
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"ignite/dhcp"
 	"log"
 	"net"
 	"net/http"
+	"strings"
 
-	"github.com/stmcginnis/gofish"
 	"github.com/stmcginnis/gofish/redfish"
 )
 
 // IPMIHandlers handles IPMI-related requests
 type IPMIHandlers struct {
 	container *Container
+	dial      bmcDialer
 }
 
-// NewIPMIHandlers creates a new IPMIHandlers instance
+// NewIPMIHandlers creates a new IPMIHandlers instance.
+// TLS verification follows config (on by default). Tests replace dial.
 func NewIPMIHandlers(container *Container) *IPMIHandlers {
-	return &IPMIHandlers{container: container}
+	return &IPMIHandlers{container: container, dial: dialGofish}
 }
 
 // SubmitIPMI handles IPMI submission
@@ -51,6 +54,10 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 
 	bootConfigChecked := r.Form.Get("setBootOrder") == "on"
 	rebootChecked := r.Form.Get("reboot") == "on"
+	systemID := strings.TrimSpace(r.Form.Get("system_id"))
+	if systemID == "" {
+		systemID = h.configuredSystemID()
+	}
 
 	ctx := r.Context()
 
@@ -60,15 +67,14 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 		// Continue with IPMI operations even if lease update fails
 	}
 
-	// Configure Redfish client for IPMI operations
-	clientConfig := gofish.ClientConfig{
-		Endpoint: fmt.Sprintf("https://%s/redfish/v1", ip),
-		Username: username,
-		Password: password,
-		Insecure: true,
-	}
+	bmcCtx, cancel := context.WithTimeout(ctx, bmcRequestTimeout)
+	defer cancel()
 
-	client, err := gofish.Connect(clientConfig)
+	dial := h.dial
+	if dial == nil {
+		dial = dialGofish
+	}
+	session, err := dial(bmcCtx, fmt.Sprintf("https://%s/redfish/v1", ip), username, password, h.tlsInsecure())
 	if err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Failed to connect to Redfish service: %s", err.Error()),
@@ -76,17 +82,22 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 		))
 		return
 	}
-	defer client.Logout()
+	defer session.Logout()
 
-	// Retrieve system information
-	service := client.Service
-	systems, err := service.Systems()
-	if err != nil || len(systems) == 0 {
-		HandleError(w, r, NewNotFoundError("No systems found or error retrieving systems", "No manageable systems were found on the target"))
+	systems, err := session.Systems()
+	if err != nil {
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("Failed to list Redfish systems: %s", err.Error()),
+			"Unable to list systems on the target",
+		))
+		return
+	}
+	system, err := selectBMCSystem(systems, systemID)
+	if err != nil {
+		h.writeBMCSelectError(w, r, err)
 		return
 	}
 
-	system := systems[0]
 	var bootConfig = redfish.Boot{
 		BootSourceOverrideTarget:  redfish.PxeBootSourceOverrideTarget,
 		BootSourceOverrideEnabled: redfish.OnceBootSourceOverrideEnabled,
@@ -103,9 +114,19 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	// Reboot system if checked
+	// Power on a host that is off. ForceRestart only when it is already on.
 	if rebootChecked {
-		if err := system.Reset(redfish.ForceRestartResetType); err != nil {
+		resetType, err := resetTypeForPower(system.PowerState())
+		if err != nil {
+			HandleError(w, r, NewAppError(
+				ErrorTypeConflict,
+				err.Error(),
+				"The host power state is not On or Off, so it was not restarted",
+				http.StatusConflict,
+			))
+			return
+		}
+		if err := system.Reset(resetType); err != nil {
 			HandleError(w, r, NewInternalError(
 				fmt.Sprintf("Failed to reboot system: %s", err.Error()),
 				"Unable to reboot the target system",
@@ -146,4 +167,36 @@ func (h *IPMIHandlers) updateDHCPLeaseWithIPMI(ctx context.Context, tftpip, mac,
 	}
 
 	return nil
+}
+
+func (h *IPMIHandlers) tlsInsecure() bool {
+	if h == nil || h.container == nil || h.container.Config == nil {
+		return false
+	}
+	return h.container.Config.BMC.TLSInsecure
+}
+
+func (h *IPMIHandlers) configuredSystemID() string {
+	if h == nil || h.container == nil || h.container.Config == nil {
+		return ""
+	}
+	return h.container.Config.BMC.SystemID
+}
+
+func (h *IPMIHandlers) writeBMCSelectError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, errNoBMCSystems):
+		HandleError(w, r, NewNotFoundError(err.Error(), "No manageable systems were found on the target"))
+	case errors.Is(err, errBMCSystemNotFound):
+		HandleError(w, r, NewNotFoundError(err.Error(), "The requested Redfish system was not found"))
+	case errors.Is(err, errAmbiguousBMCSystems):
+		HandleError(w, r, NewAppError(
+			ErrorTypeConflict,
+			err.Error(),
+			"This BMC has more than one system. Set system_id or BMC_SYSTEM_ID.",
+			http.StatusConflict,
+		))
+	default:
+		HandleError(w, r, NewInternalError(err.Error(), "Unable to choose a Redfish system"))
+	}
 }
