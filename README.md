@@ -190,7 +190,7 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/close_modal`          | Closes a modal dialog.                   |
 | `/dhcp`                 | Serves the DHCP management page.         |
 | `/dhcp/servers`         | Retrieves a list of DHCP servers.        |
-| `/status`               | Serves the server status page.           |
+| `/status`               | Redirects to Overview (`/`).             |
 | `/provision`            | Serves the provisioning page.            |
 | `/tftp`                 | Serves the TFTP management page.         |
 | `/tftp/open`            | Opens a file in the TFTP directory.      |

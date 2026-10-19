@@ -2,6 +2,7 @@ package db
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"ignite/config"
 	"path/filepath"
@@ -144,6 +145,74 @@ func (b *BoltDB) DeleteAllKV(ctx context.Context, bucket string) error {
 			}
 		}
 		return nil
+	})
+}
+
+// boltKVTx adapts a bbolt transaction to Tx.
+type boltKVTx struct {
+	tx *bolt.Tx
+}
+
+func (t *boltKVTx) Get(bucket string, key []byte) ([]byte, error) {
+	bkt := t.tx.Bucket([]byte(bucket))
+	if bkt == nil {
+		return nil, nil
+	}
+	data := bkt.Get(key)
+	if data == nil {
+		return nil, nil
+	}
+	value := make([]byte, len(data))
+	copy(value, data)
+	return value, nil
+}
+
+func (t *boltKVTx) Put(bucket string, key, value []byte) error {
+	bkt, err := t.tx.CreateBucketIfNotExists([]byte(bucket))
+	if err != nil {
+		return fmt.Errorf("create bucket: %w", err)
+	}
+	return bkt.Put(key, value)
+}
+
+func (t *boltKVTx) Delete(bucket string, key []byte) error {
+	bkt := t.tx.Bucket([]byte(bucket))
+	if bkt == nil {
+		return nil
+	}
+	return bkt.Delete(key)
+}
+
+// ForEach walks bucket. Mutating the same bucket from fn is undefined in
+// bbolt, so callers collect matches and write after ForEach returns.
+// ErrStopIteration ends the walk without failing the transaction.
+func (t *boltKVTx) ForEach(bucket string, fn func(k, v []byte) error) error {
+	if fn == nil {
+		return fmt.Errorf("foreach function is nil")
+	}
+	bkt := t.tx.Bucket([]byte(bucket))
+	if bkt == nil {
+		return nil
+	}
+	err := bkt.ForEach(func(k, v []byte) error {
+		return fn(k, v)
+	})
+	if errors.Is(err, ErrStopIteration) {
+		return nil
+	}
+	return err
+}
+
+// Update runs fn inside one read-write transaction.
+func (b *BoltDB) Update(ctx context.Context, fn func(Tx) error) error {
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if fn == nil {
+		return fmt.Errorf("transaction function is nil")
+	}
+	return b.db.Update(func(tx *bolt.Tx) error {
+		return fn(&boltKVTx{tx: tx})
 	})
 }
 

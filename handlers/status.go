@@ -203,8 +203,8 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	}, nil
 }
 
-// HandleStatusPage sends browsers to Overview. The route stays registered
-// until the backend removes it. Service detail remains on /status/content.
+// HandleStatusPage redirects to Overview. /status/content remains the
+// fragment Overview can poll.
 func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, "/", http.StatusFound)
 }

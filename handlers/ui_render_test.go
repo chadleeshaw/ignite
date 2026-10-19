@@ -1,9 +1,6 @@
 package handlers
 
 import (
-	"os"
-	"path/filepath"
-	"runtime"
 	"strings"
 	"testing"
 	"time"
@@ -62,23 +59,6 @@ func TestDescribeStatus(t *testing.T) {
 	if cozy != "All services are up" || console != "services up" {
 		t.Fatalf("healthy: %q / %q", cozy, console)
 	}
-}
-
-func chdirRepoRoot(t *testing.T) {
-	t.Helper()
-	_, thisFile, _, ok := runtime.Caller(0)
-	if !ok {
-		t.Fatal("cannot locate test source file")
-	}
-	repoRoot := filepath.Join(filepath.Dir(thisFile), "..")
-	prev, err := os.Getwd()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Chdir(repoRoot); err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { _ = os.Chdir(prev) })
 }
 
 func renderNamed(t *testing.T, name string, data any) string {

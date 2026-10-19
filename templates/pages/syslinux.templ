@@ -12,7 +12,8 @@
     </div>
 </header>
 
-<div id="active-downloads" class="mt"{{if .Downloads}} hx-get="/syslinux" hx-select="#active-downloads" hx-trigger="every 5s" hx-swap="outerHTML"{{end}}>
+<div id="syslinux-downloads">
+<div id="active-downloads" class="mt"{{if .Downloads}} hx-get="/syslinux" hx-select="#syslinux-downloads" hx-target="#syslinux-downloads" hx-trigger="every 5s"{{end}}>
 {{if .Downloads}}
 <section class="panel">
     <div class="pad"><b>Active downloads</b></div>
@@ -38,6 +39,7 @@
     </div>
 </section>
 {{end}}
+</div>
 </div>
 
 <section class="panel mt">

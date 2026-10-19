@@ -9,7 +9,7 @@
         <button id="new-dhcp-btn"
             hx-get="/open_modal?template=dhcpmodal"
             hx-target="#modal-content"
-            hx-swap="innerHTML"
+           
             class="b p">New server</button>
     </div>
 </header>
@@ -38,7 +38,7 @@
             {{else}}
             <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none">Start</button>
             {{end}}
-            <button class="b sm" hx-get="/open_modal?template=dhcpmodal&server_id={{.ID}}" hx-target="#modal-content" hx-swap="innerHTML">Edit</button>
+            <button class="b sm" hx-get="/open_modal?template=dhcpmodal&server_id={{.ID}}" hx-target="#modal-content">Edit</button>
             <button class="b dg sm" hx-post="/dhcp/delete?server_id={{.ID}}" hx-swap="none" hx-confirm="Delete this DHCP server?">Delete</button>
         </div>
     </div>
@@ -132,9 +132,9 @@
                     <td class="mono">{{.MAC}}</td>
                     <td>
                         <div class="actions">
-                            <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">{{if .Static}}Reserved{{else}}Reserve{{end}}</button>
-                            <button class="b sm {{if .Menu.Filename}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">Boot menu</button>
-                            <button class="b sm {{if .IPMI.Username}}p{{end}}" hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">IPMI</button>
+                            <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">{{if .Static}}Reserved{{else}}Reserve{{end}}</button>
+                            <button class="b sm {{if .Menu.Filename}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">Boot menu</button>
+                            <button class="b sm {{if .IPMI.Username}}p{{end}}" hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">IPMI</button>
                             <div class="dropdown dropdown-end">
                                 <button class="b sm" tabindex="0" type="button">State</button>
                                 <ul tabindex="0" class="dropdown-content z-[9999] menu p-2 shadow bg-base-100 rounded-box w-52">
@@ -160,7 +160,7 @@
     </div>
 
     <div class="pad">
-        <button class="b sm p" hx-get="/open_modal?template=manualleasemodal&network={{.TFTPIP}}" hx-target="#modal-content" hx-swap="innerHTML">Add manual lease</button>
+        <button class="b sm p" hx-get="/open_modal?template=manualleasemodal&network={{.TFTPIP}}" hx-target="#modal-content">Add manual lease</button>
     </div>
 </section>
 {{end}}
@@ -226,7 +226,7 @@ function updateLeaseState(mac, newState) {
     fetch('/dhcp/lease/state?mac=' + encodeURIComponent(mac), { method: 'POST', body: formData })
         .then(function (response) { return response.json(); })
         .then(function (data) {
-            if (data.status === 'success') {
+            if (data.success) {
                 document.querySelectorAll('.lease-state').forEach(function (badge) {
                     if (badge.getAttribute('data-mac') !== mac) return;
                     badge.className = 'badge lease-state ' + getStateBadgeClass(newState);

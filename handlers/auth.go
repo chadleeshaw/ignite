@@ -305,6 +305,48 @@ func isAuthenticated(r *http.Request) bool {
 	return validSession(cookie.Value)
 }
 
+// isPublicAsset reports whether path is a static file the installer or the
+// browser may fetch without a session. Provision configs are excluded even
+// when they live under /public/provision/configs/.
+func isPublicAsset(path string) bool {
+	if !strings.HasPrefix(path, "/public/") {
+		return false
+	}
+	if strings.Contains(path, "/provision/configs/") {
+		return false
+	}
+	return true
+}
+
+// isRenderedConfig reports GET /configs/{type}/{name}. The handler, not the
+// middleware, decides whether this client may see the file.
+func isRenderedConfig(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	return len(parts) == 3 && parts[0] == "configs" && parts[1] != "" && parts[2] != ""
+}
+
+// isHostCallback reports whether the request is a per-lease provisioning
+// callback (heartbeat or state), as opposed to the session-protected admin
+// route POST /dhcp/lease/state.
+func isHostCallback(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "dhcp" || parts[1] != "lease" || parts[2] == "" {
+		return false
+	}
+	switch parts[3] {
+	case "heartbeat", "state":
+		return true
+	default:
+		return false
+	}
+}
+
 // isAPIRequest reports whether the request expects a JSON 401 instead of a
 // login redirect: anything under /api/ or explicitly asking for JSON.
 func isAPIRequest(r *http.Request) bool {
@@ -326,9 +368,25 @@ func AuthMiddleware(next http.Handler) http.Handler {
 			return
 		}
 
-		// Skip auth for static files and PXE boot files (needed for network booting)
-		if strings.HasPrefix(r.URL.Path, "/public/") ||
+		// Skip auth for static files and PXE boot files (needed for network booting).
+		// Rendered installer configs are not in that set: they carry the
+		// per-lease token and are served only by GET /configs/{type}/{name}.
+		if isPublicAsset(r.URL.Path) ||
 			strings.HasPrefix(r.URL.Path, "/tftp/serve") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// The installer fetches its config before it has the token. The
+		// handler allows the lease IP or a presented token, and 404s the rest.
+		if isRenderedConfig(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Host provisioning callbacks authenticate with a per-lease token
+		// inside the handler. They must not be redirected to the login page.
+		if isHostCallback(r) {
 			next.ServeHTTP(w, r)
 			return
 		}

@@ -59,8 +59,23 @@ d-i grub-installer/bootdev string /dev/sda
 # Finish installation
 d-i finish-install/reboot_in_progress note
 
+# Callbacks are best-effort. The installer environment has wget, not curl.
+# late_command runs in the installed system, which has curl from pkgsel.
+d-i preseed/early_command string \
+    wget -q -O /dev/null -T 10 --header={{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} --post-data={{ shellQuote "state=imaging&source=preseed" }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true; \
+    wget -q -O /dev/null -T 10 --header={{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} --post-data={{ shellQuote "" }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true
+
 # Custom commands to run after installation
 d-i preseed/late_command string \
-    in-target systemctl enable ssh; \
-    in-target ufw enable; \
-    in-target echo 'admin ALL=(ALL) NOPASSWD:ALL' >> /target/etc/sudoers.d/admin
+    in-target curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=configuring" -d "source=preseed" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true; \
+    in-target curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true; \
+    fail=0; \
+    in-target systemctl enable ssh || fail=1; \
+    in-target ufw enable || fail=1; \
+    in-target echo 'admin ALL=(ALL) NOPASSWD:ALL' >> /target/etc/sudoers.d/admin || fail=1; \
+    if [ "$fail" -eq 0 ]; then \
+        in-target curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=complete" -d "source=preseed" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true; \
+    else \
+        in-target curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=failed" -d "source=preseed" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true; \
+    fi; \
+    in-target curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true

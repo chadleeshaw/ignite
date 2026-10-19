@@ -52,7 +52,7 @@
                             <button class="b sm" type="button" onclick="window.location.href='/tftp/open?dir={{.Name}}'">Open</button>
                             {{else}}
                             <button class="b sm downloadBtn" type="button" onclick="window.location.href='/tftp/download?file={{.Name}}'">Download</button>
-                            <button class="b sm viewBtn" hx-get="/open_modal?template=viewmodal&file={{.Name}}" hx-target="#modal-content" hx-swap="innerHTML">View</button>
+                            <button class="b sm viewBtn" hx-get="/open_modal?template=viewmodal&file={{.Name}}" hx-target="#modal-content">View</button>
                             {{end}}
                             <button class="b dg sm deleteBtn" hx-post="/tftp/delete_file?file={{.Name}}" hx-swap="none" hx-on::after-request="if (event.detail.successful) location.reload();">Delete</button>
                         </div>

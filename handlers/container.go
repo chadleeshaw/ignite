@@ -16,4 +16,5 @@ type Container struct {
 	SyslinuxService syslinux.Service
 	IPXEService     *ipxe.Service
 	Config          *config.Config
+	Prefs           PreferenceStore
 }

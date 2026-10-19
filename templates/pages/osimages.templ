@@ -14,7 +14,8 @@
     </div>
 </header>
 
-<div id="active-downloads" class="mt"{{if .Downloads}} hx-get="/osimages" hx-select="#active-downloads" hx-trigger="every 5s" hx-swap="outerHTML"{{end}}>
+<div id="osimage-downloads">
+<div id="active-downloads" class="mt"{{if .Downloads}} hx-get="/osimages" hx-select="#osimage-downloads" hx-target="#osimage-downloads" hx-trigger="every 5s"{{end}}>
 {{if .Downloads}}
 <section class="panel">
     <div class="pad"><b>Active downloads</b></div>
@@ -43,6 +44,7 @@
     </div>
 </section>
 {{end}}
+</div>
 </div>
 
 <section class="panel mt">

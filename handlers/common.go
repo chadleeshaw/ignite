@@ -116,9 +116,12 @@ func parseTemplates() map[string]*template.Template {
 		"dhcp":               {baseTemplate, "templates/pages/dhcp.templ"},
 		"tftp":               {baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ"},
 		"status-content":     {"templates/partials/status-content.templ"},
+		"dashboard-summary":  {"templates/partials/dashboard-summary.templ"},
 		"provision":          {baseTemplate, "templates/pages/provision.templ"},
 		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
 		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
+		"error":              {baseTemplate, "templates/pages/error.templ"},
+		"error-public":       {"templates/pages/error-public.templ"},
 		"dhcpmodal":          {"templates/modals/dhcpmodal.templ"},
 		"reservemodal":       {"templates/modals/reservemodal.templ"},
 		"bootmodal":          {"templates/modals/bootmodal.templ"},
@@ -144,6 +147,10 @@ func parseTemplates() map[string]*template.Template {
 // renderCachedTemplate executes a cached template by name. A missing entry
 // (parse failure) or an execution error produces a generic error response
 // instead of a nil-pointer panic or an internal-error leak.
+//
+// Every page render goes through applyUIMode here, which replaces any Mode
+// the handler put on the data. A hardcoded cozy or console cannot win over
+// the stored preference.
 func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, data any, userMessage string) {
 	tmpl, ok := LoadTemplates()[name]
 	if !ok || tmpl == nil {
@@ -153,7 +160,7 @@ func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, d
 		))
 		return
 	}
-	if err := tmpl.Execute(w, data); err != nil {
+	if err := tmpl.Execute(w, applyUIMode(r, data)); err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("template %q error: %v", name, err),
 			userMessage,
@@ -259,7 +266,7 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 		}
 
 		w.Header().Set("Content-Type", "text/html")
-		if err := t.Execute(w, data); err != nil {
+		if err := t.Execute(w, applyUIMode(r, data)); err != nil {
 			HandleError(w, r, NewInternalError(
 				fmt.Sprintf("Error executing template %s: %v", template, err),
 				"Unable to render the dialog",

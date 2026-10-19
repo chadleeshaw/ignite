@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"ignite/dhcp"
 	"ignite/handlers"
 	"ignite/routes"
 	"ignite/tftp"
@@ -25,6 +26,11 @@ type Application struct {
 	tftpServer       *tftp.Server
 	staticFS         embed.FS
 	staticHandler    *handlers.StaticHandlers
+
+	// rootCancel cancels the process-wide context passed to background work.
+	// Stop calls it so the lease maintainer observes cancellation.
+	rootCancel context.CancelFunc
+	maintainer *dhcp.LeaseMaintainer
 }
 
 // NewApplicationWithStatic creates a new application instance with embedded static files
@@ -45,7 +51,9 @@ func NewApplicationWithStatic(staticFS embed.FS) (*Application, error) {
 		SyslinuxService: container.SyslinuxService,
 		IPXEService:     container.IPXEService,
 		Config:          container.Config,
+		Prefs:           container.Prefs,
 	}
+	handlers.SetPreferenceStore(container.Prefs)
 
 	return &Application{
 		container:        container,
@@ -58,9 +66,19 @@ func NewApplicationWithStatic(staticFS embed.FS) (*Application, error) {
 
 // Start starts all application services including static file serving
 func (a *Application) Start() error {
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	a.rootCancel = rootCancel
+	a.maintainer = dhcp.NewLeaseMaintainer(
+		a.container.LeaseService,
+		dhcp.DefaultMaintenanceInterval,
+		dhcp.DefaultOfflineThreshold,
+	)
+	a.maintainer.Start(rootCtx)
+
 	// Start TFTP server
 	a.tftpServer = tftp.NewServer(a.container.Config.TFTP.Dir)
 	if err := a.tftpServer.Start(); err != nil {
+		a.stopMaintenance()
 		return fmt.Errorf("failed to start TFTP server: %w", err)
 	}
 	log.Printf("TFTP server started on port 69, serving from %s", a.container.Config.TFTP.Dir)
@@ -90,8 +108,24 @@ func (a *Application) Start() error {
 	return nil
 }
 
-// Rest of the Application methods remain the same...
+// stopMaintenance cancels the application context and waits for the lease
+// maintainer to finish. It is safe to call more than once.
+func (a *Application) stopMaintenance() {
+	if a.rootCancel != nil {
+		a.rootCancel()
+		a.rootCancel = nil
+	}
+	if a.maintainer != nil {
+		a.maintainer.Stop()
+		a.maintainer = nil
+	}
+}
+
 func (a *Application) Stop() error {
+	// Cancel background work first and wait for the lease maintainer to
+	// leave the database alone before the rest of shutdown closes it.
+	a.stopMaintenance()
+
 	// Stop any running DHCP servers first
 	if a.container.ServerService != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)

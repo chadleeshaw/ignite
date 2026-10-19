@@ -79,7 +79,9 @@ func TestDHCPLeaseService_UpdateLease(t *testing.T) {
 		},
 	}
 
-	// Mock expectations
+	// Mock expectations. UpdateLease re-reads the row under the allocation
+	// lock before saving, so a concurrent renewal is not clobbered.
+	mockLeaseRepo.On("Get", ctx, lease.ID).Return(lease, nil)
 	mockLeaseRepo.On("Save", ctx, lease).Return(nil)
 
 	// Execute

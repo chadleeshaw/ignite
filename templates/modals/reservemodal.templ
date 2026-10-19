@@ -22,11 +22,11 @@
             </div>
             <div class="modal-action mt-6">
                 {{ if .static }}
-                <button type="button" class="btn btn-warning" hx-post="/dhcp/remove_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}" hx-target="body" hx-swap="innerHTML">Un-Reserve</button>
+                <button type="button" class="btn btn-warning" hx-post="/dhcp/remove_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}" hx-target="body">Un-Reserve</button>
                 {{ else }}
-                <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body" hx-swap="innerHTML">Reserve</button>
+                <button type="button" class="btn btn-success" hx-post="/dhcp/submit_reserve?server_id={{ .serverid }}&mac={{ urlquery .mac }}&ip={{ .ip }}" hx-target="body">Reserve</button>
                 {{ end }}
-                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content">Cancel</button>
             </div>
         </form>
     </div>

@@ -173,10 +173,11 @@ func (h *ProtocolHandler) ServeDHCP(p d4.Packet, msgType d4.MessageType, options
 }
 
 // newLease builds a fully-initialized lease record for a fresh allocation:
-// unique ID, assigned state, state-history entry, and timestamps.
-func (h *ProtocolHandler) newLease(mac string, ip net.IP) *Lease {
+// unique ID, assigned state, state-history entry, timestamps, and a
+// per-lease provisioning token.
+func (h *ProtocolHandler) newLease(mac string, ip net.IP) (*Lease, error) {
 	now := time.Now()
-	return &Lease{
+	lease := &Lease{
 		ID:             uuid.New().String(),
 		MAC:            mac,
 		IP:             ip,
@@ -190,6 +191,10 @@ func (h *ProtocolHandler) newLease(mac string, ip net.IP) *Lease {
 			{FromState: "", ToState: StateAssigned, Timestamp: now, Source: "dhcp"},
 		},
 	}
+	if err := ensureProvisionToken(lease); err != nil {
+		return nil, err
+	}
+	return lease, nil
 }
 
 // handleDiscover processes DHCP Discover messages
@@ -201,6 +206,11 @@ func (h *ProtocolHandler) handleDiscover(p d4.Packet, options d4.Options) d4.Pac
 
 	ctx := context.Background()
 	mac := p.CHAddr().String()
+	unlock, err := lockLease(ctx, mac)
+	if err != nil {
+		return nil
+	}
+	defer unlock()
 
 	// Re-offer the current IP when the MAC already has a live lease — or a
 	// static reservation, which never expires for offer purposes — on this
@@ -230,6 +240,11 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 
 	ctx := context.Background()
 	mac := p.CHAddr().String()
+	unlock, lerr := lockLease(ctx, mac)
+	if lerr != nil {
+		return nil
+	}
+	defer unlock()
 
 	requestedIP := net.IP(options[d4.OptionRequestedIPAddress])
 	if requestedIP == nil {
@@ -265,7 +280,13 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 		// Existing lease - extend if requested IP matches or no specific IP requested
 		if requestedIP == nil || lease.IP.Equal(requestedIP) {
 			lease.Extend(h.server.LeaseDuration)
-			lease.LastSeen = time.Now()
+			// A renew is activity. It clears offline and restores the stage
+			// the host was in, instead of leaving the offline mark stuck.
+			lease.NoteActivity("dhcp")
+			if err := ensureProvisionToken(lease); err != nil {
+				log.Printf("Failed to issue provision token for MAC %s: %v", mac, err)
+				return h.createNakPacket(p)
+			}
 			// Never ACK an unpersisted lease.
 			if err := h.leaseRepo.Save(ctx, lease); err != nil {
 				log.Printf("Failed to save extended lease for MAC %s: %v", mac, err)
@@ -283,7 +304,11 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 		if derr := h.leaseRepo.DeleteByMAC(ctx, mac); derr != nil {
 			log.Printf("Failed to delete stale lease for MAC %s: %v", mac, derr)
 		}
-		lease = h.newLease(mac, requestedIP.To4())
+		lease, err = h.newLease(mac, requestedIP.To4())
+		if err != nil {
+			log.Printf("Failed to build lease for MAC %s: %v", mac, err)
+			return h.createNakPacket(p)
+		}
 		// Never ACK an unpersisted lease.
 		if err := h.leaseRepo.Save(ctx, lease); err != nil {
 			log.Printf("Failed to save lease for MAC %s: %v", mac, err)
@@ -294,7 +319,11 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 
 	// New lease request - use the requested IP when it is valid.
 	if validRequest {
-		lease := h.newLease(mac, requestedIP.To4())
+		lease, err := h.newLease(mac, requestedIP.To4())
+		if err != nil {
+			log.Printf("Failed to build lease for MAC %s: %v", mac, err)
+			return h.createNakPacket(p)
+		}
 		// Never ACK an unpersisted lease.
 		if err := h.leaseRepo.Save(ctx, lease); err != nil {
 			log.Printf("Failed to save lease for MAC %s: %v", mac, err)
@@ -311,7 +340,11 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 	}
 
 	// Create new lease
-	lease = h.newLease(mac, ip)
+	lease, err = h.newLease(mac, ip)
+	if err != nil {
+		log.Printf("Failed to build lease for MAC %s: %v", mac, err)
+		return h.createNakPacket(p)
+	}
 
 	// Never ACK an unpersisted lease.
 	if err := h.leaseRepo.Save(ctx, lease); err != nil {
@@ -322,10 +355,19 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 	return h.createAckPacket(p, ip)
 }
 
-// handleRelease processes DHCP Release/Decline messages
+// handleRelease processes DHCP Release/Decline messages.
+// The delete shares the allocation lock so it cannot race a renewal.
 func (h *ProtocolHandler) handleRelease(p d4.Packet, options d4.Options) {
+	h.allocMu.Lock()
+	defer h.allocMu.Unlock()
+
 	ctx := context.Background()
 	mac := p.CHAddr().String()
+	unlock, lerr := lockLease(ctx, mac)
+	if lerr != nil {
+		return
+	}
+	defer unlock()
 
 	if err := h.leaseRepo.DeleteByMAC(ctx, mac); err != nil {
 		log.Printf("Failed to release lease for MAC %s: %v", mac, err)
@@ -429,8 +471,9 @@ func (h *ProtocolHandler) isIPAvailable(ctx context.Context, ip net.IP, excludeM
 		return false
 	}
 
+	now := time.Now()
 	for _, lease := range leases {
-		if lease.IP.Equal(ip) && lease.MAC != excludeMAC && !lease.IsExpired() {
+		if lease.IP.Equal(ip) && lease.MAC != excludeMAC && lease.OccupiesAddress(now) {
 			return false
 		}
 	}

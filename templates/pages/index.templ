@@ -8,7 +8,7 @@
 </header>
 
 {{if .Status}}
-<div id="status-services" hx-get="/status/content" hx-trigger="every 10s" hx-swap="innerHTML">
+<div id="status-services" hx-get="/status/content" hx-trigger="every 10s">
     {{template "status-content.templ" .Status}}
 </div>
 {{else}}
@@ -19,7 +19,7 @@
      class="mt"
      hx-get="{{summaryURL}}"
      hx-trigger="load, every 10s"
-     hx-swap="innerHTML">
+    >
     <section class="stats" aria-label="Services on this host">
         <div class="stat">
             <div class="stat-title">Leases</div>

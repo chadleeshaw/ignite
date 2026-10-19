@@ -84,3 +84,31 @@ func TestBoltLeaseRepository_MACIndex(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, l2.ID, string(id))
 }
+
+// TestBoltLeaseRepository_SaveIsAtomicAcrossMACChange checks that a MAC
+// change updates the row and both index keys together: the new key is
+// present and the old key is gone.
+func TestBoltLeaseRepository_SaveIsAtomicAcrossMACChange(t *testing.T) {
+	ctx := context.Background()
+	repo, database := newTestLeaseRepo(t)
+
+	lease := testLease("id-1", "aa:bb:cc:dd:ee:01", "192.168.1.101")
+	require.NoError(t, repo.Save(ctx, lease))
+
+	lease.MAC = "aa:bb:cc:dd:ee:09"
+	require.NoError(t, repo.Save(ctx, lease))
+
+	got, err := repo.GetByMAC(ctx, "aa:bb:cc:dd:ee:09")
+	require.NoError(t, err)
+	assert.Equal(t, lease.ID, got.ID)
+
+	_, err = repo.GetByMAC(ctx, "aa:bb:cc:dd:ee:01")
+	assert.ErrorIs(t, err, db.ErrNotFound)
+
+	oldID, err := database.GetKV(ctx, "leases_by_mac", []byte("aa:bb:cc:dd:ee:01"))
+	require.NoError(t, err)
+	assert.Empty(t, oldID)
+	newID, err := database.GetKV(ctx, "leases_by_mac", []byte("aa:bb:cc:dd:ee:09"))
+	require.NoError(t, err)
+	assert.Equal(t, lease.ID, string(newID))
+}
