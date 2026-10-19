@@ -51,7 +51,10 @@ func NewContainer() (c *Container, err error) {
 	// Create repositories
 	serverRepo := dhcp.NewBoltServerRepository(database, cfg.DB.Bucket+"_servers")
 	leaseRepo := dhcp.NewBoltLeaseRepository(database, cfg.DB.Bucket+"_leases")
-	osImageRepo := osimage.NewOSImageRepository(database)
+	osImageRepo, err := osimage.NewOSImageRepository(database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create os image repository: %w", err)
+	}
 	downloadStatusRepo := osimage.NewDownloadStatusRepository(database)
 	syslinuxRepo, err := syslinux.NewBoltRepository(database)
 	if err != nil {

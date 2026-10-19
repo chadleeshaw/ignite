@@ -16,12 +16,17 @@ type OSImageRepositoryImpl struct {
 	database db.Database
 }
 
-// NewOSImageRepository creates a new OS image repository
-func NewOSImageRepository(database db.Database) OSImageRepository {
+// NewOSImageRepository creates a new OS image repository.
+// Bucket creation failure is returned so startup can stop instead of
+// serving a repository that will fail on the first read.
+func NewOSImageRepository(database db.Database) (OSImageRepository, error) {
+	if err := database.GetOrCreateBucket(context.Background(), "osimages"); err != nil {
+		return nil, fmt.Errorf("failed to create osimages bucket: %w", err)
+	}
 	return &OSImageRepositoryImpl{
 		GenericRepository: db.NewGenericRepository[OSImage](database, "osimages"),
 		database:          database,
-	}
+	}, nil
 }
 
 // Save stores an OS image record
