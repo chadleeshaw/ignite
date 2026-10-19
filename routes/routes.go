@@ -139,6 +139,9 @@ func setupProvisionRoutes(router *mux.Router, handlers *handlers.ProvisionHandle
 func setupBootMenuRoutes(router *mux.Router, handlers *handlers.BootMenuHandlers) {
 	// POST routes
 	router.HandleFunc("/pxe/submit_menu", handlers.SubmitBootMenu).Methods("POST").Name("SubmitBootMenu")
+	// Installer download. AuthMiddleware lets it through; the handler allows
+	// only the lease IP or the provision token.
+	router.HandleFunc("/configs/{configType}/{name}", handlers.ServeRenderedConfig).Methods("GET").Name("RenderedConfig")
 }
 
 // setupIPMIRoutes configures IPMI management routes
@@ -158,9 +161,10 @@ func setupPreferenceRoutes(router *mux.Router, handlers *handlers.PreferenceHand
 	router.HandleFunc("/api/preferences/mode", handlers.SetMode).Methods("POST").Name("SetUIMode")
 }
 
-// setupStatusRoutes configures status monitoring routes
+// setupStatusRoutes configures status routes.
+// GET /status redirects to Overview. GET /status/content is the fragment
+// Overview can poll. /status is not a page.
 func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
-	// GET routes
 	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET").Name("Status")
 	router.HandleFunc("/status/content", handlers.HandleStatusContent).Methods("GET").Name("StatusContent")
 }

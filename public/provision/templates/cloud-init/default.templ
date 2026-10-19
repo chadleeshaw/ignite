@@ -43,10 +43,10 @@ runcmd:
   - |
     #!/bin/sh
     ignite_state() {
-      curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=$1" -d "source=cloud-init" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
+      curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=$1" -d "source=cloud-init" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true
     }
     ignite_heartbeat() {
-      curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+      curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true
     }
     ignite_state configuring
     ignite_heartbeat

@@ -43,17 +43,17 @@ nmap
 
 # Callbacks are best-effort. A missing curl or an unreachable server must not stop the install.
 %pre --log=/tmp/ks-pre.log
-curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=imaging" -d "source=kickstart" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
-curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=imaging" -d "source=kickstart" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true
+curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true
 %end
 
 # Post installation script
 %post --log=/root/ks-post.log
 ignite_state() {
-  curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=$1" -d "source=kickstart" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
+  curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=$1" -d "source=kickstart" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true
 }
 ignite_heartbeat() {
-  curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+  curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true
 }
 ignite_state configuring
 ignite_heartbeat
@@ -93,8 +93,8 @@ reboot
 %end
 
 %onerror --log=/tmp/ks-error.log
-curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=failed" -d "source=kickstart" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
-curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=failed" -d "source=kickstart" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true
+curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true
 %end
 
 # Additional configuration (if any)

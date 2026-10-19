@@ -79,9 +79,10 @@ func TestProvisionTemplatesRenderCallbacks(t *testing.T) {
 			src, err := os.ReadFile(tc.path)
 			require.NoError(t, err)
 			text := string(src)
-			require.Contains(t, text, "{{ .tftpip }}")
-			require.Contains(t, text, "{{ .mac }}")
-			require.Contains(t, text, "{{ .provision_token }}")
+			require.Contains(t, text, ".tftpip")
+			require.Contains(t, text, ".mac")
+			require.Contains(t, text, ".provision_token")
+			require.Contains(t, text, "shellQuote")
 			require.NotContains(t, text, server)
 			require.NotContains(t, text, mac)
 			require.NotContains(t, text, token)
@@ -106,9 +107,19 @@ func TestProvisionTemplatesRenderCallbacks(t *testing.T) {
 				require.Contains(t, body, state)
 			}
 			for _, line := range strings.Split(body, "\n") {
-				if strings.Contains(line, "curl ") && strings.Contains(line, "/dhcp/lease/") {
+				if (strings.Contains(line, "curl ") || strings.Contains(line, "wget ")) && strings.Contains(line, "/dhcp/lease/") {
 					require.Contains(t, line, "|| true", line)
 				}
+			}
+			if tc.name == "preseed" {
+				earlyAt := strings.Index(body, "preseed/early_command")
+				lateAt := strings.Index(body, "preseed/late_command")
+				require.Greater(t, earlyAt, 0)
+				require.Greater(t, lateAt, earlyAt)
+				early := body[earlyAt:lateAt]
+				require.Contains(t, early, "wget")
+				require.Contains(t, early, "-T 10")
+				require.NotContains(t, early, "curl")
 			}
 		})
 	}

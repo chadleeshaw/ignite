@@ -68,12 +68,13 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 		}
 	}
 
-	// The MAC address becomes part of file names — reject anything that is
-	// not a real MAC so it cannot smuggle path separators.
-	if _, err := net.ParseMAC(formData["mac"]); err != nil {
+	// Addresses and the hostname are interpolated into shell and XML.
+	// Reject anything that is not an IPv4 address or a DNS name, and store
+	// the canonical MAC so the filename and the template agree.
+	if err := validateInstallerFields(formData); err != nil {
 		HandleError(w, r, NewValidationError(
-			fmt.Sprintf("Invalid MAC address: %v", err),
-			"The MAC address is invalid",
+			err.Error(),
+			"Check the hostname, MAC address, and IP addresses",
 		))
 		return
 	}
@@ -125,12 +126,17 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Hand the per-lease provision token to config templates as
-	// {{.provision_token}} so cloud-init (and the other installers) can call
-	// the host callback routes. Templates that do not reference it are unchanged.
-	if token := h.provisionToken(r.Context(), formData["mac"]); token != "" {
-		formData["provision_token"] = token
+	// The token is issued before the template runs. A missing token must
+	// fail the render: text/template would otherwise write "<no value>".
+	token, err := h.provisionToken(r.Context(), formData["mac"])
+	if err != nil || token == "" {
+		HandleError(w, r, NewInternalError(
+			fmt.Sprintf("provision token unavailable: %v", err),
+			"A provision token could not be issued for this host",
+		))
+		return
 	}
+	formData["provision_token"] = token
 
 	// Generate boot data (use buildconfig for HTTP URL, configFile for filesystem path)
 	buildconfig := fmt.Sprintf("configs/%s/%s", formData["typeSelect"], macDashes)
@@ -162,8 +168,10 @@ func (h *BootMenuHandlers) SubmitBootMenu(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	// Write config template to disk
-	if err := h.writeTemplateToDisk(configTempl, configFile, formData); err != nil {
+	// Write config template to disk. The file holds the provision token, so
+	// it is owner-read/write only. The PXE menu does not get the token and
+	// stays readable by TFTP.
+	if err := h.writeInstallerConfig(configTempl, configFile, formData); err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Error writing config file: %v", err),
 			"Unable to write the config file",
@@ -318,54 +326,83 @@ func (h *BootMenuHandlers) osToInitrd(os, version string) string {
 	return fmt.Sprintf("%s/initrd.img", h.osToName(os))
 }
 
+// installerTemplateFuncs escape values for the two contexts stock templates
+// interpolate into: POSIX shell and XML text.
+func installerTemplateFuncs() template.FuncMap {
+	return template.FuncMap{
+		"shellQuote": shellQuote,
+		"xmlEscape":  xmlEscape,
+	}
+}
+
 // writeTemplateToDisk parses the template file and writes the rendered
 // output to disk. These files are installer and boot-loader text, so this
 // uses text/template. html/template treats an AutoYaST <script> body as
 // JavaScript and refuses to render it. Parse failures are returned as
-// errors — never panics.
-func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, filepath string, data interface{}) error {
-	tmpl, err := template.ParseFiles(templpath)
+// errors — never panics. A missing map key fails the render instead of
+// writing the literal "<no value>".
+func (h *BootMenuHandlers) writeTemplateToDisk(templpath string, outPath string, data interface{}) error {
+	name := filepath.Base(templpath)
+	// missingkey=error: a template that references provision_token must not
+	// render the literal "<no value>" when the key was never set.
+	tmpl, err := template.New(name).Option("missingkey=error").Funcs(installerTemplateFuncs()).ParseFiles(templpath)
 	if err != nil {
 		return fmt.Errorf("failed to parse template %s: %w", templpath, err)
 	}
 
-	file, err := os.Create(filepath)
+	file, err := os.Create(outPath)
 	if err != nil {
 		return fmt.Errorf("failed to create file: %w", err)
 	}
 	defer file.Close()
 
 	if err := tmpl.Execute(file, data); err != nil {
+		_ = os.Remove(outPath)
 		return fmt.Errorf("failed to execute template: %w", err)
 	}
 
 	return nil
 }
 
+// writeInstallerConfig renders a provision file and restricts it to the
+// server user. The rendered body contains the per-lease token.
+func (h *BootMenuHandlers) writeInstallerConfig(templpath, outPath string, data interface{}) error {
+	if err := h.writeTemplateToDisk(templpath, outPath, data); err != nil {
+		return err
+	}
+	if err := os.Chmod(outPath, 0o600); err != nil {
+		_ = os.Remove(outPath)
+		return fmt.Errorf("failed to restrict config file: %w", err)
+	}
+	return nil
+}
+
 // provisionToken returns the lease's callback secret, issuing one when the
-// row predates tokens. A missing lease yields an empty token.
-func (h *BootMenuHandlers) provisionToken(ctx context.Context, mac string) string {
+// row predates tokens. A missing lease or a failed store is an error so the
+// caller can refuse to render.
+func (h *BootMenuHandlers) provisionToken(ctx context.Context, mac string) (string, error) {
 	if h.container == nil || h.container.LeaseService == nil {
-		return ""
+		return "", fmt.Errorf("lease service is not configured")
 	}
 	lease, err := h.container.LeaseService.GetLeaseByMAC(ctx, mac)
 	if err != nil || lease == nil {
-		return ""
+		if err == nil {
+			err = fmt.Errorf("lease not found")
+		}
+		return "", fmt.Errorf("lease not found for %s: %w", mac, err)
 	}
 	if lease.ProvisionToken != "" {
-		return lease.ProvisionToken
+		return lease.ProvisionToken, nil
 	}
 	token, err := dhcp.NewProvisionToken()
 	if err != nil {
-		log.Printf("Failed to issue provision token for %s: %v", mac, err)
-		return ""
+		return "", err
 	}
 	lease.ProvisionToken = token
 	if err := h.container.LeaseService.UpdateLease(ctx, lease); err != nil {
-		log.Printf("Failed to store provision token for %s: %v", mac, err)
-		return ""
+		return "", fmt.Errorf("store provision token: %w", err)
 	}
-	return token
+	return token, nil
 }
 
 // updateDHCPLease updates the DHCP lease with new boot menu data.

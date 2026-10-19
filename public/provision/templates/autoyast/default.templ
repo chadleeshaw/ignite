@@ -16,8 +16,8 @@
       <interface>
         <device>eth0</device>
         <bootproto>static</bootproto>
-        <ipaddr>{{ .ip }}</ipaddr>
-        <netmask>{{ .subnet }}</netmask>
+        <ipaddr>{{ xmlEscape .ip }}</ipaddr>
+        <netmask>{{ xmlEscape .subnet }}</netmask>
         <startmode>auto</startmode>
       </interface>
     </interfaces>
@@ -25,17 +25,17 @@
       <routes config:type="list">
         <route>
           <destination>default</destination>
-          <gateway>{{ .gateway }}</gateway>
+          <gateway>{{ xmlEscape .gateway }}</gateway>
           <netmask>-</netmask>
           <device>-</device>
         </route>
       </routes>
     </routing>
     <dns>
-      <hostname>{{ .hostname }}</hostname>
+      <hostname>{{ xmlEscape .hostname }}</hostname>
       <domain>localdomain</domain>
       <nameservers config:type="list">
-        <nameserver>{{ .dns }}</nameserver>
+        <nameserver>{{ xmlEscape .dns }}</nameserver>
       </nameservers>
     </dns>
   </networking>
@@ -137,8 +137,8 @@
         <interpreter>shell</interpreter>
         <source><![CDATA[
 #!/bin/bash
-curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=imaging" -d "source=autoyast" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
-curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=imaging" -d "source=autoyast" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true
+curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true
 exit 0
 ]]></source>
       </script>
@@ -150,10 +150,10 @@ exit 0
         <source><![CDATA[
 #!/bin/bash
 ignite_state() {
-  curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" -d "state=$1" -d "source=autoyast" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/state" || true
+  curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} -d "state=$1" -d "source=autoyast" {{ shellQuote (printf "http://%s/dhcp/lease/%s/state" .tftpip .mac) }} || true
 }
 ignite_heartbeat() {
-  curl -fsS -m 10 -X POST -H "Authorization: Bearer {{ .provision_token }}" "http://{{ .tftpip }}/dhcp/lease/{{ .mac }}/heartbeat" || true
+  curl -fsS -m 10 -X POST -H {{ shellQuote (printf "Authorization: Bearer %s" .provision_token) }} {{ shellQuote (printf "http://%s/dhcp/lease/%s/heartbeat" .tftpip .mac) }} || true
 }
 ignite_state configuring
 ignite_heartbeat
