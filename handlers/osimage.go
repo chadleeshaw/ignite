@@ -62,11 +62,15 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Title         string
+		Mode          string
+		Page          string
 		OSImages      []*osimage.OSImage
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
 	}{
 		Title:         "OS Images",
+		Mode:          "cozy",
+		Page:          "osimages",
 		OSImages:      images,
 		Downloads:     downloads,
 		Architectures: supportedArchs,

@@ -40,11 +40,25 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		return DHCPServerView{}, fmt.Errorf("failed to get leases for server %s: %w", server.ID, err)
 	}
 
+	running := isDHCPRunning(server.ID, server.Started)
+	used := len(leases)
+	free := 0
+	if server.LeaseRange > 0 {
+		free = server.LeaseRange - used
+		if free < 0 {
+			free = 0
+		}
+	}
+
 	return DHCPServerView{
-		ID:     server.ID,
-		TFTPIP: server.IP.String(),
-		Status: h.getServerStatusBadge(isDHCPRunning(server.ID, server.Started)),
-		Leases: h.convertLeasesToViews(leases),
+		ID:         server.ID,
+		TFTPIP:     server.IP.String(),
+		Status:     h.getServerStatusBadge(running),
+		Leases:     h.convertLeasesToViews(leases),
+		LeaseRange: server.LeaseRange,
+		Used:       used,
+		Free:       free,
+		Running:    running,
 	}, nil
 }
 
@@ -88,9 +102,13 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Title   string
+		Mode    string
+		Page    string
 		Servers []DHCPServerView
 	}{
-		Title:   "DHCP Management",
+		Title:   "DHCP",
+		Mode:    "cozy",
+		Page:    "dhcp",
 		Servers: serverViews,
 	}
 
@@ -664,10 +682,14 @@ func getStateBadgeClass(state dhcp.LeaseState) string {
 
 // View models for templates
 type DHCPServerView struct {
-	ID     string      `json:"id"`
-	TFTPIP string      `json:"tftpip"`
-	Status string      `json:"status"`
-	Leases []LeaseView `json:"leases"`
+	ID         string      `json:"id"`
+	TFTPIP     string      `json:"tftpip"`
+	Status     string      `json:"status"`
+	Leases     []LeaseView `json:"leases"`
+	LeaseRange int         `json:"lease_range"`
+	Used       int         `json:"used"`
+	Free       int         `json:"free"`
+	Running    bool        `json:"running"`
 }
 
 type LeaseView struct {

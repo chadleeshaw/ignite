@@ -1,60 +1,70 @@
 {{ define "content" }}
-<div>
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">TFTP Server Overview</h1>
-        <button class="btn btn-primary" onclick="document.getElementById('uploadModal').showModal()">
-            <i class="fas fa-upload mr-2"></i>Upload File
-        </button>
-    </div>
-
-    <!-- Placeholder for modal -->
-    <div id="modal-content"></div>
-
-    <div class="text-sm breadcrumbs mb-4">
-        <ul>
-            <li><a href="/tftp" class="{{if not .Breadcrumbs}}text-primary font-semibold{{end}}"><i class="fas fa-home mr-1"></i>root</a></li>
+<header class="pagehead">
+    <div>
+        <h1><span class="only-cozy">TFTP</span><span class="only-console">tftp</span></h1>
+        <p class="sub only-cozy">{{.FileCount}} files · {{.DirCount}} folders · server {{.ServerStatus}}</p>
+        <p class="sub only-console">{{.FileCount}} files · {{.DirCount}} dirs · {{.ServerStatus}}</p>
+        <nav class="crumbs" aria-label="TFTP directory">
+            <a href="/tftp">{{if .Root}}{{.Root}}{{else}}root{{end}}</a>
             {{range .Breadcrumbs}}
-            <li><a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a></li>
+            <span>/</span>
+            <a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a>
             {{end}}
-        </ul>
+        </nav>
     </div>
+    <div class="actions">
+        <span class="st {{if eq .ServerStatus "running"}}ok{{else if eq .ServerStatus "unknown"}}wa{{else}}er{{end}}">{{.ServerStatus}}</span>
+        <button class="b p" type="button" onclick="document.getElementById('uploadModal').showModal()">Upload</button>
+    </div>
+</header>
 
-    <div class="bg-base-200 p-4 rounded-lg shadow-lg overflow-x-auto">
-        <h2 class="text-lg font-bold mb-2">Files in TFTP Directory</h2>
-
-        <table class="table w-full">
+<section class="panel mt">
+    <div class="scroll">
+        <table>
             <thead>
                 <tr>
                     <th>Name</th>
                     <th>Size</th>
-                    <th>Last Modified</th>
+                    <th>Modified</th>
                     <th>Actions</th>
                 </tr>
             </thead>
             <tbody>
+                {{if .PrevDirectory}}
+                <tr>
+                    <td colspan="3"><a href="{{if eq .PrevDirectory ""}}/tftp{{else}}/tftp/open?dir={{.PrevDirectory}}{{end}}">..</a></td>
+                    <td></td>
+                </tr>
+                {{else if .ServerDirectory}}
+                <tr>
+                    <td colspan="3"><a href="/tftp">..</a></td>
+                    <td></td>
+                </tr>
+                {{end}}
                 {{range .Files}}
                 <tr>
-                    <td>{{.Name}}</td>
-                    <td>{{if .IsDir}}--{{else}}{{.Size}}{{end}}</td>
+                    <td class="mono">{{.Name}}</td>
+                    <td>{{if .IsDir}}—{{else}}{{.Size}}{{end}}</td>
                     <td>{{.LastModified}}</td>
                     <td>
-                        {{if .IsDir}}
-                            <button class="btn btn-xs btn-success" onclick="window.location.href='/tftp/open?dir={{.Name}}'">Open Dir</button>
-                        {{else}}
-                            <button class="btn btn-xs btn-info downloadBtn" onclick="window.location.href='/tftp/download?file={{.Name}}'">Download</button>
-                            <button class="btn btn-xs btn-warning viewBtn" hx-get="/open_modal?template=viewmodal&file={{.Name}}" hx-target="#modal-content" hx-swap="innerHTML">View</button>
-                        {{end}}
-                        <button class="btn btn-xs btn-error deleteBtn" hx-post="/tftp/delete_file?file={{.Name}}" hx-swap="none" hx-on::after-request="location.reload();">Delete</button>
+                        <div class="actions">
+                            {{if .IsDir}}
+                            <button class="b sm" type="button" onclick="window.location.href='/tftp/open?dir={{.Name}}'">Open</button>
+                            {{else}}
+                            <button class="b sm downloadBtn" type="button" onclick="window.location.href='/tftp/download?file={{.Name}}'">Download</button>
+                            <button class="b sm viewBtn" hx-get="/open_modal?template=viewmodal&file={{.Name}}" hx-target="#modal-content" hx-swap="innerHTML">View</button>
+                            {{end}}
+                            <button class="b dg sm deleteBtn" hx-post="/tftp/delete_file?file={{.Name}}" hx-swap="none" hx-on::after-request="if (event.detail.successful) location.reload();">Delete</button>
+                        </div>
                     </td>
                 </tr>
+                {{else}}
+                <tr><td colspan="4">This directory is empty.</td></tr>
                 {{end}}
             </tbody>
         </table>
-
     </div>
-</div>
+</section>
 
-<!-- Upload Modal -->
 {{ template "uploadmodal" }}
-
 {{ end }}

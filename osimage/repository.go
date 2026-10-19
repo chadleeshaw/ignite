@@ -18,6 +18,11 @@ type OSImageRepositoryImpl struct {
 
 // NewOSImageRepository creates a new OS image repository
 func NewOSImageRepository(database db.Database) OSImageRepository {
+	// Fresh databases do not have this bucket until something creates it.
+	// GetAll then 500s the OS Images page. Create it here, same as syslinux.
+	if err := database.GetOrCreateBucket(context.Background(), "osimages"); err != nil {
+		fmt.Printf("osimage: create bucket osimages: %v\n", err)
+	}
 	return &OSImageRepositoryImpl{
 		GenericRepository: db.NewGenericRepository[OSImage](database, "osimages"),
 		database:          database,
@@ -189,6 +194,9 @@ type DownloadStatusRepositoryImpl struct {
 
 // NewDownloadStatusRepository creates a new download status repository
 func NewDownloadStatusRepository(database db.Database) DownloadStatusRepository {
+	if err := database.GetOrCreateBucket(context.Background(), "download_status"); err != nil {
+		fmt.Printf("osimage: create bucket download_status: %v\n", err)
+	}
 	return &DownloadStatusRepositoryImpl{
 		GenericRepository: db.NewGenericRepository[DownloadStatus](database, "download_status"),
 	}

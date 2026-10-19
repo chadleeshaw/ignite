@@ -294,13 +294,27 @@ type FileInfo struct {
 	IsDir        bool
 }
 
-// TFTPData holds information for rendering the TFTP management page
+// TFTPCrumb is one step of the directory path under the TFTP root.
+type TFTPCrumb struct {
+	Name string
+	Dir  string
+}
+
+// TFTPData holds information for rendering the TFTP management page.
+// Mode is the server UI preference. Empty renders as cozy.
 type TFTPData struct {
 	Title           string
+	Mode            string
+	Page            string
 	ServerRunning   bool
+	ServerStatus    string
 	ServerDirectory string
 	PrevDirectory   string
+	Root            string
 	Files           []FileInfo
+	FileCount       int
+	DirCount        int
+	Breadcrumbs     []TFTPCrumb
 }
 
 // getTFTP retrieves file information for the root TFTP directory.
@@ -355,13 +369,51 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		})
 	}
 
+	fileCount, dirCount := 0, 0
+	for _, info := range fileInfos {
+		if info.IsDir {
+			dirCount++
+		} else {
+			fileCount++
+		}
+	}
+
 	return &TFTPData{
-		Title:           "TFTP Server Management",
+		Title:           "TFTP",
+		Mode:            "cozy",
+		Page:            "tftp",
 		ServerRunning:   isTFTPRunning(),
+		ServerStatus:    tftpStatusString(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
+		Root:            TFTPDir,
 		Files:           fileInfos,
+		FileCount:       fileCount,
+		DirCount:        dirCount,
+		Breadcrumbs:     tftpCrumbs(relDir),
 	}, nil
+}
+
+// tftpCrumbs splits a root-relative directory into linked steps.
+func tftpCrumbs(rel string) []TFTPCrumb {
+	rel = strings.Trim(rel, `/\`)
+	if rel == "" || rel == "." {
+		return nil
+	}
+	parts := strings.FieldsFunc(rel, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	crumbs := make([]TFTPCrumb, 0, len(parts))
+	acc := ""
+	for _, part := range parts {
+		if acc == "" {
+			acc = part
+		} else {
+			acc = acc + "/" + part
+		}
+		crumbs = append(crumbs, TFTPCrumb{Name: part, Dir: acc})
+	}
+	return crumbs
 }
 
 // mustAbs returns the absolute form of p, falling back to p itself on error.

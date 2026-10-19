@@ -288,7 +288,12 @@ func (h *AuthHandlers) LoginPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	renderCachedTemplate(w, r, "login", nil, "Unable to render the login page")
+	// Mode is cozy until the preference layer overwrites it. The login shell
+	// reads .Mode and falls back to cozy when the field is empty.
+	renderCachedTemplate(w, r, "login", struct {
+		Title string
+		Mode  string
+	}{Title: "Ignite", Mode: "cozy"}, "Unable to render the login page")
 }
 
 // isAuthenticated checks if the request carries a valid server-side session.

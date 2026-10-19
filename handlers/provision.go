@@ -34,6 +34,8 @@ type ProvisionFileInfo struct {
 // ProvisionData holds data for the provision page
 type ProvisionData struct {
 	Title       string               `json:"title"`
+	Mode        string               `json:"-"`
+	Page        string               `json:"-"`
 	CurrentFile *ProvisionFileInfo   `json:"current_file,omitempty"`
 	Files       []*ProvisionFileInfo `json:"files"`
 	Categories  []string             `json:"categories"`
@@ -70,7 +72,9 @@ func (h *ProvisionHandlers) getProvisionData() *ProvisionData {
 	provisionDir := h.container.Config.Provision.Dir
 
 	data := &ProvisionData{
-		Title:      "Provisioning Scripts",
+		Title:      "Provision",
+		Mode:       "cozy",
+		Page:       "provision",
 		Files:      []*ProvisionFileInfo{},
 		Categories: []string{"autoyast", "bootmenu", "cloud-init", "ipxe", "kickstart", "preseed"},
 		Types:      []string{"templates", "configs"},

@@ -111,9 +111,13 @@ type DHCPServerStatus struct {
 	LastCheck   time.Time `json:"last_check"`
 }
 
-// StatusPageData represents data for the status page
+// StatusPageData represents data for the status page.
+// Mode is the server UI preference. Empty means cozy until the preference
+// layer sets it. Page highlights Overview, where this content lives.
 type StatusPageData struct {
 	Title         string             `json:"title"`
+	Mode          string             `json:"-"`
+	Page          string             `json:"-"`
 	HTTPServer    ServiceStatus      `json:"http_server"`
 	TFTPServer    ServiceStatus      `json:"tftp_server"`
 	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
@@ -188,6 +192,8 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 
 	return &StatusPageData{
 		Title:         "System Status",
+		Mode:          "cozy",
+		Page:          "overview",
 		HTTPServer:    httpStatus,
 		TFTPServer:    tftpStatus,
 		DHCPServers:   dhcpServers,

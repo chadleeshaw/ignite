@@ -1,16 +1,12 @@
 {{ define "content" }}
-<div class="min-h-screen flex items-center justify-center px-4">
-    <div class="max-w-md w-full space-y-8">
-        <!-- Logo and Title -->
-        <div class="text-center">
-            <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-20 mx-auto mb-4">
-            <h1 class="text-4xl font-bold text-primary mb-2">ignite</h1>
-            <p class="text-xl text-base-content/70">Network Boot & Provisioning</p>
+<div class="login-wrap">
+    <div class="login-card">
+        <div class="login-brand">
+            <img src="/public/http/img/flame.svg" alt="">
+            <h1>Ignite</h1>
+            <p class="mu">Network boot and provisioning</p>
         </div>
-
-        <!-- Login Form -->
-        <div class="card bg-base-200 shadow-2xl">
-            <div class="card-body">
+        <div>
                 <form id="login-form" class="space-y-6">
                     <div class="form-control">
                         <label class="label">
@@ -60,9 +56,7 @@
                     <i class="fas fa-exclamation-triangle"></i>
                     <span>Invalid username or password</span>
                 </div>
-            </div>
         </div>
-
     </div>
 </div>
 

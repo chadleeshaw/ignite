@@ -1,241 +1,196 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="ignite">
+<html lang="en" data-theme="{{or .Mode "cozy"}}">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>{{.Title}}</title>
-    <link rel="stylesheet" href="/public/http/css/tailwind.css"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>{{with fieldString . "Title"}}{{.}}{{else}}Ignite{{end}}</title>
+    <link rel="stylesheet" href="/public/http/css/tailwind.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
-    <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
-<body class="bg-base-100">
-    <header class="sticky top-0 z-50 shadow-lg bg-neutral text-white">
-        <div class="container mx-auto px-4 py-2">
-            <nav class="flex justify-between items-center">
-                <div class="flex items-center space-x-4">
-                    <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-10 -mr-4">
-                    <div class="text-2xl font-bold text-primary">ignite</div>
+<body>
+    <div class="sparks" aria-hidden="true">
+        <span class="sp" style="left:8%;bottom:12%;width:3px;height:3px"></span>
+        <span class="sp" style="left:22%;bottom:6%;width:2px;height:2px"></span>
+        <span class="sp" style="left:41%;bottom:18%;width:4px;height:4px"></span>
+        <span class="sp" style="left:63%;bottom:9%;width:2px;height:2px"></span>
+        <span class="sp" style="left:78%;bottom:15%;width:3px;height:3px"></span>
+        <span class="sp" style="left:91%;bottom:7%;width:2px;height:2px"></span>
+    </div>
+    <div class="app">
+        <nav class="ignite-nav" aria-label="Primary">
+            <a class="br" href="/"><img src="/public/http/img/flame.svg" alt="">Ignite</a>
+            <a class="n {{if eq (pageID .) "overview"}}on{{end}}" href="/">Overview<kbd class="only-console">1</kbd></a>
+            <a class="n {{if eq (pageID .) "dhcp"}}on{{end}}" href="/dhcp">DHCP<kbd class="only-console">2</kbd></a>
+            <a class="n {{if eq (pageID .) "tftp"}}on{{end}}" href="/tftp">TFTP<kbd class="only-console">3</kbd></a>
+            <a class="n {{if eq (pageID .) "osimages"}}on{{end}}" href="/osimages">OS Images<kbd class="only-console">4</kbd></a>
+            <a class="n {{if eq (pageID .) "syslinux"}}on{{end}}" href="/syslinux">Syslinux<kbd class="only-console">5</kbd></a>
+            <a class="n {{if eq (pageID .) "provision"}}on{{end}}" href="/provision">Provision<kbd class="only-console">6</kbd></a>
+            <div class="nav-end">
+                <div class="tog" role="group" aria-label="Display mode">
+                    <button type="button" class="mode-btn" data-mode="cozy" onclick="igniteSetMode('cozy')">Cozy</button>
+                    <button type="button" class="mode-btn" data-mode="console" onclick="igniteSetMode('console')">&gt;_ Console <kbd>\</kbd></button>
                 </div>
-                <div class="hidden md:flex items-center space-x-4">
-                    <a href="/" class="hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
-                    <a href="/dhcp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
-                    <a href="/provision" class="hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
-                    <a href="/tftp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
-                    <a href="/osimages" class="hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
-                    <a href="/syslinux" class="hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
-                    <a href="/status" class="hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
-
-                    <!-- User Menu -->
-                    <div class="dropdown dropdown-end">
-                        <label tabindex="0" class="btn btn-ghost btn-circle">
-                            <i class="fas fa-user"></i>
-                        </label>
-                        <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-neutral rounded-box w-52">
-                            <li><a onclick="openChangePasswordModal()"><i class="fas fa-key mr-2"></i>Change Password</a></li>
-                            <li><a onclick="logout()"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a></li>
-                        </ul>
-                    </div>
+                <div class="dropdown dropdown-end">
+                    <button type="button" tabindex="0" class="acct">Account</button>
+                    <ul tabindex="0" class="dropdown-content menu menu-sm mt-2 z-[20] p-2 shadow rounded-box w-52">
+                        <li><a onclick="openChangePasswordModal()">Change password</a></li>
+                        <li><a onclick="logout()">Log out</a></li>
+                    </ul>
                 </div>
-                <div class="md:hidden">
-                    <button id="menu-btn" class="focus:outline-none">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
-                        </svg>
-                    </button>
-                </div>
-            </nav>
+            </div>
+        </nav>
+        <div class="stage">
+            {{template "content" .}}
         </div>
-    </header>
-
-    <main class="container mx-auto px-4 py-8">
-        {{ template "content" . }}
-    </main>
-
-    <div id="mobile-menu" class="hidden md:hidden fixed top-0 left-0 right-0 z-40 bg-neutral shadow-lg pt-16">
-        <div class="container mx-auto px-4 py-2">
-            <a href="/" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
-            <a href="/dhcp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
-            <a href="/provision" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
-            <a href="/tftp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
-            <a href="/osimages" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
-            <a href="/syslinux" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
-            <a href="/status" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
-        </div>
+        <footer class="sb">
+            {{with fieldString . "OverallStatus"}}
+            <span class="only-cozy">{{if eq . "healthy"}}All services up{{else if eq . "partial"}}Partial service{{else if eq . "down"}}System down{{else}}{{.}}{{end}}</span>
+            <span class="only-console">{{.}}</span>
+            {{end}}
+            <span class="only-cozy">Tip: <kbd>\</kbd> switches Console</span>
+            <span class="only-console"><kbd>1</kbd>–<kbd>6</kbd> pages <kbd>\</kbd> cozy</span>
+            <span class="grow"></span>
+        </footer>
     </div>
 
-    <!-- Change Password Modal -->
+    <div id="modal-content"></div>
+
     <div id="change-password-modal" class="modal">
         <div class="modal-box">
-            <h3 class="font-bold text-lg mb-4">Change Password</h3>
+            <h3 class="font-bold text-lg mb-4">Change password</h3>
             <form id="change-password-form">
                 <div class="form-control mb-4">
-                    <label class="label">
-                        <span class="label-text">Current Password</span>
-                    </label>
+                    <label class="label" for="current-password"><span class="label-text">Current password</span></label>
                     <input type="password" id="current-password" class="input input-bordered" required>
                 </div>
                 <div class="form-control mb-4">
-                    <label class="label">
-                        <span class="label-text">New Password</span>
-                    </label>
+                    <label class="label" for="new-password"><span class="label-text">New password</span></label>
                     <input type="password" id="new-password" class="input input-bordered" required>
                 </div>
                 <div class="form-control mb-4">
-                    <label class="label">
-                        <span class="label-text">Confirm New Password</span>
-                    </label>
+                    <label class="label" for="confirm-password"><span class="label-text">Confirm new password</span></label>
                     <input type="password" id="confirm-password" class="input input-bordered" required>
                 </div>
                 <div class="modal-action">
                     <button type="button" class="btn" onclick="closeChangePasswordModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Change Password</button>
+                    <button type="submit" class="btn btn-primary">Change password</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.9/dist/htmx.min.js" defer></script>
+    <script src="https://unpkg.com/htmx.org@1.9.9/dist/htmx.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script>
-        $(document).ready(function() {
-            $('#menu-btn').click(function() {
-                $('#mobile-menu').toggleClass('hidden');
-            });
+        var IGNITE_MODE_URL = "{{modePreferenceURL}}";
+
+        function igniteSetMode(mode) {
+            if (mode !== "cozy" && mode !== "console") return;
+            document.documentElement.setAttribute("data-theme", mode);
+            fetch(IGNITE_MODE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ mode: mode })
+            }).catch(function () {});
+        }
+
+        document.addEventListener("keydown", function (e) {
+            var tag = (e.target && e.target.tagName || "").toLowerCase();
+            var typing = tag === "input" || tag === "textarea" || tag === "select" || (e.target && e.target.isContentEditable);
+            if (e.key === "\\" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                if (typing) return;
+                e.preventDefault();
+                igniteSetMode(document.documentElement.getAttribute("data-theme") === "console" ? "cozy" : "console");
+                return;
+            }
+            if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+            var pages = { "1": "/", "2": "/dhcp", "3": "/tftp", "4": "/osimages", "5": "/syslinux", "6": "/provision" };
+            if (pages[e.key]) {
+                e.preventDefault();
+                window.location.href = pages[e.key];
+            }
         });
 
-        document.body.addEventListener('htmx:afterRequest', function(evt) {
+        function igniteRequestPath(evt) {
+            if (evt.detail && evt.detail.pathInfo && evt.detail.pathInfo.requestPath) {
+                return evt.detail.pathInfo.requestPath;
+            }
+            if (evt.detail && evt.detail.xhr && evt.detail.xhr.responseURL) {
+                return evt.detail.xhr.responseURL;
+            }
+            return "";
+        }
+
+        function igniteSilent(evt) {
+            var url = igniteRequestPath(evt);
+            return url.indexOf("/dashboard/summary") !== -1 || url.indexOf(IGNITE_MODE_URL) !== -1;
+        }
+
+        document.body.addEventListener("htmx:afterRequest", function (evt) {
+            if (igniteSilent(evt)) return;
             if (evt.detail.failed) {
-                let errorMessage = "An unknown error occurred.";
-                if (evt.detail.xhr.responseText) {
-                    errorMessage = evt.detail.xhr.responseText;
-                }
-                Toastify({
-                    text: errorMessage,
-                    duration: 3000,
-                    close: true,
-                    gravity: "top",
-                    position: "right",
-                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
-                }).showToast();
+                var errorMessage = "An unknown error occurred.";
+                if (evt.detail.xhr && evt.detail.xhr.responseText) errorMessage = evt.detail.xhr.responseText;
+                Toastify({ text: errorMessage, duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)" }).showToast();
             } else if (evt.detail.successful) {
-                let successMessage = evt.detail.xhr.responseText;
-                if (successMessage && !successMessage.trim().startsWith('<')) {
-                    Toastify({
-                        text: successMessage,
-                        duration: 3000,
-                        close: true,
-                        gravity: "top",
-                        position: "right",
-                        backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
-                    }).showToast();
+                var successMessage = evt.detail.xhr ? evt.detail.xhr.responseText : "";
+                if (successMessage && !successMessage.trim().startsWith("<")) {
+                    Toastify({ text: successMessage, duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)" }).showToast();
                 }
             }
         });
 
-        // Authentication functions
+        document.body.addEventListener("htmx:responseError", function (evt) {
+            if (igniteRequestPath(evt).indexOf("/dashboard/summary") === -1) return;
+            var slot = document.getElementById("overview-summary");
+            if (slot) slot.removeAttribute("hx-trigger");
+        });
+
         function logout() {
-            fetch('/auth/logout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = '/login';
-                }
-            })
-            .catch(error => {
-                console.error('Logout error:', error);
-                // Force redirect to login page even if request fails
-                window.location.href = '/login';
-            });
+            fetch("/auth/logout", { method: "POST", headers: { "Content-Type": "application/json" } })
+                .then(function (response) { return response.json(); })
+                .then(function (data) { if (data.success) window.location.href = "/login"; })
+                .catch(function () { window.location.href = "/login"; });
         }
 
         function openChangePasswordModal() {
-            document.getElementById('change-password-modal').classList.add('modal-open');
+            document.getElementById("change-password-modal").classList.add("modal-open");
         }
 
         function closeChangePasswordModal() {
-            document.getElementById('change-password-modal').classList.remove('modal-open');
-            document.getElementById('change-password-form').reset();
+            document.getElementById("change-password-modal").classList.remove("modal-open");
+            document.getElementById("change-password-form").reset();
         }
 
-        // Handle change password form submission
-        document.getElementById('change-password-form').addEventListener('submit', function(e) {
+        document.getElementById("change-password-form").addEventListener("submit", function (e) {
             e.preventDefault();
-
-            const currentPassword = document.getElementById('current-password').value;
-            const newPassword = document.getElementById('new-password').value;
-            const confirmPassword = document.getElementById('confirm-password').value;
-
-            // Validate passwords match
+            var currentPassword = document.getElementById("current-password").value;
+            var newPassword = document.getElementById("new-password").value;
+            var confirmPassword = document.getElementById("confirm-password").value;
             if (newPassword !== confirmPassword) {
-                Toastify({
-                    text: "New passwords do not match",
-                    duration: 3000,
-                    close: true,
-                    gravity: "top",
-                    position: "right",
-                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
-                }).showToast();
+                Toastify({ text: "New passwords do not match", duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)" }).showToast();
                 return;
             }
-
-            // Send password change request
-            fetch('/auth/change-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    current_password: currentPassword,
-                    new_password: newPassword
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    Toastify({
-                        text: data.message,
-                        duration: 3000,
-                        close: true,
-                        gravity: "top",
-                        position: "right",
-                        backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
-                    }).showToast();
-                    closeChangePasswordModal();
-                } else {
-                    Toastify({
-                        text: data.message,
-                        duration: 3000,
-                        close: true,
-                        gravity: "top",
-                        position: "right",
-                        backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
-                    }).showToast();
-                }
-            })
-            .catch(error => {
-                console.error('Password change error:', error);
+            fetch("/auth/change-password", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+            }).then(function (response) { return response.json(); }).then(function (data) {
                 Toastify({
-                    text: "An error occurred while changing password",
+                    text: data.message,
                     duration: 3000,
                     close: true,
                     gravity: "top",
                     position: "right",
-                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
+                    backgroundColor: data.success ? "linear-gradient(to right, #00b09b, #96c93d)" : "linear-gradient(to right, #FBBF24, #FF4500)"
                 }).showToast();
+                if (data.success) closeChangePasswordModal();
+            }).catch(function () {
+                Toastify({ text: "An error occurred while changing password", duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)" }).showToast();
             });
         });
     </script>

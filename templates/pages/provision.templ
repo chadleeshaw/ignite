@@ -1,22 +1,20 @@
 {{ define "content" }}
-<div role="main">
-    <!-- Header -->
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">{{.Title}}</h1>
-        <div class="flex space-x-2">
-            <button class="btn btn-primary" hx-get="/open_modal?template=provision-new-file" hx-target="#modal-content" hx-swap="innerHTML">
-                <i class="fas fa-plus mr-2"></i>New File
-            </button>
+<div role="main" class="main flip">
+    <header class="pagehead" style="grid-column: 1 / -1;">
+        <div>
+            <h1><span class="only-cozy">Provision</span><span class="only-console">provision</span></h1>
+            <p class="sub only-cozy">{{len .Files}} files</p>
+            <p class="sub only-console">{{len .Files}} files</p>
         </div>
-    </div>
+        <div class="actions">
+            <button class="b p" hx-get="/open_modal?template=provision-new-file" hx-target="#modal-content" hx-swap="innerHTML">New file</button>
+        </div>
+    </header>
 
-    <!-- Modal placeholder -->
-    <div id="modal-content"></div>
-
-    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+    <div class="grid grid-cols-1 lg:grid-cols-3 gap-6" style="grid-column: 1 / -1;">
         <!-- File Browser -->
         <div class="lg:col-span-1">
-            <div class="bg-base-200 rounded-lg shadow-lg p-4">
+            <div class="panel pad-in">
                 <div class="flex justify-between items-center mb-4">
                     <h2 class="text-lg font-semibold">File Browser</h2>
                 </div>
@@ -111,7 +109,7 @@
 
         <!-- Editor -->
         <div class="lg:col-span-2">
-            <div class="bg-base-200 rounded-lg shadow-lg p-4">
+            <div class="panel pad-in">
                 <!-- Editor header -->
                 <div class="flex justify-between items-center mb-4">
                     <div class="flex items-center space-x-4">
@@ -174,7 +172,7 @@
     </div>
 
     <!-- Help panel -->
-    <div class="mt-6 bg-base-200 rounded-lg shadow-lg p-4">
+    <div class="panel pad-in mt" style="grid-column: 1 / -1;">
         <div class="flex justify-between items-center mb-2">
             <h3 class="text-lg font-semibold">Quick Help</h3>
             <button class="btn btn-ghost btn-xs" onclick="toggleHelp()">
@@ -693,6 +691,16 @@ window.addEventListener('message', function(event) {
 // Initialize
 document.addEventListener('DOMContentLoaded', function() {
     updateEditorInfo();
+});
+
+document.addEventListener('keydown', function (e) {
+    if ((e.metaKey || e.ctrlKey) && (e.key === 's' || e.key === 'S')) {
+        var tag = (e.target && e.target.tagName || '').toLowerCase();
+        if (tag === 'textarea' || tag === 'input' || (e.target && e.target.isContentEditable)) {
+            e.preventDefault();
+            saveFile();
+        }
+    }
 });
 </script>
 {{ end }}

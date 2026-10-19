@@ -49,7 +49,20 @@ func LoadTemplates() map[string]*template.Template {
 
 // templateFuncs exposes formatting helpers to every parsed template.
 var templateFuncs = template.FuncMap{
-	"formatBytes": formatBytes,
+	"formatBytes":       formatBytes,
+	"relTime":           relTime,
+	"uiMode":            uiMode,
+	"pageID":            pageID,
+	"fieldString":       fieldString,
+	"modePreferenceURL": func() string { return ModePreferenceURL },
+	"summaryURL":        func() string { return OverviewSummaryURL },
+	"initial": func(s string) string {
+		r := []rune(s)
+		if len(r) == 0 {
+			return "?"
+		}
+		return strings.ToUpper(string(r[0]))
+	},
 }
 
 // formatBytes renders a byte count as a human-readable string (e.g. "117.7 MB").
@@ -98,11 +111,11 @@ func parseTemplates() map[string]*template.Template {
 	const baseTemplate = "templates/base.templ"
 
 	files := map[string][]string{
-		"index":              {baseTemplate, "templates/pages/index.templ"},
+		"index":              {baseTemplate, "templates/pages/index.templ", "templates/partials/status-content.templ"},
 		"login":              {"templates/base-login.templ", "templates/pages/login.templ"},
 		"dhcp":               {baseTemplate, "templates/pages/dhcp.templ"},
 		"tftp":               {baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ"},
-		"status":             {baseTemplate, "templates/pages/status.templ"},
+		"status":             {baseTemplate, "templates/pages/status.templ", "templates/partials/status-content.templ"},
 		"status-content":     {"templates/partials/status-content.templ"},
 		"provision":          {baseTemplate, "templates/pages/provision.templ"},
 		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},

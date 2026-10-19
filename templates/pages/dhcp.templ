@@ -1,115 +1,180 @@
 {{define "content"}}
-<div class="flex justify-between items-center mb-6">
-    <h1 class="text-3xl font-bold">DHCP Servers</h1>
-    <button id="new-dhcp-btn" 
-        hx-get="/open_modal?template=dhcpmodal" 
-        hx-target="#modal-content" 
-        hx-swap="innerHTML"
-        class="btn btn-primary">
-        <i class="fas fa-plus mr-2"></i>
-        New DHCP Server
-    </button>
-</div>
+<header class="pagehead">
+    <div>
+        <h1><span class="only-cozy">DHCP</span><span class="only-console">dhcp</span></h1>
+        <p class="sub only-cozy">{{len .Servers}} servers</p>
+        <p class="sub only-console">{{len .Servers}} servers</p>
+    </div>
+    <div class="actions">
+        <button id="new-dhcp-btn"
+            hx-get="/open_modal?template=dhcpmodal"
+            hx-target="#modal-content"
+            hx-swap="innerHTML"
+            class="b p">New server</button>
+    </div>
+</header>
 
-<!-- Placeholder for modal -->
-<div id="modal-content"></div>
+{{if not .Servers}}
+<p class="note mt">No DHCP servers yet. Add one to hand out addresses.</p>
+{{end}}
 
 {{range .Servers}}
-<div class="card bg-base-200 shadow-xl mb-8">
-    <div class="card-body overflow-visible">
-        <div class="flex items-center justify-between mb-4">
-            <div class="flex items-center space-x-3">
-                <span class="ip-address text-2xl font-bold text-primary">{{ .TFTPIP }}</span>
-                <span class="badge {{ .Status }} badge-lg">{{if eq .Status "badge-success"}}Running{{else}}Stopped{{end}}</span>
-            </div>
-            <div class="flex items-center space-x-2">
-                {{if eq .Status "badge-success"}}
-                <button class="btn btn-sm btn-error tooltip tooltip-bottom" data-tip="Stop Server" hx-post="/dhcp/stop?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-stop mr-1"></i>Stop</button>
-                {{else}}
-                <button class="btn btn-sm btn-success tooltip tooltip-bottom" data-tip="Start Server" hx-post="/dhcp/start?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-play mr-1"></i>Start</button>
-                {{end}}
-                <button class="btn btn-sm btn-info tooltip tooltip-bottom" data-tip="Edit Server" hx-get="/open_modal?template=dhcpmodal&server_id={{ .ID }}" hx-target="#modal-content" hx-swap="innerHTML"><i class="fas fa-edit"></i></button>
-                <button class="btn btn-sm btn-warning tooltip tooltip-bottom" data-tip="Delete Server" hx-post="/dhcp/delete?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-trash"></i></button>
-            </div>
+<section class="panel mt">
+    <div class="pad" style="justify-content: space-between;">
+        <div>
+            <span class="ip">{{.TFTPIP}}</span>
+            {{if .Running}}
+            <span class="st ok">running</span>
+            {{else}}
+            <span class="st er">stopped</span>
+            {{end}}
+            <p class="mu" style="margin-top:4px">
+                {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}
+            </p>
         </div>
-
-        <div class="overflow-x-auto md:overflow-visible">
-            <table class="table w-full">
-                <thead>
-                    <tr>
-                        <th>MAC Address</th>
-                        <th>IP Address</th>
-                        <th class="text-center">State</th>
-                        <th class="text-center">Reserved</th>
-                        <th class="text-center">BootMenu</th>
-                        <th class="text-center">IPMI</th>
-                        <th class="text-center">Actions</th>
-                    </tr>
-                </thead>
-                <tbody>
-                    {{ $tftpip := .TFTPIP }}
-                    {{range .Leases}}
-                    <tr>
-                        <td>{{ .MAC }}</td>
-                        <td>{{ .IP }}</td>
-                        <td class="text-center">
-                            <div id="lease-state-{{.MAC}}" class="badge {{.StateBadgeClass}} badge-sm">{{.StateDisplayName}}</div>
-                        </td>
-                        <td class="text-center">
-                            <button id="reserveBtn-{{ .MAC }}" class="modal-opener tooltip tooltip-top" data-tip="{{if .Static}}Reserved IP{{else}}Reserve IP{{end}}" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">
-                                {{if .Static}}
-                                    <i class="fas fa-bookmark text-success text-lg"></i>
-                                {{else}}
-                                    <i class="far fa-bookmark text-base-content/40 text-lg"></i>
-                                {{end}}
-                            </button>
-                        </td>
-                        <td class="text-center">
-                            <button hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs tooltip tooltip-top {{if .Menu.Filename}}btn-accent{{else}}btn-ghost{{end}}" data-tip="Configure Boot Menu">Configure</button>
-                        </td>
-                        <td class="text-center">
-                            <button hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs tooltip tooltip-top {{if .IPMI.Username}}btn-accent{{else}}btn-ghost{{end}}" data-tip="Configure IPMI">Configure</button>
-                        </td>
-                        <td class="text-center">
-                            <div class="flex space-x-1">
-                                <div class="dropdown dropdown-end dropdown-top">
-                                    <button class="btn btn-xs btn-info tooltip tooltip-top" data-tip="Change State" tabindex="0">
-                                        <i class="fas fa-flag"></i>
-                                    </button>
-                                    <ul tabindex="0" class="dropdown-content z-[9999] menu p-2 shadow bg-base-100 rounded-box w-52">
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'assigned')"><i class="fas fa-circle text-info text-xs mr-2"></i>Assigned</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'pxe_requested')"><i class="fas fa-circle text-warning text-xs mr-2"></i>PXE Requested</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'booting')"><i class="fas fa-circle text-warning text-xs mr-2"></i>Booting</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaging')"><i class="fas fa-circle text-accent text-xs mr-2"></i>Imaging</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'imaged')"><i class="fas fa-circle text-success text-xs mr-2"></i>Imaged</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'configuring')"><i class="fas fa-circle text-accent text-xs mr-2"></i>Configuring</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'complete')"><i class="fas fa-circle text-success text-xs mr-2"></i>Complete</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'failed')"><i class="fas fa-circle text-error text-xs mr-2"></i>Failed</a></li>
-                                        <li><a onclick="updateLeaseState('{{.MAC}}', 'offline')"><i class="fas fa-circle text-base-content/40 text-xs mr-2"></i>Offline</a></li>
-                                    </ul>
-                                </div>
-                                <button class="btn btn-xs btn-secondary tooltip tooltip-top" data-tip="View History" onclick="showLeaseHistory('{{.MAC}}')">
-                                    <i class="fas fa-file-text"></i>
-                                </button>
-                                <button class="btn btn-xs btn-error tooltip tooltip-top" data-tip="Delete Lease" hx-post="/dhcp/delete_lease?mac={{.MAC}}" hx-target="body" hx-swap="innerHTML" hx-confirm="Are you sure you want to delete this lease?">
-                                    <i class="fas fa-trash"></i>
-                                </button>
-                            </div>
-                        </td>
-                    </tr>
-                    {{end}}
-                </tbody>
-            </table>
-            <div class="mt-4 flex justify-center">
-                <button class="btn btn-sm btn-primary" hx-get="/open_modal?template=manualleasemodal&network={{ .TFTPIP }}" hx-target="#modal-content" hx-swap="innerHTML">
-                    <i class="fas fa-plus mr-2"></i>
-                    Add Manual Entry
-                </button>
-            </div>
+        <div class="actions">
+            {{if .Running}}
+            <button class="b dg sm" hx-post="/dhcp/stop?server_id={{.ID}}" hx-swap="none">Stop</button>
+            {{else}}
+            <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none">Start</button>
+            {{end}}
+            <button class="b sm" hx-get="/open_modal?template=dhcpmodal&server_id={{.ID}}" hx-target="#modal-content" hx-swap="innerHTML">Edit</button>
+            <button class="b dg sm" hx-post="/dhcp/delete?server_id={{.ID}}" hx-swap="none" hx-confirm="Delete this DHCP server?">Delete</button>
         </div>
     </div>
-</div>
+
+    {{ $tftpip := .TFTPIP }}
+    <div class="cozy-view">
+        {{if .Leases}}
+        <div class="cards">
+            {{range .Leases}}
+            <button type="button" class="cd lease-pick"
+                data-mac="{{.MAC}}"
+                data-ip="{{.IP}}"
+                data-state="{{.StateDisplayName}}"
+                data-seen="{{relTime .LastSeen}}"
+                data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}"
+                data-menu="{{if .Menu.Filename}}{{.Menu.OS}} {{.Menu.Version}}{{else}}none{{end}}"
+                data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
+                data-reserved="{{if .Static}}yes{{else}}no{{end}}"
+                onclick="selectLease(this)">
+                <div class="r">
+                    <b class="ip">{{.IP}}</b>
+                    <span class="badge lease-state {{.StateBadgeClass}}" data-mac="{{.MAC}}">{{.StateDisplayName}}</span>
+                </div>
+                <div class="kv">
+                    <span>MAC</span><span class="mono">{{.MAC}}</span>
+                    <span>Seen</span>
+                    <span title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</span>
+                    <span>Menu</span><span>{{if .Menu.Filename}}{{.Menu.Filename}}{{else}}—{{end}}</span>
+                </div>
+            </button>
+            {{end}}
+        </div>
+        {{else}}
+        <p class="note">No leases on this server.</p>
+        {{end}}
+    </div>
+
+    <div class="console-view scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>MAC</th>
+                    <th>IP</th>
+                    <th>State</th>
+                    <th>Seen</th>
+                    <th>Reserved</th>
+                    <th>Menu</th>
+                    <th>IPMI</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Leases}}
+                <tr class="lease-pick"
+                    data-mac="{{.MAC}}"
+                    data-ip="{{.IP}}"
+                    data-state="{{.StateDisplayName}}"
+                    data-seen="{{relTime .LastSeen}}"
+                    data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}"
+                    data-menu="{{if .Menu.Filename}}{{.Menu.OS}} {{.Menu.Version}}{{else}}none{{end}}"
+                    data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
+                    data-reserved="{{if .Static}}yes{{else}}no{{end}}"
+                    onclick="selectLease(this)">
+                    <td class="mono">{{.MAC}}</td>
+                    <td class="ip">{{.IP}}</td>
+                    <td><span class="badge lease-state {{.StateBadgeClass}}" data-mac="{{.MAC}}">{{.StateDisplayName}}</span></td>
+                    <td title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{.LastSeen.Format "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</td>
+                    <td>{{if .Static}}yes{{else}}no{{end}}</td>
+                    <td>{{if .Menu.Filename}}{{.Menu.Filename}}{{else}}—{{end}}</td>
+                    <td>{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}—{{end}}</td>
+                </tr>
+                {{else}}
+                <tr><td colspan="7">No leases on this server.</td></tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>MAC</th>
+                    <th>Actions</th>
+                </tr>
+            </thead>
+            <tbody>
+                {{range .Leases}}
+                <tr>
+                    <td class="mono">{{.MAC}}</td>
+                    <td>
+                        <div class="actions">
+                            <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">{{if .Static}}Reserved{{else}}Reserve{{end}}</button>
+                            <button class="b sm {{if .Menu.Filename}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">Boot menu</button>
+                            <button class="b sm {{if .IPMI.Username}}p{{end}}" hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML">IPMI</button>
+                            <div class="dropdown dropdown-end">
+                                <button class="b sm" tabindex="0" type="button">State</button>
+                                <ul tabindex="0" class="dropdown-content z-[9999] menu p-2 shadow bg-base-100 rounded-box w-52">
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'assigned')">Assigned</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'pxe_requested')">PXE Requested</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'booting')">Booting</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'imaging')">Imaging</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'imaged')">Imaged</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'configuring')">Configuring</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'complete')">Complete</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'failed')">Failed</a></li>
+                                    <li><a onclick="updateLeaseState('{{.MAC}}', 'offline')">Offline</a></li>
+                                </ul>
+                            </div>
+                            <button class="b sm" type="button" onclick="showLeaseHistory('{{.MAC}}')">History</button>
+                            <button class="b dg sm" hx-post="/dhcp/delete_lease?mac={{.MAC}}" hx-swap="none" hx-confirm="Delete this lease?">Delete</button>
+                        </div>
+                    </td>
+                </tr>
+                {{end}}
+            </tbody>
+        </table>
+    </div>
+
+    <div class="pad">
+        <button class="b sm p" hx-get="/open_modal?template=manualleasemodal&network={{.TFTPIP}}" hx-target="#modal-content" hx-swap="innerHTML">Add manual lease</button>
+    </div>
+</section>
 {{end}}
+
+<section class="panel mt" id="lease-detail">
+    <div class="det" id="lease-detail-body">
+        <span>Lease</span><span id="det-summary">Select a lease</span>
+        <span>MAC</span><span id="det-mac">—</span>
+        <span>IP</span><span id="det-ip">—</span>
+        <span>State</span><span id="det-state">—</span>
+        <span>Seen</span><span id="det-seen">—</span>
+        <span>Reserved</span><span id="det-reserved">—</span>
+        <span>Menu</span><span id="det-menu">—</span>
+        <span>IPMI</span><span id="det-ipmi">—</span>
+    </div>
+</section>
 
 <script>
 function toast(message, isSuccess) {
@@ -137,93 +202,71 @@ var stateDisplayNames = {
     'offline': 'Offline'
 };
 
+function selectLease(el) {
+    document.querySelectorAll('.lease-pick.sel, tr.lease-pick.sel').forEach(function (node) {
+        node.classList.remove('sel');
+    });
+    el.classList.add('sel');
+    document.getElementById('det-summary').textContent = el.getAttribute('data-ip');
+    document.getElementById('det-mac').textContent = el.getAttribute('data-mac');
+    document.getElementById('det-ip').textContent = el.getAttribute('data-ip');
+    document.getElementById('det-state').textContent = el.getAttribute('data-state');
+    var seen = document.getElementById('det-seen');
+    seen.textContent = el.getAttribute('data-seen');
+    seen.title = el.getAttribute('data-seen-title') || '';
+    document.getElementById('det-reserved').textContent = el.getAttribute('data-reserved');
+    document.getElementById('det-menu').textContent = el.getAttribute('data-menu');
+    document.getElementById('det-ipmi').textContent = el.getAttribute('data-ipmi');
+}
+
 function updateLeaseState(mac, newState) {
     if (!newState) return;
-
-    const formData = new FormData();
+    var formData = new FormData();
     formData.append('state', newState);
     formData.append('source', 'manual');
-
-    fetch('/dhcp/lease/state?mac=' + encodeURIComponent(mac), {
-        method: 'POST',
-        body: formData
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.status === 'success') {
-            // Update the badge in place instead of reloading the page
-            const badge = document.getElementById('lease-state-' + mac);
-            if (badge) {
-                badge.className = 'badge ' + getStateBadgeClass(newState) + ' badge-sm';
-                badge.textContent = stateDisplayNames[newState] || newState;
+    fetch('/dhcp/lease/state?mac=' + encodeURIComponent(mac), { method: 'POST', body: formData })
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            if (data.status === 'success') {
+                document.querySelectorAll('.lease-state').forEach(function (badge) {
+                    if (badge.getAttribute('data-mac') !== mac) return;
+                    badge.className = 'badge lease-state ' + getStateBadgeClass(newState);
+                    badge.textContent = stateDisplayNames[newState] || newState;
+                });
+                toast('Lease state updated to ' + (stateDisplayNames[newState] || newState), true);
+            } else {
+                toast('Failed to update lease state: ' + (data.message || 'Unknown error'), false);
             }
-            toast('Lease state updated to ' + (stateDisplayNames[newState] || newState), true);
-        } else {
-            toast('Failed to update lease state: ' + (data.message || 'Unknown error'), false);
-        }
-    })
-    .catch(error => {
-        console.error('Error updating lease state:', error);
-        toast('Failed to update lease state', false);
-    });
+        })
+        .catch(function () { toast('Failed to update lease state', false); });
 }
 
 function showLeaseHistory(mac) {
     fetch('/dhcp/lease/history?mac=' + encodeURIComponent(mac))
-    .then(response => response.json())
-    .then(data => {
-        // Create modal content
-        const modalContent = `
-            <div class="modal modal-open">
-                <div class="modal-box">
-                    <h3 class="font-bold text-lg">Lease History for ${mac}</h3>
-                    <div class="py-4">
-                        ${data.history && data.history.length > 0 
-                            ? data.history.map(entry => `
-                                <div class="flex justify-between items-center py-2 border-b">
-                                    <div class="flex flex-col">
-                                        <div class="flex space-x-2">
-                                            ${entry.from_state ? `<span class="badge badge-ghost badge-xs">${entry.from_state}</span>` : ''}
-                                            ${entry.from_state ? '<i class="fas fa-arrow-right text-xs"></i>' : ''}
-                                            <span class="badge ${getStateBadgeClass(entry.to_state)} badge-sm">${entry.to_state}</span>
-                                        </div>
-                                        <span class="text-xs text-base-content/50">${entry.source}</span>
-                                    </div>
-                                    <span class="text-sm text-base-content/70">${new Date(entry.timestamp).toLocaleString()}</span>
-                                </div>
-                            `).join('')
-                            : '<p class="text-base-content/70">No history available for this lease.</p>'
-                        }
-                    </div>
-                    <div class="modal-action">
-                        <button class="btn" onclick="closeHistoryModal()">Close</button>
-                    </div>
-                </div>
-            </div>
-        `;
-        
-        // Add modal to page
-        document.body.insertAdjacentHTML('beforeend', modalContent);
-    })
-    .catch(error => {
-        console.error('Error fetching lease history:', error);
-        toast('Failed to load lease history', false);
-    });
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            var rows = (data.history && data.history.length)
+                ? data.history.map(function (entry) {
+                    return '<div class="flex justify-between items-center py-2 border-b"><div><span class="badge ' + getStateBadgeClass(entry.to_state) + '">' + entry.to_state + '</span> <span class="mu">' + (entry.source || '') + '</span></div><span class="mu">' + new Date(entry.timestamp).toLocaleString() + '</span></div>';
+                }).join('')
+                : '<p class="mu">No history available for this lease.</p>';
+            document.body.insertAdjacentHTML('beforeend',
+                '<div class="modal modal-open"><div class="modal-box"><h3 class="font-bold text-lg">Lease history for ' + mac + '</h3><div class="py-4">' + rows + '</div><div class="modal-action"><button class="btn" onclick="closeHistoryModal()">Close</button></div></div></div>');
+        })
+        .catch(function () { toast('Failed to load lease history', false); });
 }
 
 function closeHistoryModal() {
-    const modal = document.querySelector('.modal.modal-open');
-    if (modal) {
-        modal.remove();
-    }
+    var modal = document.querySelector('.modal.modal-open');
+    if (modal) modal.remove();
 }
 
 function getStateBadgeClass(state) {
-    const stateClasses = {
+    var stateClasses = {
         'assigned': 'badge-info',
         'pxe_requested': 'badge-warning',
-        'booting': 'badge-primary',
-        'imaging': 'badge-secondary',
+        'booting': 'badge-warning',
+        'imaging': 'badge-accent',
         'imaged': 'badge-success',
         'configuring': 'badge-accent',
         'complete': 'badge-success',

@@ -77,22 +77,19 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Title     string
+		Mode      string
+		Page      string
 		Versions  []*syslinux.SyslinuxVersion
 		Downloads []*syslinux.DownloadStatus
 	}{
-		Title:     "Syslinux Boot Files",
+		Title:     "Syslinux",
+		Mode:      "cozy",
+		Page:      "syslinux",
 		Versions:  versions,
 		Downloads: downloads,
 	}
 
-	templates := LoadTemplates()
-	if tmpl, ok := templates["syslinux"]; ok {
-		if err := tmpl.Execute(w, data); err != nil {
-			HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to execute template: %v", err), "Unable to render the syslinux page"))
-		}
-	} else {
-		HandleError(w, r, NewInternalError("Syslinux template not found", "Unable to render the syslinux page"))
-	}
+	renderCachedTemplate(w, r, "syslinux", data, "Unable to render the syslinux page")
 }
 
 // ListVersions returns all available Syslinux versions
