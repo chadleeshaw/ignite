@@ -116,14 +116,16 @@ func TestPreferenceAndSummaryRoutesRequireSession(t *testing.T) {
 	}
 	require.NotNil(t, session)
 
+	// /status is not a route. Overview polls /status/content instead.
 	statusReq := httptest.NewRequest(http.MethodGet, "/status", nil)
 	statusReq.AddCookie(session)
 	statusRec := httptest.NewRecorder()
 	router.ServeHTTP(statusRec, statusReq)
-	require.Equal(t, http.StatusFound, statusRec.Code)
-	require.Equal(t, "/", statusRec.Header().Get("Location"))
+	require.Equal(t, http.StatusNotFound, statusRec.Code)
 
-	for _, path := range []string{"/dashboard/summary", "/status"} {
+	require.NotNil(t, router.Get("StatusContent"))
+
+	for _, path := range []string{"/dashboard/summary", "/status/content"} {
 		req := httptest.NewRequest(http.MethodGet, path, nil)
 		rec := httptest.NewRecorder()
 		router.ServeHTTP(rec, req)

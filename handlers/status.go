@@ -200,14 +200,7 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	}, nil
 }
 
-// HandleStatusPage redirects to Overview. This handler does not render a
-// status page, so it does not set a nav Page. /status/content remains the
-// fragment Overview can poll.
-func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
-	http.Redirect(w, r, "/", http.StatusFound)
-}
-
-// HandleStatusContent serves status content for HTMX updates
+// HandleStatusContent serves status content for HTMX updates.
 func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Request) {
 	if !requireConfig(w, r, h.container) {
 		return

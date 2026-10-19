@@ -53,7 +53,6 @@ func TestAuthMiddleware_ProtectedPaths_Unauthenticated(t *testing.T) {
 		"/tftp",
 		"/osimages",
 		"/syslinux",
-		"/status",
 		"/dhcp/servers",
 		"/provision/load-file",
 	}
@@ -94,7 +93,6 @@ func TestAuthMiddleware_ProtectedPaths_Authenticated(t *testing.T) {
 		"/tftp",
 		"/osimages",
 		"/syslinux",
-		"/status",
 	}
 
 	// Create a simple handler that returns 200 OK

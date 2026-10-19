@@ -162,11 +162,8 @@ func setupPreferenceRoutes(router *mux.Router, handlers *handlers.PreferenceHand
 }
 
 // setupStatusRoutes configures the overview status fragment.
-// GET /status is not a page and is not part of the documented API. It stays
-// as a compatibility redirect to / because the shell still links there.
-// GET /status/content is the fragment Overview can poll.
+// GET /status/content is the fragment Overview polls. There is no /status page.
 func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
-	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET")
 	router.HandleFunc("/status/content", handlers.HandleStatusContent).Methods("GET").Name("StatusContent")
 }
 
