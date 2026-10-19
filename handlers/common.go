@@ -108,6 +108,7 @@ func parseTemplates() map[string]*template.Template {
 		"provision":          {baseTemplate, "templates/pages/provision.templ"},
 		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
 		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
+		"error":              {baseTemplate, "templates/pages/error.templ"},
 		"dhcpmodal":          {"templates/modals/dhcpmodal.templ"},
 		"reservemodal":       {"templates/modals/reservemodal.templ"},
 		"bootmodal":          {"templates/modals/bootmodal.templ"},
@@ -248,7 +249,7 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 		}
 
 		w.Header().Set("Content-Type", "text/html")
-		if err := t.Execute(w, data); err != nil {
+		if err := t.Execute(w, applyUIMode(r, data)); err != nil {
 			HandleError(w, r, NewInternalError(
 				fmt.Sprintf("Error executing template %s: %v", template, err),
 				"Unable to render the dialog",

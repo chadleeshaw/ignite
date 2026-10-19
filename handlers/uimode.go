@@ -1,7 +1,6 @@
 package handlers
 
 import (
-	"context"
 	"net/http"
 	"reflect"
 	"sync"
@@ -29,17 +28,16 @@ func currentUsername() string {
 }
 
 func currentUIMode(r *http.Request) string {
+	if r == nil || !isAuthenticated(r) {
+		return DefaultUIMode
+	}
 	prefMu.RLock()
 	store := preferenceStore
 	prefMu.RUnlock()
 	if store == nil {
 		return DefaultUIMode
 	}
-	ctx := context.Background()
-	if r != nil {
-		ctx = r.Context()
-	}
-	mode, err := store.GetUIMode(ctx, currentUsername())
+	mode, err := store.GetUIMode(r.Context(), currentUsername())
 	if err != nil || !ValidUIMode(mode) {
 		return DefaultUIMode
 	}
@@ -47,9 +45,10 @@ func currentUIMode(r *http.Request) string {
 }
 
 // applyUIMode returns data with Mode set to the signed-in user's density.
-// Maps gain a "Mode" key. Structs with an exported Mode string field are
-// updated (a non-pointer struct is copied first). Nil data becomes a small
-// struct carrying Title and Mode so base templates can render.
+// A request with no session, a failed lookup, or an unknown stored value
+// gets DefaultUIMode. Maps gain a "Mode" key. Structs with an exported Mode
+// string field are updated (a non-pointer struct is copied first). Nil data
+// becomes a small struct carrying Title and Mode so base templates can render.
 func applyUIMode(r *http.Request, data any) any {
 	mode := currentUIMode(r)
 	if data == nil {

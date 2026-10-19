@@ -51,6 +51,9 @@ type DashboardSummary struct {
 	Expired  int        `json:"expired"`
 	Reserved int        `json:"reserved"`
 	Pools    []PoolStat `json:"pools"`
+	// Mode is the signed-in user's UI density. Page render fills it.
+	// It is not part of the JSON summary.
+	Mode string `json:"-"`
 }
 
 // ClassifyLease assigns a lease to exactly one bucket.

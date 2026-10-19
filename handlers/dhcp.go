@@ -126,13 +126,14 @@ func (h *DHCPHandlers) GetDHCPServers(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Title   string
+		Mode    string
 		Servers []DHCPServerView
 	}{
 		Title:   "DHCP Servers",
 		Servers: serverViews,
 	}
 
-	renderTemplate(w, "dhcp.templ", data)
+	renderTemplate(w, r, "dhcp.templ", data)
 }
 
 // StartDHCPServer handles POST /dhcp/start
@@ -803,12 +804,10 @@ type LeaseView struct {
 	LastSeen         time.Time     `json:"last_seen"`
 }
 
-// renderTemplate is a placeholder for template rendering
-func renderTemplate(w http.ResponseWriter, templateName string, data interface{}) {
-	// Implementation would use your template engine
-	// This is just a placeholder
+// renderTemplate is a placeholder for template rendering.
+func renderTemplate(w http.ResponseWriter, r *http.Request, templateName string, data interface{}) {
 	w.Header().Set("Content-Type", "text/html")
-	fmt.Fprintf(w, "Template: %s with data: %+v", templateName, data)
+	fmt.Fprintf(w, "Template: %s with data: %+v", templateName, applyUIMode(r, data))
 }
 
 // getMaskBits converts a dotted-decimal subnet mask to its CIDR prefix length.

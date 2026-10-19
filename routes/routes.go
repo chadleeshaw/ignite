@@ -49,6 +49,9 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	setupDashboardRoutes(router, dashboardHandlers)
 	setupPreferenceRoutes(router, preferenceHandlers)
 
+	router.NotFoundHandler = http.HandlerFunc(handlers.NotFound)
+	router.MethodNotAllowedHandler = http.HandlerFunc(handlers.MethodNotAllowed)
+
 	return router
 }
 

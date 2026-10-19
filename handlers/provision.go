@@ -183,12 +183,18 @@ func (h *ProvisionHandlers) detectLanguage(path string) string {
 	}
 }
 
+// fileOptions is the view model for the file and template pickers.
+type fileOptions struct {
+	Mode  string
+	Files []string
+}
+
 // renderOptions renders a list of <option> elements for the file and
 // template pickers. The template is parsed per request with normal error
 // handling instead of panicking.
 func renderOptions(w http.ResponseWriter, r *http.Request, files []string) {
 	tmpl, err := template.New("options").Parse(
-		"{{range .}}<option value=\"{{.}}\">{{.}}</option>{{end}}",
+		`{{range .Files}}<option value="{{.}}">{{.}}</option>{{end}}`,
 	)
 	if err != nil {
 		HandleError(w, r, NewInternalError(
@@ -199,7 +205,7 @@ func renderOptions(w http.ResponseWriter, r *http.Request, files []string) {
 	}
 
 	w.Header().Set("Content-Type", "text/html")
-	if err := tmpl.Execute(w, files); err != nil {
+	if err := tmpl.Execute(w, applyUIMode(r, fileOptions{Files: files})); err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Failed to render options template: %v", err),
 			"Unable to render options",

@@ -94,7 +94,9 @@ func TestPageRenderKeepsBodyClass(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	require.Contains(t, body, `<body class="bg-base-100">`)
-	require.Contains(t, body, `data-theme="ignite"`)
+	require.Contains(t, body, `data-theme="cozy"`)
+	require.NotContains(t, body, `data-theme="console"`)
+	require.NotContains(t, body, `data-theme="ignite"`)
 	require.NotContains(t, body, `bg-base-100 console`)
 	require.NotContains(t, body, `bg-base-100 cozy`)
 	require.NotContains(t, body, `{{.Mode}}`)
@@ -105,11 +107,13 @@ func TestApplyUIModeUsesStoredPreference(t *testing.T) {
 	t.Cleanup(func() { SetPreferenceStore(prev) })
 	SetPreferenceStore(&memoryPrefs{mode: ConsoleUIMode})
 
+	req := httptest.NewRequest(http.MethodGet, "/", nil)
+	req.AddCookie(testSessionCookie(t))
 	page := struct {
 		Title string
 		Mode  string
 	}{Title: "DHCP"}
-	stamped := applyUIMode(httptest.NewRequest(http.MethodGet, "/", nil), page)
+	stamped := applyUIMode(req, page)
 	got, ok := stamped.(*struct {
 		Title string
 		Mode  string
@@ -119,8 +123,17 @@ func TestApplyUIModeUsesStoredPreference(t *testing.T) {
 	require.Equal(t, "console", got.Mode)
 
 	mapped := map[string]string{"title": "Ignite"}
-	applyUIMode(httptest.NewRequest(http.MethodGet, "/", nil), mapped)
+	applyUIMode(req, mapped)
 	require.Equal(t, "console", mapped["Mode"])
+
+	anonymous := httptest.NewRequest(http.MethodGet, "/", nil)
+	stamped = applyUIMode(anonymous, page)
+	got, ok = stamped.(*struct {
+		Title string
+		Mode  string
+	})
+	require.True(t, ok)
+	require.Equal(t, "cozy", got.Mode)
 }
 
 type memoryPrefs struct {
