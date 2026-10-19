@@ -161,11 +161,12 @@ func setupPreferenceRoutes(router *mux.Router, handlers *handlers.PreferenceHand
 	router.HandleFunc("/api/preferences/mode", handlers.SetMode).Methods("POST").Name("SetUIMode")
 }
 
-// setupStatusRoutes configures status routes.
-// GET /status redirects to Overview. GET /status/content is the fragment
-// Overview can poll. /status is not a page.
+// setupStatusRoutes configures the overview status fragment.
+// GET /status is not a page and is not part of the documented API. It stays
+// as a compatibility redirect to / because the shell still links there.
+// GET /status/content is the fragment Overview can poll.
 func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
-	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET").Name("Status")
+	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET")
 	router.HandleFunc("/status/content", handlers.HandleStatusContent).Methods("GET").Name("StatusContent")
 }
 
