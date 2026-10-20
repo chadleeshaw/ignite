@@ -86,7 +86,6 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Mode          string
 		Page          string
 		CSRFToken     string
-		OverallStatus string
 		OSImages      []*osimage.OSImage
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string

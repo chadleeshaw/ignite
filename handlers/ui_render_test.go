@@ -307,7 +307,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		}},
 	})
-	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, "tftp root") {
+	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, `href="/tftp">/</a>`) {
 		t.Error("tftp breadcrumbs missing")
 	}
 	if strings.Contains(tftp, "/srv/tftp") {
@@ -322,7 +322,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		`<kbd>3</kbd> tftp`,
 		`class="sb"`,
 		`>Up</a>`,
-		`tftp root`,
+		`href="/tftp">/</a>`,
 		`class="actions stable slots"`,
 		`class="label-fit"`,
 		`aria-hidden="true">Download`,
@@ -423,6 +423,36 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 	if !strings.Contains(prov, "/public/http/js/highlight.js") || !strings.Contains(prov, "igniteHighlight(") {
 		t.Error("provision preview is not wired to the shared highlighter")
+	}
+}
+
+func TestPendingLayoutHelpers(t *testing.T) {
+	when := time.Date(2026, 10, 19, 22, 30, 54, 0, time.FixedZone("IST", 5*3600+30*60))
+	if got := rfc3339(when); got != "2026-10-19T17:00:54Z" {
+		t.Fatalf("time value: %q", got)
+	}
+	if got := rfc3339("2026-10-19T22:30:54+05:30"); got != "2026-10-19T22:30:54+05:30" {
+		t.Fatalf("rfc3339 string: %q", got)
+	}
+	if rfc3339("2026-10-19 22:30:54") != "" || rfc3339(time.Time{}) != "" {
+		t.Fatal("non-rfc3339 or zero time should be empty")
+	}
+	if got := tftpRootCrumb("/srv/tftp"); got != "/" || strings.Contains(got, "srv") {
+		t.Fatalf("crumb %q", got)
+	}
+	overview := pageHealth(struct {
+		Page          string
+		OverallStatus string
+	}{Page: "overview", OverallStatus: "healthy"})
+	if overview != "All services up" {
+		t.Fatalf("overview health %q", overview)
+	}
+	dhcp := pageHealth(struct {
+		Page    string
+		Servers []DHCPServerView
+	}{Page: "dhcp", Servers: []DHCPServerView{{Status: "configured"}}})
+	if dhcp != "DHCP is Configured, not started" {
+		t.Fatalf("dhcp fallback %q", dhcp)
 	}
 }
 

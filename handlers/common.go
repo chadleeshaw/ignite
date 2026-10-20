@@ -66,6 +66,7 @@ var templateFuncs = template.FuncMap{
 	"pageID":            pageID,
 	"fieldString":       fieldString,
 	"statusBar":         statusBar,
+	"tftpRootCrumb":     tftpRootCrumb,
 	"csrfHeaders":       csrfHeaders,
 	"modePreferenceURL": func() string { return ModePreferenceURL },
 	"summaryURL":        func() string { return OverviewSummaryURL },
@@ -174,12 +175,7 @@ func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, d
 		))
 		return
 	}
-	data = applyUIMode(r, data)
-	switch name {
-	case "index", "dhcp", "tftp", "provision", "osimages", "syslinux":
-		data = applyOverallStatus(r, data)
-	}
-	if err := tmpl.Execute(w, data); err != nil {
+	if err := tmpl.Execute(w, applyUIMode(r, data)); err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("template %q error: %v", name, err),
 			userMessage,

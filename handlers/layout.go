@@ -2,7 +2,6 @@ package handlers
 
 import (
 	"fmt"
-	"net/http"
 	"reflect"
 	"strings"
 	"time"
@@ -95,14 +94,38 @@ func relTime(t time.Time) string {
 	}
 }
 
-// rfc3339 renders a timestamp for a <time datetime> attribute.
-// Zero and unusable values return an empty string.
+// rfc3339 is the single timestamp helper for <time datetime>.
+// A time value is formatted from the field the page already has.
+// A string is kept only when it is already RFC3339, so a later layout
+// attribute can be passed through on this line without a second formatter.
 func rfc3339(v any) string {
+	if s, ok := v.(string); ok {
+		s = strings.TrimSpace(s)
+		if s == "" {
+			return ""
+		}
+		if _, err := time.Parse(time.RFC3339, s); err == nil {
+			return s
+		}
+		return ""
+	}
 	t, ok := asTime(v)
 	if !ok || t.IsZero() {
 		return ""
 	}
 	return t.UTC().Format(time.RFC3339)
+}
+
+// tftpRootCrumb is the first TFTP breadcrumb.
+// root is the absolute directory the server is using. The label is
+// relative to that directory, so the host path is not shown. A later
+// display field replaces the return on this line.
+func tftpRootCrumb(root string) string {
+	root = strings.TrimSpace(root)
+	if root == "" || root == "." || root == "/" {
+		return "/"
+	}
+	return "/"
 }
 
 // utcLabel is the no-JS fallback for an absolute timestamp. The zone is
@@ -233,59 +256,29 @@ type statusBarView struct {
 	Keys   []statusKey
 }
 
-// pageHealthFn supplies OverallStatus for shells that do not set it.
-// The application installs it. A nil function leaves the page fallback.
-var pageHealthFn func(*http.Request) string
-
-// SetPageHealth installs the host-health lookup used while rendering pages.
-func SetPageHealth(fn func(*http.Request) string) {
-	pageHealthFn = fn
-}
-
-// applyOverallStatus copies host health onto data when the page left
-// OverallStatus empty. A missing field is left alone.
-func applyOverallStatus(r *http.Request, data any) any {
-	if pageHealthFn == nil || r == nil || fieldString(data, "OverallStatus") != "" {
-		return data
+// pageHealth is the status-bar sentence.
+// OverallStatus is the word on the merged status payload (healthy, partial,
+// down). Pages that do not carry it keep the sentence derived from their
+// own fields. When layout data grows a shared health word, read it here.
+func pageHealth(data any) string {
+	if health := fieldString(data, "StatusHealth"); health != "" {
+		return health
 	}
-	status := pageHealthFn(r)
-	if status == "" {
-		return data
+	if health := cozyHealth(fieldString(data, "OverallStatus")); health != "" {
+		return health
 	}
-	v := reflect.ValueOf(data)
-	switch v.Kind() {
-	case reflect.Pointer:
-		if v.IsNil() || v.Elem().Kind() != reflect.Struct {
-			return data
-		}
-		setStringField(v.Elem(), "OverallStatus", status)
-		return data
-	case reflect.Struct:
-		cp := reflect.New(v.Type())
-		cp.Elem().Set(v)
-		setStringField(cp.Elem(), "OverallStatus", status)
-		return cp.Interface()
-	default:
-		return data
+	if health := derivedHealth(data, pageID(data)); health != "" {
+		return health
 	}
+	return "Ready"
 }
 
 // statusBar builds the flame status bar from the page value. StatusHealth,
 // StatusTip, and StatusCounts override the derived copy when a handler sets
-// them. OverallStatus, when the page or the host lookup set it, is the
-// health sentence on every page. A page without it keeps its own fallback.
+// them. Health comes from pageHealth.
 func statusBar(data any) statusBarView {
 	page := pageID(data)
-	health := fieldString(data, "StatusHealth")
-	if health == "" {
-		health = cozyHealth(fieldString(data, "OverallStatus"))
-	}
-	if health == "" {
-		health = derivedHealth(data, page)
-	}
-	if health == "" {
-		health = "Ready"
-	}
+	health := pageHealth(data)
 	counts := fieldString(data, "StatusCounts")
 	if counts == "" {
 		counts = derivedCounts(data, page)

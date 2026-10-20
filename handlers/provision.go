@@ -43,7 +43,6 @@ type ProvisionData struct {
 	Mode           string               `json:"-"`
 	Page           string               `json:"-"`
 	CSRFToken      string               `json:"-"`
-	OverallStatus  string               `json:"-"`
 	CurrentFile    *ProvisionFileInfo   `json:"current_file,omitempty"`
 	Files          []*ProvisionFileInfo `json:"files"`
 	Categories     []string             `json:"categories"`

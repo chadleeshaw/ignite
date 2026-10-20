@@ -108,12 +108,11 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Title         string
-		Mode          string
-		Page          string
-		CSRFToken     string
-		OverallStatus string
-		Servers       []DHCPServerView
+		Title     string
+		Mode      string
+		Page      string
+		CSRFToken string
+		Servers   []DHCPServerView
 	}{
 		Title:   "DHCP",
 		Page:    "dhcp",

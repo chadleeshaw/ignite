@@ -239,20 +239,6 @@ func overallServiceStatus(httpStatus, tftpStatus string, dhcpStates []dhcp.Serve
 	return "healthy"
 }
 
-// OverallStatusForRequest is the host health word for the shared status bar.
-// Pages that already set OverallStatus keep their value. An empty result
-// leaves the bar on its page-specific fallback.
-func OverallStatusForRequest(r *http.Request, container *Container) string {
-	if r == nil || container == nil {
-		return ""
-	}
-	data, err := NewStatusHandlers(container).getStatusData(r)
-	if err != nil || data == nil {
-		return ""
-	}
-	return data.OverallStatus
-}
-
 // HandleStatusContent serves status content for HTMX updates.
 // There is no /status page; Overview polls this fragment.
 func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Request) {

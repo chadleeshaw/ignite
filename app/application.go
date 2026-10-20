@@ -103,10 +103,6 @@ func (a *Application) Start() error {
 	handlers.SetTFTPRunning(true)
 	log.Printf("TFTP server started on port 69, serving from %s", a.container.Config.TFTP.Dir)
 
-	handlers.SetPageHealth(func(r *http.Request) string {
-		return handlers.OverallStatusForRequest(r, a.handlerContainer)
-	})
-
 	// Create HTTP router with injected dependencies and static file handling
 	router := routes.SetupWithContainerAndStatic(a.handlerContainer, a.staticHandler)
 	log.Printf("Embedded HTTP server configured")
