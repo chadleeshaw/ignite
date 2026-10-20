@@ -313,6 +313,7 @@ type TFTPData struct {
 	Mode            string
 	Page            string
 	CSRFToken       string
+	OverallStatus   string
 	ServerRunning   bool
 	ServerStatus    string
 	ServerDirectory string

@@ -2,6 +2,7 @@
     <div class="modal-box bg-base-100">
         <h3 class="font-bold text-2xl text-primary mb-4">{{.title}}</h3>
         <form hx-post="/dhcp/submit_dhcp" hx-target="body">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             {{if .IsEdit}}
             <input type="hidden" name="server_id" value="{{.server_id}}" />
             {{end}}

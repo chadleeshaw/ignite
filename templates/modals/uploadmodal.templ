@@ -4,6 +4,7 @@
         <h3 class="font-bold text-lg">Upload File</h3>
         <div class="py-4">
             <form hx-post="/tftp/upload_file" hx-encoding="multipart/form-data" hx-swap="none" hx-on::after-request="location.reload();">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <div class="form-control">
                     <label class="label">
                         <span class="label-text">Select file to upload:</span>

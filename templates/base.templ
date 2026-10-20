@@ -54,7 +54,7 @@
         </div>
         {{$bar := statusBar .}}
         <footer class="sb">
-            <span class="only-cozy">{{$bar.Health}}</span>
+            <span>{{$bar.Health}}</span>
             <span class="only-console">CONSOLE</span>
             {{if $bar.Counts}}<span class="only-console">{{$bar.Counts}}</span>{{end}}
             <span class="grow"></span>
@@ -104,12 +104,21 @@
     <script>
         var IGNITE_MODE_URL = "{{modePreferenceURL}}";
 
-        function igniteToast(message, ok) {
+        function igniteToast(message, ok, opts) {
+            opts = opts || {};
             var node = document.createElement("span");
-            node.textContent = message;
+            node.appendChild(document.createTextNode(message || ""));
+            if (opts.reload) {
+                node.appendChild(document.createTextNode(" "));
+                var reload = document.createElement("button");
+                reload.type = "button";
+                reload.textContent = "Reload";
+                reload.addEventListener("click", function () { window.location.reload(); });
+                node.appendChild(reload);
+            }
             Toastify({
                 node: node,
-                duration: 3000,
+                duration: opts.reload ? 8000 : 3000,
                 close: true,
                 gravity: "top",
                 position: "right",
@@ -117,6 +126,13 @@
                     ? "linear-gradient(to right, #00b09b, #96c93d)"
                     : "linear-gradient(to right, #FBBF24, #FF4500)"
             }).showToast();
+        }
+
+        function igniteLooksLikeCSRF(xhr) {
+            if (!xhr || xhr.status !== 403) return false;
+            var text = "";
+            if (typeof xhr.responseText === "string") text = xhr.responseText.toLowerCase();
+            return text.indexOf("csrf") !== -1 || text.indexOf("cross-site") !== -1;
         }
 
         function igniteCSRF() {
@@ -194,12 +210,18 @@
             var btn = drop.querySelector(":scope > button");
             if (!menu || !btn) return;
             var rect = btn.getBoundingClientRect();
-            var height = menu.offsetHeight || 240;
+            var height = menu.scrollHeight || menu.offsetHeight || 240;
+            var roomBelow = window.innerHeight - rect.bottom - 8;
             var top = rect.bottom + 4;
-            if (window.innerHeight - top < height && rect.top > height) {
+            if (roomBelow < height && rect.top > roomBelow) {
                 top = rect.top - height - 4;
             }
+            if (top + height > window.innerHeight - 8) {
+                top = Math.max(8, window.innerHeight - height - 8);
+            }
             menu.style.position = "fixed";
+            menu.style.maxHeight = Math.max(160, window.innerHeight - 16) + "px";
+            menu.style.overflowY = "auto";
             menu.style.top = Math.max(8, top) + "px";
             menu.style.right = Math.max(8, window.innerWidth - rect.right) + "px";
             menu.style.left = "auto";
@@ -213,6 +235,8 @@
             menu.style.top = "";
             menu.style.right = "";
             menu.style.left = "";
+            menu.style.maxHeight = "";
+            menu.style.overflowY = "";
         }
 
         document.addEventListener("focusin", function (e) {
@@ -300,7 +324,11 @@
         document.body.addEventListener("htmx:afterRequest", function (evt) {
             if (igniteSilent(evt)) return;
             if (evt.detail.failed) {
-                igniteToast(igniteResponseMessage(evt.detail.xhr, "An unknown error occurred."), false);
+                if (igniteLooksLikeCSRF(evt.detail.xhr)) {
+                    igniteToast("Your session expired", false, { reload: true });
+                    return;
+                }
+                igniteToast(igniteResponseMessage(evt.detail.xhr, "That action failed."), false);
             } else if (evt.detail.successful) {
                 var successMessage = igniteResponseMessage(evt.detail.xhr, "");
                 if (successMessage && successMessage !== "That action failed.") {

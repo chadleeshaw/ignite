@@ -2,6 +2,7 @@
     <div class="modal-box bg-base-100">
         <h3 class="font-bold text-2xl text-primary mb-4">DHCP Reservation</h3>
         <form>
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <div class="form-control">
                 <label class="label">
                     <span class="label-text">DHCP Server</span>

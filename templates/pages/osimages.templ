@@ -1,125 +1,155 @@
 {{ define "content" }}
 <header class="pagehead">
     <div>
-        <h1><span class="only-cozy">OS Images</span><span class="only-console">osimages</span></h1>
-        <p class="sub only-cozy">{{countPhrase (len .OSImages) "image" "images"}} on disk</p>
-        <p class="sub only-console">{{countPhrase (len .OSImages) "image" "images"}}</p>
+        <h1><span class="only-cozy">OS images</span><span class="only-console">osimages</span></h1>
+        <p class="sub only-cozy">Kernels and initrds for network installs</p>
+        <p class="sub only-console">{{countPhrase (len .OSImages) "image" "images"}} · {{countPhrase .DownloadCount "download" "downloads"}}</p>
     </div>
     <div class="actions">
-        <button class="b p" type="button" onclick="document.getElementById('downloadModal').showModal()">Download image</button>
-        <button class="b" type="button"
-                hx-post="/ipxe/update"
-                hx-swap="none">Regenerate iPXE</button>
+        <button class="b" type="button" hx-post="/ipxe/update" hx-swap="none">Regenerate iPXE config</button>
+        <button class="b p" type="button" onclick="document.getElementById('os').focus()">Download OS image</button>
     </div>
 </header>
 
-<div id="osimage-downloads">
-<div id="active-downloads" class="mt"{{if .Downloads}} hx-get="/osimages" hx-select="#osimage-downloads" hx-target="#osimage-downloads" hx-trigger="every 5s"{{end}}>
-{{if .Downloads}}
-<section class="panel">
-    <div class="pad"><b>Active downloads</b></div>
-    <div class="scroll">
-        <table>
-            <thead>
-                <tr><th>OS</th><th>Version</th><th>Status</th><th>Progress</th><th>Started</th><th></th></tr>
-            </thead>
-            <tbody>
-                {{range .Downloads}}
-                <tr>
-                    <td>{{.OS}}</td>
-                    <td class="mono">{{.Version}}</td>
-                    <td><span class="st in">{{.Status}}</span></td>
-                    <td><span class="prog"><i style="width: {{.Progress}}%"></i></span> {{.Progress}}%</td>
-                    <td><time datetime="{{rfc3339 .StartedAt}}" data-time="time">{{utcLabel .StartedAt "15:04:05"}}</time></td>
-                    <td>
-                        {{if or (eq .Status "downloading") (eq .Status "queued")}}
-                        <button class="b dg sm" hx-post="/osimages/cancel/{{.ID}}" hx-confirm="Cancel this download?">Cancel</button>
-                        {{end}}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
-</section>
-{{end}}
-</div>
-</div>
-
-<section class="panel mt">
-    {{if .OSImages}}
-    <div class="cozy-view cards">
-        {{range .OSImages}}
-        <article class="cd" style="cursor: default;">
-            <div class="r">
-                <span><span class="ico {{.OS}}">{{initial .OS}}</span>{{.OS}}</span>
-                <span class="mono">{{.Version}}</span>
-            </div>
-            <div class="kv">
-                <span>Arch</span><span>{{.Architecture}}</span>
-                <span>Kernel</span><span>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</span>
-                <span>Initrd</span><span>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</span>
-                <span>Added</span><span><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></span>
-            </div>
-            <div class="actions">
-                <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
-                {{if not .Active}}
-                <button class="b dg sm"
-                        hx-delete="/osimages/delete/{{.ID}}"
-                        hx-swap="none"
-                        hx-on::after-request="if (event.detail.successful) window.location.reload()"
-                        hx-confirm="Delete this OS image?">Delete</button>
-                {{end}}
-            </div>
-        </article>
-        {{end}}
-    </div>
-    <div class="console-view scroll">
-        <table>
-            <thead>
-                <tr>
-                    <th>OS</th><th>Version</th><th>Arch</th><th>Kernel</th><th>Initrd</th><th>Added</th><th></th>
-                </tr>
-            </thead>
-            <tbody>
-                {{range .OSImages}}
-                <tr>
-                    <td><span class="ico {{.OS}}">{{initial .OS}}</span>{{.OS}}</td>
-                    <td class="mono">{{.Version}}</td>
-                    <td>{{.Architecture}}</td>
-                    <td>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</td>
-                    <td>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</td>
-                    <td><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></td>
-                    <td>
-                        <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
-                        {{if not .Active}}
-                        <button class="b dg sm"
-                                hx-delete="/osimages/delete/{{.ID}}"
-                                hx-swap="none"
-                                hx-on::after-request="if (event.detail.successful) window.location.reload()"
-                                hx-confirm="Delete this OS image?">Delete</button>
-                        {{end}}
-                    </td>
-                </tr>
-                {{end}}
-            </tbody>
-        </table>
-    </div>
-    {{else}}
-    <div class="note">
-        <p>No OS images yet. Download a kernel and initrd to boot from.</p>
-        <button class="b p sm mt" type="button" onclick="document.getElementById('downloadModal').showModal()">Download image</button>
-    </div>
+<div class="os-top">
+    {{if .Downloads}}
+    {{with index .Downloads 0}}
+    <article class="sv on">
+        <div class="fire"><img src="/public/http/img/flame.svg" alt=""></div>
+        <div>
+            <small>Downloading · {{.Progress}}%</small>
+            <b>{{.OS}} {{.Version}}</b>
+        </div>
+        <span class="st wa" style="margin-left:auto">Active</span>
+    </article>
     {{end}}
-</section>
+    {{else}}
+    <article class="sv">
+        <div class="fire off"><img src="/public/http/img/flame.svg" alt=""></div>
+        <div>
+            <small>Downloads</small>
+            <b>Idle</b>
+        </div>
+    </article>
+    {{end}}
+    <article class="sv">
+        <div>
+            <small>iPXE config</small>
+            <b>Regenerate after image changes</b>
+        </div>
+        <span class="st ok" style="margin-left:auto">OK</span>
+    </article>
+    <section class="stats strip" aria-label="Image totals">
+        <div class="stat"><div class="stat-title">Images</div><div class="stat-value">{{len .OSImages}}</div></div>
+        <div class="stat"><div class="stat-title">Downloading</div><div class="stat-value">{{.DownloadCount}}</div></div>
+        <div class="stat"><div class="stat-title">Kernels</div><div class="stat-value">{{formatBytes .KernelBytes}}</div></div>
+        <div class="stat"><div class="stat-title">Initrds</div><div class="stat-value">{{formatBytes .InitrdBytes}}</div></div>
+        <div class="stat"><div class="stat-title">Arch</div><div class="stat-value">{{.ArchLabel}}</div></div>
+    </section>
+</div>
 
-<dialog id="downloadModal" class="modal">
-    <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">Download OS image</h3>
-        <form hx-post="/osimages/download" hx-swap="none" hx-on::after-request="handleDownloadResponse(event)">
-            <div class="form-control mb-4">
-                <label class="label"><span class="label-text">Operating system</span></label>
-                <select name="os" class="select select-bordered w-full" required onchange="updateVersions(this.value)">
+<div id="osimage-downloads" class="main">
+    <section class="panel">
+        <div class="ph">
+            <h3>Images</h3>
+            <span class="mu">{{countPhrase (len .OSImages) "ready" "ready"}}{{if .DownloadCount}} · {{.DownloadCount}} downloading{{end}}</span>
+        </div>
+        <div id="active-downloads"{{if .Downloads}} hx-get="/osimages" hx-select="#osimage-downloads" hx-target="#osimage-downloads" hx-trigger="every 5s"{{end}}>
+        {{if .Downloads}}
+        <div class="sec">Active downloads</div>
+        {{range .Downloads}}
+        <div class="dl-row">
+            <span><b>{{.OS}}</b> <span class="mono">{{.Version}}</span></span>
+            <span class="prog"><i style="width: {{.Progress}}%"></i></span>
+            <span class="mono">{{.Progress}}%</span>
+            <span class="mu">started <time datetime="{{rfc3339 .StartedAt}}" data-time="time">{{utcLabel .StartedAt "15:04:05"}}</time></span>
+            {{if or (eq .Status "downloading") (eq .Status "queued")}}
+            <button class="b sm" hx-post="/osimages/cancel/{{.ID}}" hx-confirm="Cancel this download?">Cancel</button>
+            {{else}}
+            <span class="st in">{{.Status}}</span>
+            {{end}}
+        </div>
+        {{end}}
+        {{end}}
+        </div>
+        <div class="sec">Available images</div>
+        {{if .OSImages}}
+        <div class="cozy-view cards">
+            {{range .OSImages}}
+            <article class="cd" style="cursor: default;">
+                <div class="r">
+                    <span><span class="ico {{.OS}}">{{initial .OS}}</span><b>{{.OS}} {{.Version}}</b></span>
+                    <span class="st ok">Ready</span>
+                </div>
+                <div class="kv">
+                    <span>Arch</span><span>{{.Architecture}}</span>
+                    <span>Kernel</span><span>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</span>
+                    <span>Initrd</span><span>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</span>
+                    <span>Created</span><span><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></span>
+                </div>
+                <div class="actions">
+                    <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
+                    {{if not .Active}}
+                    <button class="b dg sm"
+                            hx-delete="/osimages/delete/{{.ID}}"
+                            hx-swap="none"
+                            hx-on::after-request="if (event.detail.successful) window.location.reload()"
+                            hx-confirm="Delete this OS image?">Delete…</button>
+                    {{end}}
+                </div>
+            </article>
+            {{end}}
+        </div>
+        <div class="console-view scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>OS</th><th>Version</th><th>Arch</th><th>Kernel</th><th>Initrd</th><th>Created</th><th class="acts">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .OSImages}}
+                    <tr>
+                        <td><span class="ico {{.OS}}">{{initial .OS}}</span>{{.OS}}</td>
+                        <td class="mono">{{.Version}}</td>
+                        <td>{{.Architecture}}</td>
+                        <td>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</td>
+                        <td>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</td>
+                        <td><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></td>
+                        <td class="acts">
+                            <div class="actions stable">
+                                <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
+                                {{if not .Active}}
+                                <button class="b dg sm"
+                                        hx-delete="/osimages/delete/{{.ID}}"
+                                        hx-swap="none"
+                                        hx-on::after-request="if (event.detail.successful) window.location.reload()"
+                                        hx-confirm="Delete this OS image?">Delete…</button>
+                                {{end}}
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="note">
+            <p>No OS images yet. Download a kernel and initrd to boot from.</p>
+        </div>
+        {{end}}
+    </section>
+
+    <section class="panel">
+        <div class="ph">
+            <h3>Download an image</h3>
+            <span class="mu">kernel + initrd</span>
+        </div>
+        <form id="download-form" hx-post="/osimages/download" hx-swap="none" hx-on::after-request="handleDownloadResponse(event)">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <div class="fld">
+                <label for="os">Operating system</label>
+                <select id="os" name="os" class="select select-bordered w-full" required onchange="updateVersions(this.value)">
                     <option value="">Select OS</option>
                     <option value="ubuntu">Ubuntu</option>
                     <option value="debian">Debian</option>
@@ -129,27 +159,37 @@
                     <option value="nixos">NixOS</option>
                 </select>
             </div>
-            <div class="form-control mb-4">
-                <label class="label"><span class="label-text">Version</span></label>
+            <div class="fld">
+                <label for="versionSelect">Version</label>
                 <select name="version" id="versionSelect" class="select select-bordered w-full" required>
-                    <option value="">Select version first</option>
+                    <option value="">Select version</option>
                 </select>
             </div>
-            <div class="form-control mb-4">
-                <label class="label"><span class="label-text">Architecture</span></label>
-                <select name="architecture" class="select select-bordered w-full">
+            <div class="fld">
+                <label for="architecture">Architecture</label>
+                <select id="architecture" name="architecture" class="select select-bordered w-full">
                     {{range .Architectures}}
                     <option value="{{.}}">{{.}}</option>
                     {{end}}
                 </select>
             </div>
-            <div class="modal-action">
-                <button type="button" class="btn" onclick="document.getElementById('downloadModal').close()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Start download</button>
+            <div class="fld">
+                <span class="mu">Supported: Ubuntu · Debian · Fedora · CentOS · NixOS</span>
+            </div>
+            <div class="ipxe-note">
+                <b>iPXE boot menu</b>
+                <span class="mu">Regenerate after adding or removing images.</span>
+                <div style="margin-top:8px">
+                    <button class="b sm" type="button" hx-post="/ipxe/update" hx-swap="none">Regenerate iPXE config</button>
+                </div>
+            </div>
+            <div class="panel-foot">
+                <button type="submit" class="b p sm">Start download</button>
+                <button type="reset" class="b sm">Reset</button>
             </div>
         </form>
-    </div>
-</dialog>
+    </section>
+</div>
 
 <dialog id="infoModal" class="modal">
     <div class="modal-box">
@@ -231,17 +271,15 @@ function formatBytes(bytes) {
 
 function handleDownloadResponse(event) {
     const xhr = event.detail.xhr;
-    if (xhr.status !== 200) return;
+    if (!xhr || xhr.status !== 200) return;
     try {
         const response = JSON.parse(xhr.responseText);
         if (response.status === 'started') {
-            document.getElementById('downloadModal').close();
-            setTimeout(function () { window.location.reload(); }, 1000);
+            setTimeout(function () { window.location.reload(); }, 600);
         }
     } catch (e) {
         console.error('Error parsing response:', e);
     }
 }
-
 </script>
 {{ end }}

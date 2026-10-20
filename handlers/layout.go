@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
 	"time"
@@ -232,9 +233,47 @@ type statusBarView struct {
 	Keys   []statusKey
 }
 
+// pageHealthFn supplies OverallStatus for shells that do not set it.
+// The application installs it. A nil function leaves the page fallback.
+var pageHealthFn func(*http.Request) string
+
+// SetPageHealth installs the host-health lookup used while rendering pages.
+func SetPageHealth(fn func(*http.Request) string) {
+	pageHealthFn = fn
+}
+
+// applyOverallStatus copies host health onto data when the page left
+// OverallStatus empty. A missing field is left alone.
+func applyOverallStatus(r *http.Request, data any) any {
+	if pageHealthFn == nil || r == nil || fieldString(data, "OverallStatus") != "" {
+		return data
+	}
+	status := pageHealthFn(r)
+	if status == "" {
+		return data
+	}
+	v := reflect.ValueOf(data)
+	switch v.Kind() {
+	case reflect.Pointer:
+		if v.IsNil() || v.Elem().Kind() != reflect.Struct {
+			return data
+		}
+		setStringField(v.Elem(), "OverallStatus", status)
+		return data
+	case reflect.Struct:
+		cp := reflect.New(v.Type())
+		cp.Elem().Set(v)
+		setStringField(cp.Elem(), "OverallStatus", status)
+		return cp.Interface()
+	default:
+		return data
+	}
+}
+
 // statusBar builds the flame status bar from the page value. StatusHealth,
 // StatusTip, and StatusCounts override the derived copy when a handler sets
-// them. Everything else comes from fields the page already renders.
+// them. OverallStatus, when the page or the host lookup set it, is the
+// health sentence on every page. A page without it keeps its own fallback.
 func statusBar(data any) statusBarView {
 	page := pageID(data)
 	health := fieldString(data, "StatusHealth")

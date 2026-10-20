@@ -2,6 +2,7 @@
     <div class="modal-box bg-base-100">
         <h3 class="font-bold text-2xl text-primary mb-4">Add Manual DHCP Entry</h3>
         <form hx-post="/dhcp/add_manual_lease" hx-target="body">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <input type="hidden" name="network" value="{{.Network}}">
             
             <div class="form-control mb-4">

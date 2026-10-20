@@ -1,4 +1,4 @@
-<section class="stats" aria-label="Lease summary">
+<section class="stats strip" aria-label="Lease and pool summary">
     <div class="stat">
         <div class="stat-title">Active</div>
         <div class="stat-value">{{.Active}}</div>
@@ -11,8 +11,6 @@
         <div class="stat-title">Reserved</div>
         <div class="stat-value">{{.Reserved}}</div>
     </div>
-</section>
-<section class="stats" aria-label="DHCP pools">
     {{range .Pools}}
     <div class="stat" data-status="{{.Status}}">
         <div class="stat-title">{{.Server}}</div>

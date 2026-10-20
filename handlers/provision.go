@@ -31,16 +31,27 @@ type ProvisionFileInfo struct {
 	Description string    `json:"description,omitempty"`
 }
 
+// CategoryCount is one language or category total on the provision strip.
+type CategoryCount struct {
+	Name  string
+	Count int
+}
+
 // ProvisionData holds data for the provision page
 type ProvisionData struct {
-	Title       string               `json:"title"`
-	Mode        string               `json:"-"`
-	Page        string               `json:"-"`
-	CSRFToken   string               `json:"-"`
-	CurrentFile *ProvisionFileInfo   `json:"current_file,omitempty"`
-	Files       []*ProvisionFileInfo `json:"files"`
-	Categories  []string             `json:"categories"`
-	Types       []string             `json:"types"`
+	Title          string               `json:"title"`
+	Mode           string               `json:"-"`
+	Page           string               `json:"-"`
+	CSRFToken      string               `json:"-"`
+	OverallStatus  string               `json:"-"`
+	CurrentFile    *ProvisionFileInfo   `json:"current_file,omitempty"`
+	Files          []*ProvisionFileInfo `json:"files"`
+	Categories     []string             `json:"categories"`
+	Types          []string             `json:"types"`
+	TemplateCount  int                  `json:"-"`
+	ConfigCount    int                  `json:"-"`
+	LastSaved      time.Time            `json:"-"`
+	CategoryCounts []CategoryCount      `json:"-"`
 }
 
 // TemplateGallery represents pre-built templates
@@ -89,6 +100,31 @@ func (h *ProvisionHandlers) getProvisionData() *ProvisionData {
 	// Sort files by name
 	sort.Slice(data.Files, func(i, j int) bool {
 		return data.Files[i].Name < data.Files[j].Name
+	})
+
+	counts := map[string]int{}
+	for _, file := range data.Files {
+		if file == nil {
+			continue
+		}
+		switch file.Type {
+		case "template":
+			data.TemplateCount++
+		case "config":
+			data.ConfigCount++
+		}
+		if file.Category != "" {
+			counts[file.Category]++
+		}
+		if file.ModTime.After(data.LastSaved) {
+			data.LastSaved = file.ModTime
+		}
+	}
+	for name, count := range counts {
+		data.CategoryCounts = append(data.CategoryCounts, CategoryCount{Name: name, Count: count})
+	}
+	sort.Slice(data.CategoryCounts, func(i, j int) bool {
+		return data.CategoryCounts[i].Name < data.CategoryCounts[j].Name
 	})
 
 	return data

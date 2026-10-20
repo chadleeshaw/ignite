@@ -155,6 +155,7 @@ func seedSyslinux(ctx context.Context, repo syslinux.Repository) error {
 		},
 		{
 			ID: "syslinux-6.04", Version: "6.04-pre1", Size: 7_512_064,
+			Downloaded: true, DownloadedAt: &downloaded,
 			CreatedAt: time.Now().Add(-48 * time.Hour),
 		},
 	}

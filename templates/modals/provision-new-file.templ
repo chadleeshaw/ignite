@@ -3,6 +3,7 @@
         <h3 class="font-bold text-lg mb-4">Create New File</h3>
         
         <form id="new-file-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <div class="form-control w-full mb-4">
                 <label class="label">
                     <span class="label-text">File Name</span>

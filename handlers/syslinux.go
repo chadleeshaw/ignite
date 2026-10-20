@@ -77,12 +77,13 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 	var downloads []*syslinux.DownloadStatus
 
 	data := struct {
-		Title     string
-		Mode      string
-		Page      string
-		CSRFToken string
-		Versions  []*syslinux.SyslinuxVersion
-		Downloads []*syslinux.DownloadStatus
+		Title         string
+		Mode          string
+		Page          string
+		CSRFToken     string
+		OverallStatus string
+		Versions      []*syslinux.SyslinuxVersion
+		Downloads     []*syslinux.DownloadStatus
 	}{
 		Title:     "Syslinux",
 		Page:      "syslinux",

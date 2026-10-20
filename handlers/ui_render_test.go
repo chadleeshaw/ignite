@@ -307,8 +307,11 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		}},
 	})
-	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, "/srv/tftp") {
+	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, "tftp root") {
 		t.Error("tftp breadcrumbs missing")
+	}
+	if strings.Contains(tftp, "/srv/tftp") {
+		t.Error("tftp breadcrumb printed the host directory")
 	}
 	if !strings.Contains(tftp, `data-theme="cozy"`) {
 		t.Error("missing Mode should still be cozy")
@@ -319,7 +322,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		`<kbd>3</kbd> tftp`,
 		`class="sb"`,
 		`>Up</a>`,
-		`/srv/tftp`,
+		`tftp root`,
 		`class="actions stable slots"`,
 		`class="label-fit"`,
 		`aria-hidden="true">Download`,
@@ -344,8 +347,13 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		OSImages      []*osimage.OSImage
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
+		KernelBytes   int64
+		InitrdBytes   int64
+		ArchLabel     string
+		DownloadCount int
 	}{
 		Title: "OS Images", Page: "osimages", Architectures: []string{"x86_64"},
+		ArchLabel: "x86_64", KernelBytes: 1000,
 		OSImages: []*osimage.OSImage{{
 			ID: "img1", OS: "ubuntu", Version: "24.04", Architecture: "x86_64",
 			KernelSize: 1000, CreatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
@@ -400,7 +408,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	prov := renderNamed(t, "provision", &ProvisionData{
 		Title: "Provision", Page: "provision", Files: nil, Categories: []string{"ipxe"},
 	})
-	for _, id := range []string{"file-search", "type-filter", "category-filter", "current-filename", "editor-textarea", "save-btn", "help-content", "editor-info"} {
+	for _, id := range []string{"file-list", "current-filename", "editor-textarea", "editor-lines", "save-btn", "help-content", "editor-info"} {
 		if !strings.Contains(prov, `id="`+id+`"`) {
 			t.Errorf("provision missing %s", id)
 		}

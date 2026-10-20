@@ -9,7 +9,7 @@
             <a href="{{if .PrevDirectory}}/tftp/open?dir={{.PrevDirectory}}{{else}}/tftp{{end}}">Up</a>
             <span aria-hidden="true">/</span>
             {{end}}
-            <a href="/tftp">{{if .Root}}{{.Root}}{{else}}/{{end}}</a>
+            <a href="/tftp"><span class="only-cozy">tftp root</span><span class="only-console">/</span></a>
             {{range .Breadcrumbs}}
             <span>/</span>
             <a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a>
