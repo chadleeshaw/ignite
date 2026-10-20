@@ -92,6 +92,7 @@ func dhcpStateClass(state any) string {
 	_, class := dhcpStatePill(state)
 	return class
 }
+
 // StatusHandlers handles status-related requests
 type StatusHandlers struct {
 	container *Container
