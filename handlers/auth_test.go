@@ -69,8 +69,8 @@ func TestAuthHandlers_Login_Success(t *testing.T) {
 		t.Error("Expected login to succeed")
 	}
 
-	if response.Token == "" {
-		t.Error("Expected token to be set")
+	if strings.Contains(w.Body.String(), `"token"`) {
+		t.Errorf("login JSON must not include the session token: %s", w.Body.String())
 	}
 
 	// Check if session cookie is set

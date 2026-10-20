@@ -30,17 +30,20 @@ type LeaseCounts struct {
 	Reserved int `json:"reserved"`
 }
 
-// InstallOutcomes counts provisioning states that the summary buckets hide.
-// A failed or in-flight lease still occupies exactly one of Active, Expired,
-// or Reserved. These counts are separate so a failed install stays visible.
+// ProvisionCounts totals leases by provisioning state.
 //
-// The dashboard JSON does not expose them yet. CountInstallOutcomes is the
-// one place that derives them until the summary API grows the fields.
-type InstallOutcomes struct {
-	// InFlight is pxe_requested, booting, imaging, or configuring.
-	InFlight int
-	// Failed is the failed lease state.
-	Failed int
+// InFlight and Failed are independent of ClassifyLease. A lease still
+// belongs to exactly one of Active, Reserved, or Expired, and it can also
+// be in flight or failed. A reserved lease in StateImaging counts as both
+// reserved and in flight. An expired lease in StateFailed counts as both
+// expired and failed.
+//
+// InFlight counts StatePXERequested, StateBooting, StateImaging,
+// StateImaged, and StateConfiguring. Failed counts StateFailed.
+// Nil leases are skipped.
+type ProvisionCounts struct {
+	InFlight int `json:"in_flight"`
+	Failed   int `json:"failed"`
 }
 
 // PoolStat is one DHCP server's address pool.
@@ -57,22 +60,27 @@ type PoolStat struct {
 	// Status is the listener state from CurrentServerState:
 	// running, stopped, or configured.
 	Status ServerState `json:"status"`
+	// InFlight and Failed follow CountProvision. They are independent of
+	// Used, so a lease can occupy an address and also be in flight or failed.
+	InFlight int `json:"in_flight"`
+	Failed   int `json:"failed"`
 }
 
 // DashboardSummary is the Overview card payload.
+// Active, Expired, and Reserved are a partition from CountLeases.
+// InFlight and Failed are separate totals from CountProvision: a lease
+// can be counted there and in one of the partition fields.
 // Counts are global across every server. Pools is one entry per server,
 // ordered by interface address. Pools is never nil.
 type DashboardSummary struct {
 	Active   int        `json:"active"`
 	Expired  int        `json:"expired"`
 	Reserved int        `json:"reserved"`
+	InFlight int        `json:"in_flight"`
+	Failed   int        `json:"failed"`
 	Pools    []PoolStat `json:"pools"`
-	// InFlight, Failed, Free, Used, and PoolTotal fill the stat strip.
-	// CountInstallOutcomes derives InFlight and Failed from lease states
-	// because the summary payload does not expose them yet. json:"-" keeps
-	// that derivation out of the API until the backend adds the counts.
-	InFlight  int `json:"-"`
-	Failed    int `json:"-"`
+	// Free, Used, and PoolTotal sum the pool rows for the Overview strip.
+	// They are presentation totals, not part of the JSON summary.
 	Free      int `json:"-"`
 	Used      int `json:"-"`
 	PoolTotal int `json:"-"`
@@ -133,23 +141,23 @@ func CountLeases(leases []*Lease, now time.Time) LeaseCounts {
 	return counts
 }
 
-// CountInstallOutcomes counts in-flight and failed leases from their state.
-// Nil entries are skipped. In flight is pxe_requested, booting, imaging, or
-// configuring. Failed is the failed state. Other states count as neither.
-func CountInstallOutcomes(leases []*Lease) InstallOutcomes {
-	var outcomes InstallOutcomes
+// CountProvision totals in-flight and failed leases.
+// See ProvisionCounts for which states count, and for how these totals
+// sit beside the Active, Reserved, and Expired partition.
+func CountProvision(leases []*Lease) ProvisionCounts {
+	var counts ProvisionCounts
 	for _, lease := range leases {
 		if lease == nil {
 			continue
 		}
-		switch lease.State {
-		case StatePXERequested, StateBooting, StateImaging, StateConfiguring:
-			outcomes.InFlight++
-		case StateFailed:
-			outcomes.Failed++
+		if lease.inProgress() {
+			counts.InFlight++
+		}
+		if lease.State == StateFailed {
+			counts.Failed++
 		}
 	}
-	return outcomes
+	return counts
 }
 
 // PoolStatForServer builds the pool row for one server.
@@ -171,6 +179,9 @@ func PoolStatForServer(server *Server, leases []*Lease, now time.Time) PoolStat 
 	if stat.Free < 0 {
 		stat.Free = 0
 	}
+	provision := CountProvision(owned)
+	stat.InFlight = provision.InFlight
+	stat.Failed = provision.Failed
 	if server != nil {
 		stat.Status = CurrentServerState(server.ID)
 	} else {
@@ -202,9 +213,9 @@ func BuildDashboardSummary(servers []*Server, leasesByServer map[string][]*Lease
 	summary.Active = counts.Active
 	summary.Expired = counts.Expired
 	summary.Reserved = counts.Reserved
-	outcomes := CountInstallOutcomes(all)
-	summary.InFlight = outcomes.InFlight
-	summary.Failed = outcomes.Failed
+	provision := CountProvision(all)
+	summary.InFlight = provision.InFlight
+	summary.Failed = provision.Failed
 	for _, pool := range summary.Pools {
 		summary.Free += pool.Free
 		summary.Used += pool.Used

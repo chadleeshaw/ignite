@@ -161,9 +161,11 @@ func setupPreferenceRoutes(router *mux.Router, handlers *handlers.PreferenceHand
 	router.HandleFunc("/api/preferences/mode", handlers.SetMode).Methods("POST").Name("SetUIMode")
 }
 
-// setupStatusRoutes configures the overview status fragment.
-// GET /status/content is the fragment Overview polls. There is no /status page.
+// setupStatusRoutes configures status routes.
+// GET /status redirects to Overview. GET /status/content is the fragment
+// Overview polls.
 func setupStatusRoutes(router *mux.Router, handlers *handlers.StatusHandlers) {
+	router.HandleFunc("/status", handlers.HandleStatusPage).Methods("GET").Name("Status")
 	router.HandleFunc("/status/content", handlers.HandleStatusContent).Methods("GET").Name("StatusContent")
 }
 

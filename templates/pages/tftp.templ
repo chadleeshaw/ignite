@@ -9,12 +9,15 @@
             <a href="{{if .PrevDirectory}}/tftp/open?dir={{.PrevDirectory}}{{else}}/tftp{{end}}">Up</a>
             <span aria-hidden="true">/</span>
             {{end}}
-            <a href="/tftp">{{tftpRootCrumb .Root}}</a>
+            <a href="/tftp">tftp root</a>
+            <span aria-hidden="true">/</span>
+            <a href="/tftp">/</a>
             {{range .Breadcrumbs}}
             <span>/</span>
             <a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a>
             {{end}}
         </nav>
+        {{if .Root}}<p class="mu">{{.Root}}</p>{{end}}
     </div>
     <div class="actions">
         <span class="st {{if eq .ServerStatus "running"}}ok{{else if eq .ServerStatus "unknown"}}wa{{else}}er{{end}}">{{.ServerStatus}}</span>

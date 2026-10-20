@@ -303,6 +303,8 @@ func TestDHCPHandlers_GetDHCPServers_JSON(t *testing.T) {
 	assert.Equal(t, 50, body.Servers[0].LeaseRange)
 	assert.Equal(t, 0, body.Servers[0].Used)
 	assert.Equal(t, 50, body.Servers[0].Free)
+	assert.Equal(t, 0, body.Servers[0].InFlight)
+	assert.Equal(t, 0, body.Servers[0].Failed)
 }
 
 // Test GetDHCPServers error case

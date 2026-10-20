@@ -138,6 +138,7 @@ type StatusPageData struct {
 	TFTPServer       ServiceStatus      `json:"tftp_server"`
 	DHCPServers      []DHCPServerStatus `json:"dhcp_servers"`
 	LastUpdated      string             `json:"last_updated"`
+	LastUpdatedAt    string             `json:"last_updated_at"`
 	UpdatedAt        string             `json:"updated_at"`
 	OverallStatus    string             `json:"overall_status"`
 	AttentionCozy    string             `json:"-"`
@@ -203,15 +204,16 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	// is "down". A stopped DHCP listener or TFTP is "partial". A configured
 	// DHCP server has not been started this boot and is not an issue.
 	data := &StatusPageData{
-		Title:       "System Status",
-		Page:        "overview",
-		HTTPServer:  httpStatus,
-		TFTPServer:  tftpStatus,
-		DHCPServers: dhcpServers,
-		LastUpdated: now.UTC().Format("2006-01-02 15:04:05") + " UTC",
-		UpdatedAt:   now.UTC().Format(time.RFC3339),
-		AutoRefresh: true,
-		RefreshSecs: 5,
+		Title:         "System Status",
+		Page:          "overview",
+		HTTPServer:    httpStatus,
+		TFTPServer:    tftpStatus,
+		DHCPServers:   dhcpServers,
+		LastUpdated:   now.UTC().Format("2006-01-02 15:04:05") + " UTC",
+		LastUpdatedAt: formatRFC3339(now),
+		UpdatedAt:     formatRFC3339(now),
+		AutoRefresh:   true,
+		RefreshSecs:   5,
 	}
 	annotateStatus(data)
 	return data, nil
@@ -249,6 +251,25 @@ func overallServiceStatus(httpStatus, tftpStatus string, dhcpStates []dhcp.Serve
 		}
 	}
 	return "healthy"
+}
+
+// CurrentOverallStatus is the same overall service word /status/content
+// renders: healthy, partial, or down. An error reading status yields "".
+func (h *StatusHandlers) CurrentOverallStatus(r *http.Request) string {
+	if h == nil || r == nil {
+		return ""
+	}
+	data, err := h.getStatusData(r)
+	if err != nil || data == nil {
+		return ""
+	}
+	return data.OverallStatus
+}
+
+// HandleStatusPage redirects a bookmark for /status to Overview.
+// GET /status/content remains the fragment Overview polls.
+func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusFound)
 }
 
 // HandleStatusContent serves status content for HTMX updates.

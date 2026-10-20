@@ -36,6 +36,7 @@ func mockStatusPageData(withServers bool) *StatusPageData {
 			LastCheck:   now,
 		},
 		LastUpdated:   now.Format("2006-01-02 15:04:05"),
+		LastUpdatedAt: formatRFC3339(now),
 		OverallStatus: "healthy",
 		AutoRefresh:   true,
 		RefreshSecs:   5,

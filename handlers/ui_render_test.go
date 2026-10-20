@@ -314,11 +314,14 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		}},
 	})
-	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, `href="/tftp">/</a>`) {
+	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, `href="/tftp">/</a>`) || !strings.Contains(tftp, `href="/tftp">tftp root</a>`) {
 		t.Error("tftp breadcrumbs missing")
 	}
-	if strings.Contains(tftp, "/srv/tftp") {
+	if strings.Contains(tftp, `href="/tftp">/srv/tftp</a>`) {
 		t.Error("tftp breadcrumb printed the host directory")
+	}
+	if !strings.Contains(tftp, `class="mu">/srv/tftp`) {
+		t.Error("tftp root helper missing")
 	}
 	if !strings.Contains(tftp, `data-theme="cozy"`) {
 		t.Error("missing Mode should still be cozy")
@@ -329,6 +332,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		`<kbd>1</kbd>–<kbd>6</kbd> pages`,
 		`class="sb"`,
 		`>Up</a>`,
+		`href="/tftp">tftp root</a>`,
 		`href="/tftp">/</a>`,
 		`class="actions stable slots"`,
 		`class="label-fit"`,
@@ -447,14 +451,14 @@ func TestPendingLayoutHelpers(t *testing.T) {
 	if got := tftpRootCrumb("/srv/tftp"); got != "/" || strings.Contains(got, "srv") {
 		t.Fatalf("crumb %q", got)
 	}
-	overview := pageHealth(struct {
+	overview := statusSentence(struct {
 		Page          string
 		OverallStatus string
 	}{Page: "overview", OverallStatus: "healthy"})
 	if overview != "All services up" {
 		t.Fatalf("overview health %q", overview)
 	}
-	dhcp := pageHealth(struct {
+	dhcp := statusSentence(struct {
 		Page    string
 		Servers []DHCPServerView
 	}{Page: "dhcp", Servers: []DHCPServerView{{Status: "configured"}}})

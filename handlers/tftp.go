@@ -293,11 +293,13 @@ func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 // Base is the entry name shown in the table. ModTime is the filesystem
 // time; the page formats it in the browser's local zone.
 type FileInfo struct {
-	Name    string
-	Base    string
-	Size    string
-	ModTime time.Time
-	IsDir   bool
+	Name           string
+	Base           string
+	Size           string
+	ModTime        time.Time
+	LastModified   string
+	LastModifiedAt string
+	IsDir          bool
 }
 
 // TFTPCrumb is one step of the directory path under the TFTP root.
@@ -313,15 +315,16 @@ type TFTPData struct {
 	Mode            string
 	Page            string
 	CSRFToken       string
+	OverallStatus   string
 	ServerRunning   bool
 	ServerStatus    string
 	ServerDirectory string
 	PrevDirectory   string
 	Root            string
+	Breadcrumbs     []TFTPCrumb
 	Files           []FileInfo
 	FileCount       int
 	DirCount        int
-	Breadcrumbs     []TFTPCrumb
 }
 
 // getTFTP retrieves file information for the root TFTP directory.
@@ -369,11 +372,13 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		}
 
 		fileInfos = append(fileInfos, FileInfo{
-			Name:    relativePath,
-			Base:    entry.Name(),
-			Size:    humanReadableSize(fileInfo.Size()),
-			ModTime: fileInfo.ModTime(),
-			IsDir:   fileInfo.IsDir(),
+			Name:           relativePath,
+			Base:           entry.Name(),
+			Size:           humanReadableSize(fileInfo.Size()),
+			ModTime:        fileInfo.ModTime(),
+			LastModified:   fileInfo.ModTime().Format("2006-01-02 15:04:05"),
+			LastModifiedAt: formatRFC3339(fileInfo.ModTime()),
+			IsDir:          fileInfo.IsDir(),
 		})
 	}
 	orderTFTPFiles(fileInfos)
@@ -394,7 +399,7 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		ServerStatus:    TFTPStatus(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
-		Root:            TFTPDir,
+		Root:            tftpPageRoot(),
 		Files:           fileInfos,
 		FileCount:       fileCount,
 		DirCount:        dirCount,
@@ -439,6 +444,15 @@ func tftpCrumbs(rel string) []TFTPCrumb {
 		crumbs = append(crumbs, TFTPCrumb{Name: part, Dir: acc})
 	}
 	return crumbs
+}
+
+// tftpPageRoot is the path the TFTP page prints. File operations keep using
+// the absolute TFTPDir. The value is the configured TFTP_DIR when one was set.
+func tftpPageRoot() string {
+	if TFTPDisplayRoot != "" {
+		return TFTPDisplayRoot
+	}
+	return TFTPDir
 }
 
 // mustAbs returns the absolute form of p, falling back to p itself on error.

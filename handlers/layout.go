@@ -398,12 +398,12 @@ func shellPage(name string) bool {
 	}
 }
 
-// pageHealth is the status-bar sentence.
+// statusSentence is the status-bar sentence.
 // OverallStatus is the word on the merged status payload (healthy, partial,
 // down). When the process has bound a status container, every page uses
 // that word. Pages rendered without it keep the sentence derived from
 // their own fields.
-func pageHealth(data any) string {
+func statusSentence(data any) string {
 	if health := fieldString(data, "StatusHealth"); health != "" {
 		return health
 	}
@@ -423,10 +423,10 @@ func pageHealth(data any) string {
 
 // statusBar builds the flame status bar from the page value. StatusHealth,
 // StatusTip, and StatusCounts override the derived copy when a handler sets
-// them. Health comes from pageHealth.
+// them. Health comes from statusSentence.
 func statusBar(data any) statusBarView {
 	page := pageID(data)
-	health := pageHealth(data)
+	health := statusSentence(data)
 	counts := fieldString(data, "StatusCounts")
 	if counts == "" {
 		counts = derivedCounts(data, page)

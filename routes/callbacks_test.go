@@ -116,12 +116,13 @@ func TestPreferenceAndSummaryRoutesRequireSession(t *testing.T) {
 	}
 	require.NotNil(t, session)
 
-	// /status is not a route. Overview polls /status/content instead.
+	// /status is a bookmark for Overview. /status/content stays the fragment.
 	statusReq := httptest.NewRequest(http.MethodGet, "/status", nil)
 	statusReq.AddCookie(session)
 	statusRec := httptest.NewRecorder()
 	router.ServeHTTP(statusRec, statusReq)
-	require.Equal(t, http.StatusNotFound, statusRec.Code)
+	require.Equal(t, http.StatusFound, statusRec.Code)
+	require.Equal(t, "/", statusRec.Header().Get("Location"))
 
 	require.NotNil(t, router.Get("StatusContent"))
 

@@ -395,8 +395,8 @@ func TestSessionCookie_SecureFlags(t *testing.T) {
 	if !sessionCookie.HttpOnly {
 		t.Error("Expected session cookie to be HttpOnly")
 	}
-	if !sessionCookie.Secure {
-		t.Error("Expected session cookie to be Secure")
+	if sessionCookie.Secure {
+		t.Error("plain HTTP in auto mode must not set Secure")
 	}
 	if sessionCookie.SameSite != http.SameSiteLaxMode {
 		t.Errorf("Expected SameSite=Lax, got %v", sessionCookie.SameSite)

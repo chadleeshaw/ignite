@@ -11,7 +11,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
-<body class="bg-base-100" hx-headers="{{csrfHeaders .CSRFToken}}">
+<body class="bg-base-100" data-overall-status="{{fieldString . "OverallStatus"}}" hx-headers="{{csrfHeaders .CSRFToken}}">
     <div class="sparks" aria-hidden="true">
         <span class="sp" style="left:8%;bottom:12%;width:3px;height:3px"></span>
         <span class="sp" style="left:22%;bottom:6%;width:2px;height:2px"></span>

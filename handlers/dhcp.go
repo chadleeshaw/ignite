@@ -49,6 +49,8 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 	state := string(dhcp.CurrentServerState(server.ID))
 	// Free addresses use the same occupancy rule as /dashboard/summary:
 	// a lease counts only when it is reserved or not yet expired.
+	// In-flight and failed totals use CountProvision and are independent
+	// of that occupancy rule.
 	used := dhcp.PoolOccupancy(leases, now)
 	free := 0
 	if server.LeaseRange > 0 {
@@ -58,7 +60,7 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		}
 	}
 	counts := dhcp.CountLeases(leases, now)
-	outcomes := dhcp.CountInstallOutcomes(leases)
+	provision := dhcp.CountProvision(leases)
 
 	view := DHCPServerView{
 		ID:         server.ID,
@@ -69,6 +71,8 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		LeaseRange: server.LeaseRange,
 		Used:       used,
 		Free:       free,
+		InFlight:   provision.InFlight,
+		Failed:     provision.Failed,
 	}
 	return view, leaseStrip{
 		Free:     free,
@@ -76,8 +80,8 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		Total:    server.LeaseRange,
 		Reserved: counts.Reserved,
 		Expired:  counts.Expired,
-		InFlight: outcomes.InFlight,
-		Failed:   outcomes.Failed,
+		InFlight: provision.InFlight,
+		Failed:   provision.Failed,
 	}, nil
 }
 
@@ -130,12 +134,13 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 	}
 
 	data := struct {
-		Title     string
-		Mode      string
-		Page      string
-		CSRFToken string
-		Servers   []DHCPServerView
-		Strip     leaseStrip
+		Title         string
+		Mode          string
+		Page          string
+		CSRFToken     string
+		OverallStatus string
+		Servers       []DHCPServerView
+		Strip         leaseStrip
 	}{
 		Title:   "DHCP",
 		Page:    "dhcp",
@@ -180,7 +185,8 @@ func (h *DHCPHandlers) GetDHCPServers(w http.ResponseWriter, r *http.Request) {
 
 	// htmx and browsers get the HTML fragment. JSON clients (Accept:
 	// application/json without text/html, or ?format=json) get the same
-	// server views: id, tftpip, status, lease_range, used, free, leases.
+	// server views: id, tftpip, status, lease_range, used, free,
+	// in_flight, failed, leases.
 	if wantsDashboardJSON(r) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
@@ -800,6 +806,7 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 			StateBadgeClass:  getStateBadgeClass(lease.State),
 			StateDisplayName: lease.GetStateDisplayName(),
 			LastSeen:         lease.LastSeen,
+			LastSeenAt:       formatRFC3339(lease.LastSeen),
 		})
 	}
 
@@ -849,8 +856,10 @@ func getStateBadgeClass(state dhcp.LeaseState) string {
 	}
 }
 
-// leaseStrip is the DHCP page stat row. InFlight and Failed come from
-// CountInstallOutcomes because the summary API does not expose them yet.
+// leaseStrip is the DHCP page stat row. InFlight and Failed are the
+// CountProvision totals, summed across servers. Reserved and Expired stay
+// the ClassifyLease partition, so one lease can sit in both a partition
+// cell and an in-flight or failed cell.
 type leaseStrip struct {
 	Free      int
 	Used      int
@@ -872,6 +881,8 @@ type DHCPServerView struct {
 	LeaseRange int         `json:"lease_range"`
 	Used       int         `json:"used"`
 	Free       int         `json:"free"`
+	InFlight   int         `json:"in_flight"`
+	Failed     int         `json:"failed"`
 }
 
 type LeaseView struct {
@@ -885,6 +896,7 @@ type LeaseView struct {
 	StateBadgeClass  string        `json:"state_badge_class"`
 	StateDisplayName string        `json:"state_display_name"`
 	LastSeen         time.Time     `json:"last_seen"`
+	LastSeenAt       string        `json:"last_seen_at"`
 }
 
 // getMaskBits converts a dotted-decimal subnet mask to its CIDR prefix length.

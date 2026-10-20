@@ -938,11 +938,17 @@ func ExtractedBootDir(tempDir, version, bootType string) string {
 	return filepath.Join(tempDir, "extracted", version, bootType)
 }
 
+// stageBootFile copies one extracted boot file into the stage directory.
+// Tests replace it to fail a copy after an earlier file has succeeded.
+var stageBootFile = copyFile
+
 // ActivateVersion makes an already-downloaded version the active one.
-// It removes the boot files currently in the TFTP directories, copies this
-// version's extracted files into place, and flips the active flag. Other
-// downloaded versions stay downloaded. Download uses this same function
-// after extract, instead of only calling SetActiveVersion.
+// It checks the extract cache first, copies those files into a temporary
+// directory inside the TFTP root, and only then swaps them into the live
+// boot directories. A missing cache or a failed copy leaves the files that
+// are already booting in place. Other downloaded versions stay downloaded.
+// Download uses this same function after extract, instead of only calling
+// SetActiveVersion.
 func (s *service) ActivateVersion(ctx context.Context, version string) error {
 	version = strings.TrimSpace(version)
 	if version == "" {
@@ -956,63 +962,148 @@ func (s *service) ActivateVersion(ctx context.Context, version string) error {
 	if !sysVersion.Downloaded {
 		return fmt.Errorf("%w: %s", ErrVersionNotDownloaded, version)
 	}
+	if err := s.extractCacheReady(version); err != nil {
+		return err
+	}
+	if err := os.MkdirAll(s.config.TFTPDir, 0755); err != nil {
+		return fmt.Errorf("failed to create TFTP directory: %w", err)
+	}
+	stage, err := os.MkdirTemp(s.config.TFTPDir, ".activate-")
+	if err != nil {
+		return fmt.Errorf("failed to stage boot files: %w", err)
+	}
+	defer os.RemoveAll(stage)
 
-	if err := s.RemoveBootFiles(ctx, version, "bios"); err != nil {
-		return fmt.Errorf("failed to remove old BIOS boot files: %w", err)
+	if err := s.stageExtractedBootFiles(version, stage); err != nil {
+		return err
 	}
-	if err := s.RemoveBootFiles(ctx, version, "efi"); err != nil {
-		return fmt.Errorf("failed to remove old EFI boot files: %w", err)
-	}
-	if err := s.restoreExtractedBootFiles(version); err != nil {
+	rollback, err := s.swapStagedBootFiles(stage)
+	if err != nil {
 		return err
 	}
 	if err := s.InstallBootFiles(ctx, version, "bios"); err != nil {
+		rollback()
 		return err
 	}
 	if err := s.InstallBootFiles(ctx, version, "efi"); err != nil {
+		rollback()
 		return err
 	}
 	if err := s.repo.SetActiveVersion(ctx, version); err != nil {
+		rollback()
 		return fmt.Errorf("failed to activate version: %w", err)
 	}
 	return nil
 }
 
-// restoreExtractedBootFiles copies the version's stored BIOS and EFI files
-// into the TFTP boot directories. The caller has already removed the
-// previous files.
-func (s *service) restoreExtractedBootFiles(version string) error {
-	bootTypes := []struct {
+type stagedBootDir struct {
+	dest   string
+	backup string
+	had    bool
+}
+
+// extractCacheReady reports a missing extracted boot file before anything
+// in the live TFTP directories is touched.
+func (s *service) extractCacheReady(version string) error {
+	sets := []struct {
 		name     string
 		required map[string]string
-		dest     string
 	}{
-		{"bios", GetRequiredBiosFiles(), filepath.Join(s.config.TFTPDir, s.config.BiosDir)},
-		{"efi", GetRequiredEfiFiles(), filepath.Join(s.config.TFTPDir, s.config.EfiDir)},
+		{"bios", GetRequiredBiosFiles()},
+		{"efi", GetRequiredEfiFiles()},
 	}
-	for _, bootType := range bootTypes {
-		if err := os.MkdirAll(bootType.dest, 0755); err != nil {
-			return fmt.Errorf("failed to create %s boot directory: %w", bootType.name, err)
-		}
-		srcDir := ExtractedBootDir(s.config.TempDir, version, bootType.name)
+	for _, set := range sets {
+		srcDir := ExtractedBootDir(s.config.TempDir, version, set.name)
 		var missing []string
-		for name := range bootType.required {
-			src := filepath.Join(srcDir, name)
-			if _, err := os.Stat(src); err != nil {
+		for name := range set.required {
+			if _, err := os.Stat(filepath.Join(srcDir, name)); err != nil {
 				missing = append(missing, name)
-				continue
-			}
-			if err := copyFile(src, filepath.Join(bootType.dest, name)); err != nil {
-				return fmt.Errorf("failed to install %s: %w", name, err)
 			}
 		}
 		if len(missing) > 0 {
 			sort.Strings(missing)
 			return fmt.Errorf("missing stored %s boot files for version %s: %s",
-				bootType.name, version, strings.Join(missing, ", "))
+				set.name, version, strings.Join(missing, ", "))
 		}
 	}
 	return nil
+}
+
+// stageExtractedBootFiles copies the extract cache into stage/bios and
+// stage/efi. The live boot directories are not modified.
+func (s *service) stageExtractedBootFiles(version, stage string) error {
+	sets := []struct {
+		name     string
+		required map[string]string
+	}{
+		{"bios", GetRequiredBiosFiles()},
+		{"efi", GetRequiredEfiFiles()},
+	}
+	for _, set := range sets {
+		dstDir := filepath.Join(stage, set.name)
+		if err := os.MkdirAll(dstDir, 0755); err != nil {
+			return fmt.Errorf("failed to create staged %s directory: %w", set.name, err)
+		}
+		srcDir := ExtractedBootDir(s.config.TempDir, version, set.name)
+		names := make([]string, 0, len(set.required))
+		for name := range set.required {
+			names = append(names, name)
+		}
+		sort.Strings(names)
+		for _, name := range names {
+			if err := stageBootFile(filepath.Join(srcDir, name), filepath.Join(dstDir, name)); err != nil {
+				return fmt.Errorf("failed to stage %s: %w", name, err)
+			}
+		}
+	}
+	return nil
+}
+
+// swapStagedBootFiles moves the current boot directories aside and renames
+// the staged directories into place. The returned function puts the previous
+// directories back.
+func (s *service) swapStagedBootFiles(stage string) (func(), error) {
+	var done []stagedBootDir
+	rollback := func() {
+		for i := len(done) - 1; i >= 0; i-- {
+			item := done[i]
+			_ = os.RemoveAll(item.dest)
+			if item.had {
+				_ = os.Rename(item.backup, item.dest)
+			}
+		}
+	}
+	for _, boot := range []struct{ name, dir string }{
+		{"bios", s.config.BiosDir},
+		{"efi", s.config.EfiDir},
+	} {
+		dest := filepath.Join(s.config.TFTPDir, boot.dir)
+		backup := filepath.Join(stage, "previous-"+boot.name)
+		item := stagedBootDir{dest: dest, backup: backup}
+		if st, err := os.Stat(dest); err == nil {
+			if !st.IsDir() {
+				rollback()
+				return nil, fmt.Errorf("%s boot path is not a directory", boot.name)
+			}
+			if err := os.Rename(dest, backup); err != nil {
+				rollback()
+				return nil, fmt.Errorf("failed to move current %s boot files aside: %w", boot.name, err)
+			}
+			item.had = true
+		} else if !os.IsNotExist(err) {
+			rollback()
+			return nil, err
+		}
+		if err := os.Rename(filepath.Join(stage, boot.name), dest); err != nil {
+			if item.had {
+				_ = os.Rename(backup, dest)
+			}
+			rollback()
+			return nil, fmt.Errorf("failed to install staged %s boot files: %w", boot.name, err)
+		}
+		done = append(done, item)
+	}
+	return rollback, nil
 }
 
 func copyFile(src, dst string) error {
