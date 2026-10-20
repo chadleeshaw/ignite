@@ -107,9 +107,10 @@ func (a *Application) Start() error {
 	handlers.SetTFTPRunning(true)
 	log.Printf("TFTP server started on port 69, serving from %s", a.container.Config.TFTP.Dir)
 
-	// Shell pages recompute overall health from the status payload. The
-	// layout field the backend is adding is not named here.
-	handlers.BindStatusContainer(a.handlerContainer)
+	// Every page gets the same overall service word as the Overview pill.
+	handlers.SetPageHealth(func(r *http.Request) string {
+		return handlers.NewStatusHandlers(a.handlerContainer).CurrentOverallStatus(r)
+	})
 
 	// Create HTTP router with injected dependencies and static file handling
 	router := routes.SetupWithContainerAndStatic(a.handlerContainer, a.staticHandler)

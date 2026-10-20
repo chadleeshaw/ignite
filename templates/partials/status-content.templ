@@ -12,6 +12,7 @@
             <div>
                 <small>HTTP server · web UI &amp; API</small>
                 <b class="mono">port {{.HTTPServer.Port}}</b>
+                <span class="mu" data-checked="{{formatRFC3339 .HTTPServer.LastCheck}}" data-time="datetime">{{if .HTTPServer.LastCheck.IsZero}}—{{else}}checked {{utcLabel .HTTPServer.LastCheck "15:04:05"}}{{end}}</span>
             </div>
             <span class="st {{if eq .HTTPServer.Status "running"}}ok{{else}}er{{end}}" style="margin-left:auto">{{if eq .HTTPServer.Status "running"}}Running{{else}}Stopped{{end}}</span>
         </article>
@@ -20,6 +21,7 @@
             <div>
                 <small>TFTP server · boot files</small>
                 <b class="mono">port {{.TFTPServer.Port}}</b>
+                <span class="mu" data-checked="{{formatRFC3339 .TFTPServer.LastCheck}}" data-time="datetime">{{if .TFTPServer.LastCheck.IsZero}}—{{else}}checked {{utcLabel .TFTPServer.LastCheck "15:04:05"}}{{end}}</span>
             </div>
             <span class="st {{if eq .TFTPServer.Status "running"}}ok{{else if eq .TFTPServer.Status "unknown"}}wa{{else}}er{{end}}" style="margin-left:auto">{{if eq .TFTPServer.Status "running"}}Running{{else if eq .TFTPServer.Status "unknown"}}Unknown{{else}}Stopped{{end}}</span>
         </article>
@@ -36,6 +38,7 @@
                 <span class="sub">
                     {{if gt .Total 0}}{{.Free}} free · {{.Used}} used / {{.Total}} total{{else}}{{countPhrase .LeaseCount "lease" "leases"}}{{end}}{{if eq .Status "configured"}} · not started yet{{end}}
                 </span>
+                <span class="mu" data-checked="{{formatRFC3339 .LastCheck}}" data-time="datetime">{{if .LastCheck.IsZero}}—{{else}}checked {{utcLabel .LastCheck "15:04:05"}}{{end}}</span>
             </div>
             <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
                 <span class="st {{dhcpStateClass .Status}}" data-status="{{.Status}}">{{dhcpStateLabel .Status}}</span>
@@ -52,5 +55,5 @@
         {{end}}
     </div>
 
-    <p class="mu refresh-note">Refreshes every 10 seconds · last updated {{if .UpdatedAt}}<time datetime="{{.UpdatedAt}}" data-time="clockzone">{{.LastUpdated}}</time>{{else}}{{.LastUpdated}}{{end}}</p>
+    <p class="mu refresh-note">Refreshes every 10 seconds · last updated <span data-updated="{{.LastUpdatedAt}}" data-time="clockzone">{{if .LastUpdated}}{{.LastUpdated}}{{else}}—{{end}}</span></p>
 </div>

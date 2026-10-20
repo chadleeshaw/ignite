@@ -201,16 +201,18 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 
 	console := renderNamed(t, "dhcp", struct {
-		Title     string
-		Mode      string
-		Page      string
-		CSRFToken string
-		Servers   []DHCPServerView
-		Strip     leaseStrip
+		Title         string
+		Mode          string
+		Page          string
+		CSRFToken     string
+		OverallStatus string
+		Servers       []DHCPServerView
+		Strip         leaseStrip
 	}{
-		Title: "DHCP",
-		Mode:  "console",
-		Page:  "dhcp",
+		Title:         "DHCP",
+		Mode:          "console",
+		Page:          "dhcp",
+		OverallStatus: "partial",
 		Servers: []DHCPServerView{{
 			TFTPIP:     "192.168.1.2",
 			Status:     "configured",
@@ -226,6 +228,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 				StateDisplayName: "Assigned",
 				MenuName:         "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
 				LastSeen:         time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+				LastSeenAt:       "2026-01-02T03:04:05Z",
 			}, {
 				MAC:              "11:22:33:44:55:66",
 				IP:               "192.168.1.101",
@@ -263,7 +266,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="sb"`,
-		"DHCP is Configured",
+		"Partial service",
 		"2 servers · 2 leases",
 		"Select a host",
 		"In flight",
@@ -303,6 +306,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	tftp := renderNamed(t, "tftp", &TFTPData{
 		Title:           "TFTP",
 		Page:            "tftp",
+		OverallStatus:   "healthy",
 		ServerStatus:    "unknown",
 		Root:            "/srv/tftp",
 		FileCount:       1,
@@ -311,7 +315,9 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Breadcrumbs:     []TFTPCrumb{{Name: "ubuntu", Dir: "ubuntu"}},
 		Files: []FileInfo{{
 			Name: "ubuntu", Base: "ubuntu", Size: "—", IsDir: true,
-			ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			ModTime:        time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+			LastModified:   "2026-01-02 03:04:05 UTC",
+			LastModifiedAt: "2026-01-02T03:04:05Z",
 		}},
 	})
 	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, `href="/tftp">/</a>`) || !strings.Contains(tftp, `href="/tftp">tftp root</a>`) {
@@ -327,7 +333,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		t.Error("missing Mode should still be cozy")
 	}
 	for _, want := range []string{
-		"TFTP status is unknown",
+		"All services up",
 		"1 file · 1 folder",
 		`<kbd>1</kbd>–<kbd>6</kbd> pages`,
 		`class="sb"`,
@@ -340,7 +346,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		`aria-hidden="true">View`,
 		`fas fa-folder`,
 		`ubuntu/`,
-		`datetime="2026-01-02T03:04:05Z"`,
+		`data-modified="2026-01-02T03:04:05Z"`,
 		`data-time="datetime"`,
 		`2026-01-02 03:04:05 UTC`,
 		`disabled`,
@@ -448,9 +454,6 @@ func TestPendingLayoutHelpers(t *testing.T) {
 	if rfc3339("2026-10-19 22:30:54") != "" || rfc3339(time.Time{}) != "" {
 		t.Fatal("non-rfc3339 or zero time should be empty")
 	}
-	if got := tftpRootCrumb("/srv/tftp"); got != "/" || strings.Contains(got, "srv") {
-		t.Fatalf("crumb %q", got)
-	}
 	overview := statusSentence(struct {
 		Page          string
 		OverallStatus string
@@ -459,11 +462,18 @@ func TestPendingLayoutHelpers(t *testing.T) {
 		t.Fatalf("overview health %q", overview)
 	}
 	dhcp := statusSentence(struct {
+		Page          string
+		OverallStatus string
+		Servers       []DHCPServerView
+	}{Page: "dhcp", OverallStatus: "partial", Servers: []DHCPServerView{{Status: "configured"}}})
+	if dhcp != "Partial service" {
+		t.Fatalf("dhcp health %q", dhcp)
+	}
+	if got := statusSentence(struct {
 		Page    string
 		Servers []DHCPServerView
-	}{Page: "dhcp", Servers: []DHCPServerView{{Status: "configured"}}})
-	if dhcp != "DHCP is Configured" {
-		t.Fatalf("dhcp fallback %q", dhcp)
+	}{Page: "dhcp", Servers: []DHCPServerView{{Status: "configured"}}}); got != "Ready" {
+		t.Fatalf("missing overall status %q", got)
 	}
 }
 

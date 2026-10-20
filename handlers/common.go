@@ -67,6 +67,7 @@ var templateFuncs = template.FuncMap{
 	"formatBytes":       formatBytes,
 	"relTime":           relTime,
 	"rfc3339":           rfc3339,
+	"formatRFC3339":     formatRFC3339,
 	"utcLabel":          utcLabel,
 	"countPhrase":       countPhrase,
 	"dhcpStateLabel":    dhcpStateLabel,
@@ -76,7 +77,6 @@ var templateFuncs = template.FuncMap{
 	"pageID":            pageID,
 	"fieldString":       fieldString,
 	"statusBar":         statusBar,
-	"tftpRootCrumb":     tftpRootCrumb,
 	"csrfHeaders":       csrfHeaders,
 	"modePreferenceURL": func() string { return ModePreferenceURL },
 	"summaryURL":        func() string { return OverviewSummaryURL },
@@ -184,9 +184,6 @@ func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, d
 			userMessage,
 		))
 		return
-	}
-	if shellPage(name) {
-		refreshHostHealth(r)
 	}
 	if err := tmpl.Execute(w, applyUIMode(r, data)); err != nil {
 		HandleError(w, r, NewInternalError(

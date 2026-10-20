@@ -289,12 +289,27 @@
             return url.indexOf("/dashboard/summary") !== -1 || url.indexOf(IGNITE_MODE_URL) !== -1;
         }
 
+        function igniteStampRaw(node) {
+            var names = ["data-updated", "data-modified", "data-checked", "data-seen-at"];
+            for (var i = 0; i < names.length; i++) {
+                if (node.hasAttribute(names[i])) return node.getAttribute(names[i]) || "";
+            }
+            if (node.hasAttribute("datetime")) return node.getAttribute("datetime") || "";
+            return null;
+        }
+
         function igniteFormatTimes(root) {
             var scope = root && root.querySelectorAll ? root : document;
-            scope.querySelectorAll("time[datetime]").forEach(function (node) {
-                var date = new Date(node.getAttribute("datetime"));
-                if (isNaN(date.getTime())) return;
+            scope.querySelectorAll("[data-time], time[datetime]").forEach(function (node) {
+                var raw = igniteStampRaw(node);
+                if (raw === null) return;
                 var kind = node.getAttribute("data-time") || "datetime";
+                if (!raw) {
+                    if (kind !== "title") node.textContent = "—";
+                    return;
+                }
+                var date = new Date(raw);
+                if (isNaN(date.getTime())) return;
                 if (kind === "title") {
                     node.title = date.toLocaleString();
                     return;

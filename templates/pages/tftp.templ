@@ -47,7 +47,7 @@
                         {{end}}
                     </td>
                     <td>{{if .IsDir}}—{{else}}{{.Size}}{{end}}</td>
-                    <td>{{if .ModTime.IsZero}}—{{else}}<time datetime="{{rfc3339 .ModTime}}" data-time="datetime">{{utcLabel .ModTime "2006-01-02 15:04:05"}}</time>{{end}}</td>
+                    <td><span data-modified="{{.LastModifiedAt}}" data-time="datetime">{{if .LastModified}}{{.LastModified}}{{else}}—{{end}}</span></td>
                     <td class="acts">
                         <div class="actions stable slots">
                             {{if .IsDir}}

@@ -78,7 +78,7 @@
                 data-ip="{{.IP}}"
                 data-state="{{.StateDisplayName}}"
                 data-seen="{{relTime .LastSeen}}"
-                data-seen-at="{{rfc3339 .LastSeen}}"
+                data-seen-at="{{.LastSeenAt}}"
                 data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
                 data-menu="{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}"
                 data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
@@ -90,7 +90,7 @@
                 </div>
                 <div class="kv">
                     <span>MAC</span><span class="mono">{{.MAC}}</span>
-                    <span>Seen</span><span><time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time></span>
+                    <span>Seen</span><span><time data-seen-at="{{.LastSeenAt}}" {{if .LastSeenAt}}datetime="{{.LastSeenAt}}"{{end}} data-time="datetime" title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{if .LastSeen.IsZero}}never{{else}}{{relTime .LastSeen}}{{end}}</time></span>
                     <span>Menu</span><span>{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}</span>
                 </div>
             </button>
@@ -121,7 +121,7 @@
                     data-ip="{{.IP}}"
                     data-state="{{.StateDisplayName}}"
                     data-seen="{{relTime .LastSeen}}"
-                    data-seen-at="{{rfc3339 .LastSeen}}"
+                    data-seen-at="{{.LastSeenAt}}"
                     data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
                     data-menu="{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}"
                     data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
@@ -131,7 +131,7 @@
                     <td class="mono">{{.MAC}}</td>
                     <td class="ip">{{.IP}}</td>
                     <td><span class="badge lease-state {{.StateBadgeClass}}" data-mac="{{.MAC}}">{{.StateDisplayName}}</span></td>
-                    <td><time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time></td>
+                    <td><time data-seen-at="{{.LastSeenAt}}" {{if .LastSeenAt}}datetime="{{.LastSeenAt}}"{{end}} data-time="datetime" title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{if .LastSeen.IsZero}}never{{else}}{{relTime .LastSeen}}{{end}}</time></td>
                     <td class="menu-name">{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}</td>
                     <td class="acts">
                         <div class="actions stable">
@@ -222,13 +222,19 @@ function selectLease(el) {
     document.getElementById('det-ip').textContent = el.getAttribute('data-ip');
     document.getElementById('det-state').textContent = el.getAttribute('data-state');
     var seen = document.getElementById('det-seen');
-    seen.textContent = el.getAttribute('data-seen');
     var seenAt = el.getAttribute('data-seen-at');
-    if (seenAt) {
-        var seenDate = new Date(seenAt);
-        seen.title = isNaN(seenDate.getTime()) ? (el.getAttribute('data-seen-title') || '') : seenDate.toLocaleString();
+    if (!seenAt) {
+        seen.textContent = '—';
+        seen.removeAttribute('title');
     } else {
-        seen.title = el.getAttribute('data-seen-title') || '';
+        var seenDate = new Date(seenAt);
+        if (isNaN(seenDate.getTime())) {
+            seen.textContent = el.getAttribute('data-seen') || '—';
+            seen.title = el.getAttribute('data-seen-title') || '';
+        } else {
+            seen.textContent = seenDate.toLocaleString();
+            seen.title = seen.textContent;
+        }
     }
     document.getElementById('det-reserved').textContent = el.getAttribute('data-reserved');
     document.getElementById('det-menu').textContent = el.getAttribute('data-menu');
