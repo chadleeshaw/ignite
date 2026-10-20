@@ -45,7 +45,7 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 		return DHCPServerView{}, fmt.Errorf("failed to get leases for server %s: %w", server.ID, err)
 	}
 
-	running := isDHCPRunning(server.ID, server.Started)
+	state := dhcpRuntimeState(server.ID, server.Started)
 	// Free addresses use the same occupancy rule as /dashboard/summary:
 	// a lease counts only when it is reserved or not yet expired.
 	used := dhcp.PoolOccupancy(leases, time.Now())
@@ -60,13 +60,13 @@ func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Ser
 	return DHCPServerView{
 		ID:         server.ID,
 		TFTPIP:     server.IP.String(),
-		Status:     h.getServerStatusBadge(running),
-		StatusWord: dhcpServerState("", running),
+		Status:     state,
+		StatusWord: dhcpStateLabel(state),
 		Leases:     h.convertLeasesToViews(leases),
 		LeaseRange: server.LeaseRange,
 		Used:       used,
 		Free:       free,
-		Running:    running,
+		Running:    state == "running",
 	}, nil
 }
 
@@ -180,6 +180,9 @@ func (h *DHCPHandlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.serverService.StartServer(ctx, serverID); err != nil {
+		// A failed start is "stopped", distinct from a server that has
+		// never been started since boot ("configured").
+		setDHCPRunning(serverID, false)
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Failed to start server: %v", err),
 			"Unable to start the DHCP server. Please try again later.",
@@ -741,14 +744,6 @@ func (h *DHCPHandlers) GetLeaseStateHistory(w http.ResponseWriter, r *http.Reque
 	json.NewEncoder(w).Encode(response)
 }
 
-// Helper methods
-func (h *DHCPHandlers) getServerStatusBadge(started bool) string {
-	if started {
-		return "badge-success"
-	}
-	return "badge-error"
-}
-
 // sortServerViewsByIP sorts server views by IP address for consistent ordering.
 // It uses the shared nil-guarded IP comparator.
 func (h *DHCPHandlers) sortServerViewsByIP(serverViews []DHCPServerView) {
@@ -764,8 +759,7 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 			MAC:              lease.MAC,
 			IP:               lease.IP.String(),
 			Static:           lease.Reserved,
-			Menu:             lease.Menu,
-			MenuLabel:        menuLabel(lease.Menu),
+			MenuName:         leaseMenuName(lease),
 			IPMI:             lease.IPMI,
 			State:            string(lease.State),
 			StateBadgeClass:  getStateBadgeClass(lease.State),
@@ -782,16 +776,28 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 	return views
 }
 
-// menuLabel is the lease menu text. Filename often holds a pxelinux.cfg
-// path, including /tmp paths written by the boot-menu form. A path is not
-// a name, so the template prints an em dash. A friendly name with no
-// directory separators is shown as stored.
-func menuLabel(menu dhcp.BootMenu) string {
-	file := strings.TrimSpace(menu.Filename)
-	if file == "" || strings.ContainsAny(file, `/\`) {
+// cleanMenuName keeps a friendly menu name. A path is not a name: menu_name
+// is empty when the backend has none, and a value that still looks like a
+// path is treated as missing so the page shows an em dash.
+func cleanMenuName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, `/\`) {
 		return ""
 	}
-	return file
+	return name
+}
+
+// leaseMenuName reads menu_name from the lease or its boot menu. The field
+// is optional until the backend ships it; a missing field is an empty name,
+// and Filename, OS, and Version are never used as a fallback.
+func leaseMenuName(lease *dhcp.Lease) string {
+	if lease == nil {
+		return ""
+	}
+	if name := cleanMenuName(fieldString(lease, "MenuName")); name != "" {
+		return name
+	}
+	return cleanMenuName(fieldString(lease.Menu, "MenuName"))
 }
 
 // getStateBadgeClass returns the CSS class for a lease state badge.
@@ -835,16 +841,15 @@ type DHCPServerView struct {
 }
 
 type LeaseView struct {
-	MAC              string        `json:"mac"`
-	IP               string        `json:"ip"`
-	Static           bool          `json:"static"`
-	Menu             dhcp.BootMenu `json:"menu"`
-	MenuLabel        string        `json:"menu_label"`
-	IPMI             dhcp.IPMI     `json:"ipmi"`
-	State            string        `json:"state"`
-	StateBadgeClass  string        `json:"state_badge_class"`
-	StateDisplayName string        `json:"state_display_name"`
-	LastSeen         time.Time     `json:"last_seen"`
+	MAC              string    `json:"mac"`
+	IP               string    `json:"ip"`
+	Static           bool      `json:"static"`
+	MenuName         string    `json:"menu_name"`
+	IPMI             dhcp.IPMI `json:"ipmi"`
+	State            string    `json:"state"`
+	StateBadgeClass  string    `json:"state_badge_class"`
+	StateDisplayName string    `json:"state_display_name"`
+	LastSeen         time.Time `json:"last_seen"`
 }
 
 // getMaskBits converts a dotted-decimal subnet mask to its CIDR prefix length.

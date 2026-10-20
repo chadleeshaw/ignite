@@ -50,6 +50,8 @@ func TestDashboardSummaryHTMLAndJSON(t *testing.T) {
 		body := rec.Body.String()
 		require.Contains(t, body, `class="stat-value">1`)
 		require.Contains(t, body, "192.168.1.10")
+		require.Contains(t, body, `data-status="configured"`)
+		require.Contains(t, body, "Configured, not started")
 		require.Contains(t, body, "stat")
 		require.NotContains(t, body, "#ff")
 	})
@@ -69,6 +71,7 @@ func TestDashboardSummaryHTMLAndJSON(t *testing.T) {
 		require.Equal(t, 2, summary.Pools[0].Used)
 		require.Equal(t, 8, summary.Pools[0].Free)
 		require.Equal(t, 10, summary.Pools[0].Total)
+		require.Equal(t, "configured", summary.Pools[0].Status)
 	})
 }
 

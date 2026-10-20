@@ -41,6 +41,9 @@ type PoolStat struct {
 	Used   int    `json:"used"`
 	Free   int    `json:"free"`
 	Total  int    `json:"total"`
+	// Status is the same running, stopped, or configured word as
+	// GET /dhcp/servers. The handler fills it from the listener state.
+	Status string `json:"status,omitempty"`
 }
 
 // DashboardSummary is the Overview card payload.
@@ -154,6 +157,12 @@ func BuildDashboardSummary(servers []*Server, leasesByServer map[string][]*Lease
 	summary.Expired = counts.Expired
 	summary.Reserved = counts.Reserved
 	return summary
+}
+
+// ServerIPLabel is the address shown for a server on the dashboard.
+// An unaddressed server falls back to its ID.
+func ServerIPLabel(server *Server) string {
+	return serverLabel(server)
 }
 
 func serverLabel(server *Server) string {

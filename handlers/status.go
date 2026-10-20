@@ -75,29 +75,54 @@ func forgetDHCPServer(serverID string) {
 // isDHCPRunning reports tracked running state for a DHCP server, falling back
 // to the server model's Started field when nothing was tracked.
 func isDHCPRunning(serverID string, modelStarted bool) bool {
-	serviceRegistry.RLock()
-	running, ok := serviceRegistry.dhcpRunning[serverID]
-	serviceRegistry.RUnlock()
-	if ok {
-		return running
-	}
-	return modelStarted
+	return dhcpRuntimeState(serverID, modelStarted) == "running"
 }
 
-// dhcpServerState is the DHCP server word Overview, /status/content, the
-// DHCP page, and the status bar all display. A non-empty state from the
-// server record is returned unchanged, so running, configured, and stopped
-// stay distinct. Until that field is set, a live listener is "running" and
-// any other record keeps the word this status endpoint already used,
-// "configured".
-func dhcpServerState(state string, running bool) string {
-	if s := strings.TrimSpace(state); s != "" {
-		return s
+// dhcpRuntimeState is the DHCP status on GET /dhcp/servers, /status/content,
+// and /dashboard/summary.
+//
+//	running    listener is bound and serving
+//	stopped    started and then stopped, or a start attempt failed
+//	configured defined, and not started since this process booted
+func dhcpRuntimeState(serverID string, modelStarted bool) string {
+	serviceRegistry.RLock()
+	running, known := serviceRegistry.dhcpRunning[serverID]
+	serviceRegistry.RUnlock()
+	if known {
+		if running {
+			return "running"
+		}
+		return "stopped"
 	}
-	if running {
+	if modelStarted {
 		return "running"
 	}
 	return "configured"
+}
+
+// dhcpStatePill maps the three DHCP states to the label and pill class
+// Overview, the DHCP page, and the status bar share.
+func dhcpStatePill(state string) (label, class string) {
+	switch strings.ToLower(strings.TrimSpace(state)) {
+	case "running":
+		return "Running", "ok"
+	case "stopped":
+		return "Stopped", "er"
+	case "configured", "":
+		return "Configured, not started", "wa"
+	default:
+		return strings.TrimSpace(state), "of"
+	}
+}
+
+func dhcpStateLabel(state string) string {
+	label, _ := dhcpStatePill(state)
+	return label
+}
+
+func dhcpStateClass(state string) string {
+	_, class := dhcpStatePill(state)
+	return class
 }
 
 // StatusHandlers handles status-related requests
@@ -181,7 +206,7 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	for _, server := range servers {
 		leases, _ := h.container.LeaseService.GetLeasesByServer(ctx, server.ID)
 
-		status := dhcpServerState("", isDHCPRunning(server.ID, server.Started))
+		status := dhcpRuntimeState(server.ID, server.Started)
 
 		dhcpServers = append(dhcpServers, DHCPServerStatus{
 			ID:          server.ID,

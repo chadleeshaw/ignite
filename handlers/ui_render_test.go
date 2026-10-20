@@ -5,7 +5,6 @@ import (
 	"testing"
 	"time"
 
-	"ignite/dhcp"
 	"ignite/osimage"
 	"ignite/syslinux"
 )
@@ -75,8 +74,8 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 	if one.OverallStatus != "partial" {
 		t.Fatalf("overall %q", one.OverallStatus)
 	}
-	const wantOne = "1 thing needs attention: DHCP 192.168.1.2, 10.0.1.2 configured"
-	if one.AttentionCozy != wantOne || one.AttentionConsole != "DHCP 192.168.1.2, 10.0.1.2 configured" {
+	const wantOne = "1 thing needs attention: DHCP 192.168.1.2, 10.0.1.2 Configured, not started"
+	if one.AttentionCozy != wantOne || one.AttentionConsole != "DHCP 192.168.1.2, 10.0.1.2 Configured, not started" {
 		t.Fatalf("one issue: %q / %q", one.AttentionCozy, one.AttentionConsole)
 	}
 
@@ -86,7 +85,7 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "configured"}},
 	}
 	annotateStatus(two)
-	const wantTwo = "2 things need attention: TFTP stopped · DHCP 10.0.0.1 configured"
+	const wantTwo = "2 things need attention: TFTP stopped · DHCP 10.0.0.1 Configured, not started"
 	if two.OverallStatus != "partial" || two.AttentionCozy != wantTwo {
 		t.Fatalf("two issues: %s %q", two.OverallStatus, two.AttentionCozy)
 	}
@@ -203,7 +202,8 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Servers: []DHCPServerView{{
 			TFTPIP:     "192.168.1.2",
 			Running:    false,
-			StatusWord: "configured",
+			Status:     "configured",
+			StatusWord: "Configured, not started",
 			LeaseRange: 50,
 			Used:       1,
 			Free:       49,
@@ -213,28 +213,20 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 				State:            "assigned",
 				StateBadgeClass:  "badge-info",
 				StateDisplayName: "Assigned",
-				Menu: dhcp.BootMenu{
-					Filename: "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
-					OS:       "ubuntu",
-					Version:  "24.04",
-				},
-				MenuLabel: menuLabel(dhcp.BootMenu{
-					Filename: "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
-					OS:       "ubuntu",
-					Version:  "24.04",
-				}),
-				LastSeen: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
+				MenuName:         "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
+				LastSeen:         time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 			}, {
 				MAC:              "11:22:33:44:55:66",
 				IP:               "192.168.1.101",
 				StateDisplayName: "Offline",
 				StateBadgeClass:  "badge-ghost",
-				MenuLabel:        menuLabel(dhcp.BootMenu{Filename: "lab-menu"}),
+				MenuName:         "ubuntu 24.04",
 			}},
 		}, {
 			TFTPIP:     "10.0.1.2",
 			Running:    false,
-			StatusWord: "configured",
+			Status:     "configured",
+			StatusWord: "Configured, not started",
 			LeaseRange: 25,
 		}},
 	})
@@ -261,12 +253,12 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="sb"`,
-		"DHCP is configured",
+		"DHCP is Configured, not started",
 		"2 servers · 2 leases",
 		"Select a lease to see details",
 		`id="det-title"`,
 		"Last seen",
-		"lab-menu",
+		"ubuntu 24.04",
 		"No leases on this server.",
 		`class="main"`,
 		"CONSOLE",
@@ -286,8 +278,11 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(console, "/tmp/") || strings.Contains(console, "pxelinux.cfg") {
 		t.Error("dhcp page renders an internal menu path")
 	}
-	if !strings.Contains(console, ">configured<") {
+	if !strings.Contains(console, ">Configured, not started<") {
 		t.Error("dhcp page did not show the server state")
+	}
+	if !strings.Contains(console, `class="st wa"`) {
+		t.Error("configured server is missing the warn pill")
 	}
 
 	tftp := renderNamed(t, "tftp", &TFTPData{
@@ -300,7 +295,8 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		ServerDirectory: "ubuntu",
 		Breadcrumbs:     []TFTPCrumb{{Name: "ubuntu", Dir: "ubuntu"}},
 		Files: []FileInfo{{
-			Name: "ubuntu", Size: "—", LastModified: "2026-01-02 03:04:05", IsDir: true,
+			Name: "ubuntu", Base: "ubuntu", Size: "—", IsDir: true,
+			ModTime: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		}},
 	})
 	if !strings.Contains(tftp, "/tftp/open?dir=ubuntu") || !strings.Contains(tftp, "/srv/tftp") {
@@ -309,9 +305,26 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if !strings.Contains(tftp, `data-theme="cozy"`) {
 		t.Error("missing Mode should still be cozy")
 	}
-	for _, want := range []string{"TFTP status is unknown", "1 file · 1 folder", `<kbd>3</kbd> tftp`, `class="sb"`} {
+	for _, want := range []string{
+		"TFTP status is unknown",
+		"1 file · 1 folder",
+		`<kbd>3</kbd> tftp`,
+		`class="sb"`,
+		`>Up</a>`,
+		`/srv/tftp`,
+		`class="actions stable slots"`,
+		`class="label-fit"`,
+		`aria-hidden="true">Download`,
+		`aria-hidden="true">View`,
+		`fas fa-folder`,
+		`ubuntu/`,
+		`datetime="2026-01-02T03:04:05Z"`,
+		`data-time="datetime"`,
+		`2026-01-02 03:04:05 UTC`,
+		`disabled`,
+	} {
 		if !strings.Contains(tftp, want) {
-			t.Errorf("tftp status bar missing %q", want)
+			t.Errorf("tftp page missing %q", want)
 		}
 	}
 

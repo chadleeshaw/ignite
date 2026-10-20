@@ -227,6 +227,24 @@ html[data-theme="console"] .pagehead h1 { font-size: 22px; font-weight: 800; }
 .label-fit { display: inline-grid; }
 .label-fit > span { grid-area: 1 / 1; white-space: nowrap; }
 .label-fit > [aria-hidden="true"] { visibility: hidden; }
+/* Three fixed action slots so Delete shares a column on every row. */
+.actions.slots {
+  display: grid;
+  grid-template-columns: max-content max-content max-content;
+  justify-content: end;
+  width: max-content;
+  margin-left: auto;
+}
+.panel td.acts, .panel th.acts { text-align: right; }
+.file-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  color: inherit;
+  text-decoration: none;
+}
+.file-link:hover { color: var(--flame-300); }
+.file-link .fa-folder, .file-link svg { color: var(--warn); }
 
 .tile-row { display: flex; gap: 12px; flex-wrap: wrap; }
 .sv {

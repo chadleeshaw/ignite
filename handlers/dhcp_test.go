@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -296,8 +297,8 @@ func TestDHCPHandlers_GetDHCPServers_JSON(t *testing.T) {
 	require.Len(t, body.Servers, 1)
 	assert.Equal(t, "server-1", body.Servers[0].ID)
 	assert.Equal(t, "192.168.1.1", body.Servers[0].TFTPIP)
-	assert.Equal(t, "badge-success", body.Servers[0].Status)
-	assert.Equal(t, "running", body.Servers[0].StatusWord)
+	assert.Equal(t, "running", body.Servers[0].Status)
+	assert.Equal(t, "Running", body.Servers[0].StatusWord)
 	assert.Equal(t, 50, body.Servers[0].LeaseRange)
 	assert.Equal(t, 0, body.Servers[0].Used)
 	assert.Equal(t, 50, body.Servers[0].Free)
@@ -548,44 +549,99 @@ func TestDHCPHandlers_GetLeaseStateHistory_Success(t *testing.T) {
 	mockLeaseService.AssertExpectations(t)
 }
 
-// Test utility functions
-func TestDHCPHandlers_getServerStatusBadge(t *testing.T) {
-	handlers := &DHCPHandlers{}
+func TestDHCPRuntimeStateAndPill(t *testing.T) {
+	const id = "state-server"
+	t.Cleanup(func() { forgetDHCPServer(id) })
+	forgetDHCPServer(id)
 
-	// Test started server
-	badge := handlers.getServerStatusBadge(true)
-	assert.Equal(t, "badge-success", badge)
+	if dhcpRuntimeState(id, false) != "configured" {
+		t.Fatalf("never started: %q", dhcpRuntimeState(id, false))
+	}
+	if dhcpRuntimeState(id, true) != "running" {
+		t.Fatalf("model started: %q", dhcpRuntimeState(id, true))
+	}
+	setDHCPRunning(id, false)
+	if dhcpRuntimeState(id, true) != "stopped" {
+		t.Fatalf("recorded stop: %q", dhcpRuntimeState(id, true))
+	}
+	setDHCPRunning(id, true)
+	if dhcpRuntimeState(id, false) != "running" {
+		t.Fatalf("recorded running: %q", dhcpRuntimeState(id, false))
+	}
 
-	// Test stopped server
-	badge = handlers.getServerStatusBadge(false)
-	assert.Equal(t, "badge-error", badge)
+	label, class := dhcpStatePill("running")
+	if label != "Running" || class != "ok" {
+		t.Fatalf("running pill: %q %q", label, class)
+	}
+	label, class = dhcpStatePill("stopped")
+	if label != "Stopped" || class != "er" {
+		t.Fatalf("stopped pill: %q %q", label, class)
+	}
+	label, class = dhcpStatePill("configured")
+	if label != "Configured, not started" || class != "wa" {
+		t.Fatalf("configured pill: %q %q", label, class)
+	}
 }
 
-func TestDHCPServerState(t *testing.T) {
-	if dhcpServerState("", true) != "running" || dhcpServerState("", false) != "configured" {
-		t.Fatalf("fallback: %q %q", dhcpServerState("", true), dhcpServerState("", false))
-	}
-	if dhcpServerState("stopped", true) != "stopped" || dhcpServerState(" configured ", false) != "configured" {
-		t.Fatalf("passthrough: %q %q", dhcpServerState("stopped", true), dhcpServerState(" configured ", false))
-	}
+func TestStartDHCPServerFailureRecordsStopped(t *testing.T) {
+	const serverID = "failed-start"
+	t.Cleanup(func() { forgetDHCPServer(serverID) })
+	forgetDHCPServer(serverID)
+
+	mockServerService := &MockServerService{}
+	h := &DHCPHandlers{serverService: mockServerService, config: createTestContainer().Config}
+	mockServerService.On("StartServer", mock.Anything, serverID).Return(errors.New("bind failed"))
+
+	req := httptest.NewRequest("POST", "/dhcp/start?server_id="+serverID, nil)
+	w := httptest.NewRecorder()
+	h.StartDHCPServer(w, req)
+
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, "stopped", dhcpRuntimeState(serverID, false))
+	mockServerService.AssertExpectations(t)
 }
 
-func TestMenuLabel(t *testing.T) {
-	path := menuLabel(dhcp.BootMenu{
+func TestLeaseMenuName(t *testing.T) {
+	pathLease := &dhcp.Lease{Menu: dhcp.BootMenu{
 		Filename: "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
 		OS:       "ubuntu",
 		Version:  "24.04",
-	})
-	if path != "" {
-		t.Fatalf("tmp path: %q", path)
+	}}
+	if got := leaseMenuName(pathLease); got != "" {
+		t.Fatalf("path and os/version must not become a name: %q", got)
 	}
-	if got := menuLabel(dhcp.BootMenu{Filename: `ubuntu/24.04/vmlinuz`, OS: "ubuntu", Version: "24.04"}); got != "" {
-		t.Fatalf("relative path: %q", got)
+	if got := leaseMenuName(&dhcp.Lease{Menu: dhcp.BootMenu{Filename: "lab-menu"}}); got != "" {
+		t.Fatalf("filename is not menu_name: %q", got)
 	}
-	if got := menuLabel(dhcp.BootMenu{Filename: "lab-menu"}); got != "lab-menu" {
-		t.Fatalf("name: %q", got)
+	if got := cleanMenuName("ubuntu 24.04"); got != "ubuntu 24.04" {
+		t.Fatalf("friendly: %q", got)
 	}
-	if got := menuLabel(dhcp.BootMenu{}); got != "" {
-		t.Fatalf("empty: %q", got)
+	if got := cleanMenuName("/tmp/ignite-tftp.UPoTst/menu"); got != "" {
+		t.Fatalf("path: %q", got)
+	}
+	type namedMenu struct{ MenuName string }
+	if got := cleanMenuName(fieldString(namedMenu{MenuName: "ubuntu 24.04"}, "MenuName")); got != "ubuntu 24.04" {
+		t.Fatalf("reflected menu_name: %q", got)
+	}
+	if got := cleanMenuName(fieldString(namedMenu{MenuName: "ubuntu/24.04"}, "MenuName")); got != "" {
+		t.Fatalf("reflected path: %q", got)
+	}
+}
+
+func TestOrderTFTPFiles(t *testing.T) {
+	files := []FileInfo{
+		{Name: "boot.ipxe", Base: "boot.ipxe"},
+		{Name: "pxelinux.cfg", Base: "pxelinux.cfg", IsDir: true},
+		{Name: "os-images", Base: "os-images", IsDir: true},
+		{Name: "a.txt", Base: "a.txt"},
+	}
+	orderTFTPFiles(files)
+	got := make([]string, len(files))
+	for i, f := range files {
+		got[i] = f.Base
+	}
+	want := []string{"os-images", "pxelinux.cfg", "a.txt", "boot.ipxe"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("order: %v", got)
 	}
 }

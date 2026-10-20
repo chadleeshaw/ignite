@@ -3,9 +3,13 @@
     <div>
         <h1><span class="only-cozy">TFTP</span><span class="only-console">tftp</span></h1>
         <p class="sub only-cozy">{{countPhrase .FileCount "file" "files"}} · {{countPhrase .DirCount "folder" "folders"}} · server {{.ServerStatus}}</p>
-        <p class="sub only-console">{{countPhrase .FileCount "file" "files"}} · {{countPhrase .DirCount "dir" "dirs"}} · server {{.ServerStatus}}</p>
+        <p class="sub only-console">{{countPhrase .FileCount "file" "files"}} · {{countPhrase .DirCount "folder" "folders"}} · server {{.ServerStatus}}</p>
         <nav class="crumbs" aria-label="TFTP directory">
-            <a href="/tftp">{{if .Root}}{{.Root}}{{else}}root{{end}}</a>
+            {{if .ServerDirectory}}
+            <a href="{{if .PrevDirectory}}/tftp/open?dir={{.PrevDirectory}}{{else}}/tftp{{end}}">Up</a>
+            <span aria-hidden="true">/</span>
+            {{end}}
+            <a href="/tftp">{{if .Root}}{{.Root}}{{else}}/{{end}}</a>
             {{range .Breadcrumbs}}
             <span>/</span>
             <a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a>
@@ -26,33 +30,29 @@
                     <th>Name</th>
                     <th>Size</th>
                     <th>Modified</th>
-                    <th>Actions</th>
+                    <th class="acts">Actions</th>
                 </tr>
             </thead>
             <tbody>
-                {{if .PrevDirectory}}
-                <tr>
-                    <td colspan="3"><a href="{{if eq .PrevDirectory ""}}/tftp{{else}}/tftp/open?dir={{.PrevDirectory}}{{end}}">..</a></td>
-                    <td></td>
-                </tr>
-                {{else if .ServerDirectory}}
-                <tr>
-                    <td colspan="3"><a href="/tftp">..</a></td>
-                    <td></td>
-                </tr>
-                {{end}}
                 {{range .Files}}
                 <tr>
-                    <td class="mono">{{.Name}}</td>
+                    <td class="mono">
+                        {{if .IsDir}}
+                        <a class="file-link" href="/tftp/open?dir={{.Name}}"><i class="fas fa-folder" aria-hidden="true"></i> {{if .Base}}{{.Base}}{{else}}{{.Name}}{{end}}/</a>
+                        {{else}}
+                        {{if .Base}}{{.Base}}{{else}}{{.Name}}{{end}}
+                        {{end}}
+                    </td>
                     <td>{{if .IsDir}}—{{else}}{{.Size}}{{end}}</td>
-                    <td>{{.LastModified}}</td>
-                    <td>
-                        <div class="actions">
+                    <td>{{if .ModTime.IsZero}}—{{else}}<time datetime="{{rfc3339 .ModTime}}" data-time="datetime">{{utcLabel .ModTime "2006-01-02 15:04:05"}}</time>{{end}}</td>
+                    <td class="acts">
+                        <div class="actions stable slots">
                             {{if .IsDir}}
-                            <button class="b sm" type="button" onclick="window.location.href='/tftp/open?dir={{.Name}}'">Open</button>
+                            <a class="b sm" href="/tftp/open?dir={{.Name}}"><span class="label-fit"><span>Open</span><span aria-hidden="true">Download</span></span></a>
+                            <button class="b sm" type="button" disabled tabindex="-1"><span class="label-fit"><span>—</span><span aria-hidden="true">View</span></span></button>
                             {{else}}
-                            <button class="b sm downloadBtn" type="button" onclick="window.location.href='/tftp/download?file={{.Name}}'">Download</button>
-                            <button class="b sm viewBtn" hx-get="/open_modal?template=viewmodal&file={{.Name}}" hx-target="#modal-content">View</button>
+                            <button class="b sm downloadBtn" type="button" onclick="window.location.href='/tftp/download?file={{.Name}}'"><span class="label-fit"><span>Download</span><span aria-hidden="true">Open</span></span></button>
+                            <button class="b sm viewBtn" hx-get="/open_modal?template=viewmodal&file={{.Name}}" hx-target="#modal-content"><span class="label-fit"><span>View</span><span aria-hidden="true">—</span></span></button>
                             {{end}}
                             <button class="b dg sm deleteBtn" hx-post="/tftp/delete_file?file={{.Name}}" hx-swap="none" hx-on::after-request="if (event.detail.successful) location.reload();">Delete</button>
                         </div>

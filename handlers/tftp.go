@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 // maxUploadBytes caps TFTP upload request bodies (512 MB).
@@ -286,12 +288,16 @@ func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("File uploaded successfully"))
 }
 
-// FileInfo represents file metadata for display
+// FileInfo represents file metadata for display.
+// Name is the root-relative path used by open, download, and delete.
+// Base is the entry name shown in the table. ModTime is the filesystem
+// time; the page formats it in the browser's local zone.
 type FileInfo struct {
-	Name         string
-	Size         string
-	LastModified string
-	IsDir        bool
+	Name    string
+	Base    string
+	Size    string
+	ModTime time.Time
+	IsDir   bool
 }
 
 // TFTPCrumb is one step of the directory path under the TFTP root.
@@ -363,12 +369,14 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		}
 
 		fileInfos = append(fileInfos, FileInfo{
-			Name:         relativePath,
-			Size:         humanReadableSize(fileInfo.Size()),
-			LastModified: fileInfo.ModTime().Format("2006-01-02 15:04:05"),
-			IsDir:        fileInfo.IsDir(),
+			Name:    relativePath,
+			Base:    entry.Name(),
+			Size:    humanReadableSize(fileInfo.Size()),
+			ModTime: fileInfo.ModTime(),
+			IsDir:   fileInfo.IsDir(),
 		})
 	}
+	orderTFTPFiles(fileInfos)
 
 	fileCount, dirCount := 0, 0
 	for _, info := range fileInfos {
@@ -392,6 +400,23 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		DirCount:        dirCount,
 		Breadcrumbs:     tftpCrumbs(relDir),
 	}, nil
+}
+
+// orderTFTPFiles lists directories before files, then by display name.
+func orderTFTPFiles(files []FileInfo) {
+	sort.SliceStable(files, func(i, j int) bool {
+		if files[i].IsDir != files[j].IsDir {
+			return files[i].IsDir
+		}
+		return strings.ToLower(tftpDisplayName(files[i])) < strings.ToLower(tftpDisplayName(files[j]))
+	})
+}
+
+func tftpDisplayName(f FileInfo) string {
+	if f.Base != "" {
+		return f.Base
+	}
+	return f.Name
 }
 
 // tftpCrumbs splits a root-relative directory into linked steps.

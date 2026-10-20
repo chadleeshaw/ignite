@@ -24,7 +24,7 @@
     <div class="pad" style="justify-content: space-between;">
         <div>
             <span class="ip">{{.TFTPIP}}</span>
-            <span class="st {{if eq .StatusWord "running"}}ok{{else if eq .StatusWord "stopped"}}er{{end}}">{{.StatusWord}}</span>
+            <span class="st {{dhcpStateClass .Status}}">{{dhcpStateLabel .Status}}</span>
             <p class="mu" style="margin-top:4px">
                 {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}
             </p>
@@ -52,7 +52,7 @@
                 data-seen="{{relTime .LastSeen}}"
                 data-seen-at="{{rfc3339 .LastSeen}}"
                 data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
-                data-menu="{{if .MenuLabel}}{{.MenuLabel}}{{else}}—{{end}}"
+                data-menu="{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}"
                 data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
                 data-reserved="{{if .Static}}yes{{else}}no{{end}}"
                 onclick="selectLease(this)">
@@ -63,7 +63,7 @@
                 <div class="kv">
                     <span>MAC</span><span class="mono">{{.MAC}}</span>
                     <span>Seen</span><span><time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time></span>
-                    <span>Menu</span><span>{{if .MenuLabel}}{{.MenuLabel}}{{else}}—{{end}}</span>
+                    <span>Menu</span><span>{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}</span>
                 </div>
             </button>
             {{end}}
@@ -94,7 +94,7 @@
                     data-seen="{{relTime .LastSeen}}"
                     data-seen-at="{{rfc3339 .LastSeen}}"
                     data-seen-title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}"
-                    data-menu="{{if .MenuLabel}}{{.MenuLabel}}{{else}}—{{end}}"
+                    data-menu="{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}"
                     data-ipmi="{{if .IPMI.Username}}{{.IPMI.Username}}{{else}}none{{end}}"
                     data-reserved="{{if .Static}}yes{{else}}no{{end}}"
                     onclick="selectLease(this)"
@@ -106,7 +106,7 @@
                     <td class="acts">
                         <div class="actions stable">
                             <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content"><span class="label-fit"><span>{{if .Static}}Reserved{{else}}Reserve{{end}}</span><span aria-hidden="true">Reserve</span><span aria-hidden="true">Reserved</span></span></button>
-                            <button class="b sm {{if .MenuLabel}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">Boot menu</button>
+                            <button class="b sm {{if menuName .MenuName}}p{{end}}" hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">Boot menu</button>
                             <button class="b sm {{if .IPMI.Username}}p{{end}}" hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content">IPMI</button>
                             <div class="dropdown dropdown-end">
                                 <button class="b sm" tabindex="0" type="button">State</button>

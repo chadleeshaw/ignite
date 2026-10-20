@@ -187,7 +187,7 @@ func statusIssues(s *StatusPageData) []string {
 		if srv.Status == "running" {
 			continue
 		}
-		word := statusWord(srv.Status)
+		word := dhcpStateLabel(srv.Status)
 		if _, ok := grouped[word]; !ok {
 			order = append(order, word)
 		}
@@ -211,10 +211,7 @@ func statusWord(status string) string {
 }
 
 func attentionLead(n int) string {
-	if n == 1 {
-		return "1 thing needs attention"
-	}
-	return fmt.Sprintf("%d things need attention", n)
+	return countPhrase(n, "thing needs attention", "things need attention")
 }
 
 // statusKey is one console shortcut drawn in the shared status bar.
@@ -424,8 +421,8 @@ func fieldLen(data any, name string) (int, bool) {
 	return f.Len(), true
 }
 
-// dhcpStateWords reads StatusWord from each DHCP server view. The status
-// bar uses those words as stored and does not rename one state to another.
+// dhcpStateWords reads the raw DHCP status from each server view. The
+// status bar maps those words through dhcpStateLabel.
 func dhcpStateWords(data any) ([]string, bool) {
 	f, found := structField(data, "Servers")
 	if !found || f.Kind() != reflect.Slice {
@@ -444,10 +441,16 @@ func dhcpStateWords(data any) ([]string, bool) {
 		if !item.IsValid() || item.Kind() != reflect.Struct {
 			continue
 		}
-		word := item.FieldByName("StatusWord")
-		if word.IsValid() && word.Kind() == reflect.String {
-			words = append(words, strings.TrimSpace(word.String()))
+		raw := ""
+		if status := item.FieldByName("Status"); status.IsValid() && status.Kind() == reflect.String {
+			raw = strings.TrimSpace(status.String())
 		}
+		if raw == "" {
+			if word := item.FieldByName("StatusWord"); word.IsValid() && word.Kind() == reflect.String {
+				raw = strings.TrimSpace(word.String())
+			}
+		}
+		words = append(words, raw)
 	}
 	return words, true
 }
@@ -470,10 +473,14 @@ func dhcpStateHealth(words []string) string {
 	if len(order) == 0 {
 		return "No DHCP servers yet"
 	}
-	if len(order) == 1 {
-		return "DHCP is " + order[0]
+	labels := make([]string, len(order))
+	for i, word := range order {
+		labels[i] = dhcpStateLabel(word)
 	}
-	return "DHCP is " + strings.Join(order, " and ")
+	if len(labels) == 1 {
+		return "DHCP is " + labels[0]
+	}
+	return "DHCP is " + strings.Join(labels, " and ")
 }
 
 func dhcpTotals(data any) (servers, running, leases int, ok bool) {
