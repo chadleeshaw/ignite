@@ -298,7 +298,7 @@ func TestDHCPPoolFreeUsesOccupancy(t *testing.T) {
 	mockLeases := &MockLeaseService{}
 	mockLeases.On("GetLeasesByServer", mock.Anything, "srv").Return(leases, nil)
 	h := &DHCPHandlers{leaseService: mockLeases}
-	view, err := h.convertServerToView(context.Background(), server)
+	view, _, err := h.convertServerToView(context.Background(), server)
 	require.NoError(t, err)
 	require.Equal(t, 2, view.Used)
 	require.Equal(t, 8, view.Free)

@@ -30,6 +30,19 @@ type LeaseCounts struct {
 	Reserved int `json:"reserved"`
 }
 
+// InstallOutcomes counts provisioning states that the summary buckets hide.
+// A failed or in-flight lease still occupies exactly one of Active, Expired,
+// or Reserved. These counts are separate so a failed install stays visible.
+//
+// The dashboard JSON does not expose them yet. CountInstallOutcomes is the
+// one place that derives them until the summary API grows the fields.
+type InstallOutcomes struct {
+	// InFlight is pxe_requested, booting, imaging, or configuring.
+	InFlight int
+	// Failed is the failed lease state.
+	Failed int
+}
+
 // PoolStat is one DHCP server's address pool.
 //
 // Server is the server's interface address (its configured IP). Used counts
@@ -54,6 +67,15 @@ type DashboardSummary struct {
 	Expired  int        `json:"expired"`
 	Reserved int        `json:"reserved"`
 	Pools    []PoolStat `json:"pools"`
+	// InFlight, Failed, Free, Used, and PoolTotal fill the stat strip.
+	// CountInstallOutcomes derives InFlight and Failed from lease states
+	// because the summary payload does not expose them yet. json:"-" keeps
+	// that derivation out of the API until the backend adds the counts.
+	InFlight  int `json:"-"`
+	Failed    int `json:"-"`
+	Free      int `json:"-"`
+	Used      int `json:"-"`
+	PoolTotal int `json:"-"`
 	// Mode is the signed-in user's UI density. Page render fills it.
 	// It is not part of the JSON summary.
 	Mode string `json:"-"`
@@ -111,6 +133,25 @@ func CountLeases(leases []*Lease, now time.Time) LeaseCounts {
 	return counts
 }
 
+// CountInstallOutcomes counts in-flight and failed leases from their state.
+// Nil entries are skipped. In flight is pxe_requested, booting, imaging, or
+// configuring. Failed is the failed state. Other states count as neither.
+func CountInstallOutcomes(leases []*Lease) InstallOutcomes {
+	var outcomes InstallOutcomes
+	for _, lease := range leases {
+		if lease == nil {
+			continue
+		}
+		switch lease.State {
+		case StatePXERequested, StateBooting, StateImaging, StateConfiguring:
+			outcomes.InFlight++
+		case StateFailed:
+			outcomes.Failed++
+		}
+	}
+	return outcomes
+}
+
 // PoolStatForServer builds the pool row for one server.
 // leases should be that server's leases; others are ignored.
 func PoolStatForServer(server *Server, leases []*Lease, now time.Time) PoolStat {
@@ -161,6 +202,14 @@ func BuildDashboardSummary(servers []*Server, leasesByServer map[string][]*Lease
 	summary.Active = counts.Active
 	summary.Expired = counts.Expired
 	summary.Reserved = counts.Reserved
+	outcomes := CountInstallOutcomes(all)
+	summary.InFlight = outcomes.InFlight
+	summary.Failed = outcomes.Failed
+	for _, pool := range summary.Pools {
+		summary.Free += pool.Free
+		summary.Used += pool.Used
+		summary.PoolTotal += pool.Total
+	}
 	return summary
 }
 

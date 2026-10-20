@@ -52,7 +52,7 @@
     <section class="panel">
         <div class="ph">
             <h3>Images</h3>
-            <span class="mu">{{countPhrase (len .OSImages) "ready" "ready"}}{{if .DownloadCount}} · {{.DownloadCount}} downloading{{end}}</span>
+            <span class="mu">{{countPhrase (len .OSImages) "ready" "ready"}}{{if .DownloadCount}} · {{countPhrase .DownloadCount "download" "downloads"}}{{end}}</span>
         </div>
         <div id="active-downloads"{{if .Downloads}} hx-get="/osimages" hx-select="#osimage-downloads" hx-target="#osimage-downloads" hx-trigger="every 5s"{{end}}>
         {{if .Downloads}}

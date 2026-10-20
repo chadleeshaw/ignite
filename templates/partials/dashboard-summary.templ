@@ -1,28 +1,29 @@
 <section class="stats strip" aria-label="Lease and pool summary">
     <div class="stat">
-        <div class="stat-title">Active</div>
+        <div class="stat-title">Active leases</div>
         <div class="stat-value">{{.Active}}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Reserved</div>
+        <div class="stat-value">{{.Reserved}}</div>
     </div>
     <div class="stat">
         <div class="stat-title">Expired</div>
         <div class="stat-value">{{.Expired}}</div>
     </div>
     <div class="stat">
-        <div class="stat-title">Reserved</div>
-        <div class="stat-value">{{.Reserved}}</div>
+        <div class="stat-title">In flight</div>
+        <div class="stat-value warn">{{.InFlight}}</div>
+        <div class="stat-desc">booting · imaging</div>
     </div>
-    {{range .Pools}}
-    <div class="stat" data-status="{{.Status}}">
-        <div class="stat-title">{{.Server}}</div>
-        <div class="stat-value">{{.Free}}</div>
-        <div class="stat-desc">{{.Used}} used / {{.Total}} total</div>
-        <span class="st {{dhcpStateClass .Status}}">{{dhcpStateLabel .Status}}</span>
-    </div>
-    {{else}}
     <div class="stat">
-        <div class="stat-title">Pools</div>
-        <div class="stat-value">0</div>
-        <div class="stat-desc">No DHCP servers</div>
+        <div class="stat-title">Failed</div>
+        <div class="stat-value bad"><a href="/dhcp">{{.Failed}}</a></div>
+        <div class="stat-desc"><a href="/dhcp">see DHCP →</a></div>
     </div>
-    {{end}}
+    <div class="stat">
+        <div class="stat-title">Free addresses</div>
+        <div class="stat-value">{{.Free}}</div>
+        <div class="stat-desc">{{.Used}} used / {{.PoolTotal}} total</div>
+    </div>
 </section>

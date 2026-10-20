@@ -2,8 +2,10 @@ package handlers
 
 import (
 	"fmt"
+	"net/http"
 	"reflect"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -174,38 +176,48 @@ func annotateStatus(s *StatusPageData) {
 	if s == nil {
 		return
 	}
-	issues := statusIssues(s)
+	cozyIssues, consoleIssues := statusIssues(s)
 	switch {
 	case s.HTTPServer.Status != "running":
 		s.OverallStatus = "down"
-	case len(issues) > 0:
+	case len(cozyIssues) > 0:
 		s.OverallStatus = "partial"
 	default:
 		s.OverallStatus = "healthy"
 	}
-	if len(issues) == 0 {
-		s.AttentionCozy = "All services are up"
-		s.AttentionConsole = "services up"
+	if len(cozyIssues) == 0 {
+		if !dhcpListenersRunning(s) {
+			s.AttentionCozy = "No DHCP server is running"
+			s.AttentionConsole = "no dhcp server running"
+		} else {
+			s.AttentionCozy = "All services are up"
+			s.AttentionConsole = "services up"
+		}
+		noteHostHealth(s)
 		return
 	}
-	joined := strings.Join(issues, " · ")
-	s.AttentionCozy = attentionLead(len(issues)) + ": " + joined
-	s.AttentionConsole = joined
+	s.AttentionCozy = attentionLead(len(cozyIssues)) + ": " + strings.Join(cozyIssues, " · ")
+	s.AttentionConsole = countPhrase(len(consoleIssues), "issue", "issues") + " · " + strings.Join(consoleIssues, " · ")
+	noteHostHealth(s)
 }
 
 // statusIssues lists services that are down. Configured DHCP servers are
 // omitted: they are defined and have not been started, which is not partial
-// health. Servers that share a status are one issue.
-func statusIssues(s *StatusPageData) []string {
+// health. Servers that share a status are one issue. The cozy line is a
+// sentence; the console line is the same fact in lowercase.
+func statusIssues(s *StatusPageData) (cozy, console []string) {
 	if s == nil {
-		return nil
+		return nil, nil
 	}
-	var issues []string
 	if s.HTTPServer.Status != "running" {
-		issues = append(issues, "HTTP "+statusWord(s.HTTPServer.Status))
+		word := statusWord(s.HTTPServer.Status)
+		cozy = append(cozy, "HTTP is "+word)
+		console = append(console, "http "+word)
 	}
 	if s.TFTPServer.Status != "running" {
-		issues = append(issues, "TFTP "+statusWord(s.TFTPServer.Status))
+		word := statusWord(s.TFTPServer.Status)
+		cozy = append(cozy, "TFTP is "+word)
+		console = append(console, "tftp "+word)
 	}
 	grouped := map[string][]string{}
 	var order []string
@@ -214,7 +226,10 @@ func statusIssues(s *StatusPageData) []string {
 		case "running", "configured":
 			continue
 		}
-		word := dhcpStateLabel(srv.Status)
+		word := strings.ToLower(strings.TrimSpace(srv.Status))
+		if word == "" {
+			word = "unknown"
+		}
 		if _, ok := grouped[word]; !ok {
 			order = append(order, word)
 		}
@@ -225,9 +240,56 @@ func statusIssues(s *StatusPageData) []string {
 		grouped[word] = append(grouped[word], label)
 	}
 	for _, word := range order {
-		issues = append(issues, "DHCP "+strings.Join(grouped[word], ", ")+" "+word)
+		ips := grouped[word]
+		verb := "is"
+		if len(ips) != 1 {
+			verb = "are"
+		}
+		cozy = append(cozy, "DHCP "+strings.Join(ips, ", ")+" "+verb+" "+word)
+		console = append(console, "dhcp "+strings.Join(ips, ", ")+" "+word)
 	}
-	return issues
+	return cozy, console
+}
+
+// dhcpListenersRunning reports whether any DHCP listener is bound.
+func dhcpListenersRunning(s *StatusPageData) bool {
+	if s == nil {
+		return false
+	}
+	for _, srv := range s.DHCPServers {
+		if srv.Status == "running" {
+			return true
+		}
+	}
+	return false
+}
+
+// dhcpBarDetail is the status-bar clause for DHCP listeners. Stopped
+// servers are the partial-health fact. Configured servers are counted
+// so an idle pool stays visible, and they do not change overall health.
+func dhcpBarDetail(s *StatusPageData) (cozy, console string) {
+	if s == nil {
+		return "", ""
+	}
+	var stopped, configured int
+	for _, srv := range s.DHCPServers {
+		switch srv.Status {
+		case "stopped":
+			stopped++
+		case "configured":
+			configured++
+		}
+	}
+	var cozyParts, consoleParts []string
+	if stopped > 0 {
+		cozyParts = append(cozyParts, countPhrase(stopped, "DHCP server stopped", "DHCP servers stopped"))
+		consoleParts = append(consoleParts, countPhrase(stopped, "stopped", "stopped"))
+	}
+	if configured > 0 {
+		cozyParts = append(cozyParts, countPhrase(configured, "not started", "not started"))
+		consoleParts = append(consoleParts, countPhrase(configured, "configured", "configured"))
+	}
+	return strings.Join(cozyParts, " · "), strings.Join(consoleParts, " · ")
 }
 
 func statusWord(status string) string {
@@ -250,22 +312,108 @@ type statusKey struct {
 // statusBarView is the shell footer. Empty fields fall back to page data
 // and then to a shared default, so a page cannot drop the bar.
 type statusBarView struct {
-	Health string
-	Tip    string
-	Counts string
-	Keys   []statusKey
+	Health      string
+	Detail      string
+	ConsoleLine string
+	Tip         string
+	Counts      string
+	Keys        []statusKey
+}
+
+// hostHealth is the last overall status computed from StatusPageData.
+// Shell pages read it so the status bar can lead with the same sentence
+// on every page. It is filled only after BindStatusContainer, which the
+// process sets when it starts. Template tests do not bind it, so they
+// keep the per-page fallback.
+type hostHealth struct {
+	Overall string
+	Cozy    string
+	Console string
+}
+
+var (
+	statusMu        sync.Mutex
+	statusContainer *Container
+	hostSnap        hostHealth
+)
+
+// BindStatusContainer lets shell pages recompute overall health from the
+// same status payload Overview already uses. The name is local: the layout
+// field the backend is adding is not guessed here.
+func BindStatusContainer(container *Container) {
+	statusMu.Lock()
+	statusContainer = container
+	statusMu.Unlock()
+}
+
+func hostHealthBound() bool {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	return statusContainer != nil
+}
+
+func boundStatusContainer() *Container {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	return statusContainer
+}
+
+func noteHostHealth(s *StatusPageData) {
+	if s == nil {
+		return
+	}
+	cozy, console := dhcpBarDetail(s)
+	statusMu.Lock()
+	hostSnap = hostHealth{Overall: s.OverallStatus, Cozy: cozy, Console: console}
+	statusMu.Unlock()
+}
+
+func readHostHealth() hostHealth {
+	statusMu.Lock()
+	defer statusMu.Unlock()
+	return hostSnap
+}
+
+// refreshHostHealth rebuilds the status payload for a shell page so the
+// bar leads with overall health. A missing container leaves the fallback
+// sentence in place.
+func refreshHostHealth(r *http.Request) {
+	container := boundStatusContainer()
+	if container == nil || r == nil || container.ServerService == nil || container.LeaseService == nil || container.Config == nil {
+		return
+	}
+	data, err := (&StatusHandlers{container: container}).getStatusData(r)
+	if err != nil || data == nil {
+		return
+	}
+	_ = data
+}
+
+func shellPage(name string) bool {
+	switch name {
+	case "index", "dhcp", "tftp", "osimages", "syslinux", "provision":
+		return true
+	default:
+		return false
+	}
 }
 
 // pageHealth is the status-bar sentence.
 // OverallStatus is the word on the merged status payload (healthy, partial,
-// down). Pages that do not carry it keep the sentence derived from their
-// own fields. When layout data grows a shared health word, read it here.
+// down). When the process has bound a status container, every page uses
+// that word. Pages rendered without it keep the sentence derived from
+// their own fields.
 func pageHealth(data any) string {
 	if health := fieldString(data, "StatusHealth"); health != "" {
 		return health
 	}
 	if health := cozyHealth(fieldString(data, "OverallStatus")); health != "" {
 		return health
+	}
+	if hostHealthBound() {
+		if health := cozyHealth(readHostHealth().Overall); health != "" {
+			return health
+		}
 	}
 	if health := derivedHealth(data, pageID(data)); health != "" {
 		return health
@@ -283,11 +431,55 @@ func statusBar(data any) statusBarView {
 	if counts == "" {
 		counts = derivedCounts(data, page)
 	}
+	detail, consoleDetail := "", ""
+	if hostHealthBound() {
+		snap := readHostHealth()
+		overall := fieldString(data, "OverallStatus")
+		if overall == "" || overall == snap.Overall {
+			detail = snap.Cozy
+			consoleDetail = snap.Console
+		}
+	}
+	lineCounts := counts
+	if page == "overview" {
+		lineCounts = ""
+	}
 	return statusBarView{
-		Health: health,
-		Tip:    fieldString(data, "StatusTip"),
-		Counts: counts,
-		Keys:   defaultStatusKeys(page),
+		Health:      health,
+		Detail:      detail,
+		ConsoleLine: consoleStatusLine(health, consoleDetail, lineCounts),
+		Tip:         fieldString(data, "StatusTip"),
+		Counts:      counts,
+		Keys:        defaultStatusKeys(page),
+	}
+}
+
+func consoleStatusLine(health, detail, counts string) string {
+	var parts []string
+	if word := consoleHealthWord(health); word != "" {
+		parts = append(parts, word)
+	}
+	if detail != "" {
+		parts = append(parts, detail)
+	}
+	if counts != "" {
+		parts = append(parts, counts)
+	}
+	return strings.Join(parts, " · ")
+}
+
+func consoleHealthWord(health string) string {
+	switch health {
+	case "All services up":
+		return "up"
+	case "Partial service":
+		return "partial"
+	case "System down":
+		return "down"
+	case "Ready", "":
+		return ""
+	default:
+		return strings.ToLower(health)
 	}
 }
 
@@ -390,7 +582,7 @@ func defaultStatusKeys(page string) []statusKey {
 	case "syslinux":
 		return []statusKey{{Key: "5", Label: "syslinux"}}
 	case "provision":
-		return []statusKey{{Key: "6", Label: "provision"}, {Key: "⌘S", Label: "save"}}
+		return []statusKey{{Key: "6", Label: "provision"}}
 	default:
 		return nil
 	}

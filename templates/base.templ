@@ -54,19 +54,18 @@
         </div>
         {{$bar := statusBar .}}
         <footer class="sb">
-            <span>{{$bar.Health}}</span>
+            <span class="only-cozy">{{$bar.Health}}{{if and $bar.Detail (ne (pageID .) "overview")}} · {{$bar.Detail}}{{end}}</span>
             <span class="only-console">CONSOLE</span>
-            {{if $bar.Counts}}<span class="only-console">{{$bar.Counts}}</span>{{end}}
+            {{if $bar.ConsoleLine}}<span class="only-console">{{$bar.ConsoleLine}}</span>{{end}}
+            {{if and $bar.Detail (eq (pageID .) "overview")}}<span class="only-cozy">{{$bar.Detail}}</span>{{end}}
+            {{if and $bar.Counts (ne (pageID .) "overview")}}<span class="only-cozy">{{$bar.Counts}}</span>{{end}}
             <span class="grow"></span>
             {{if $bar.Tip}}
             <span class="only-cozy">{{$bar.Tip}}</span>
             {{else}}
-            <span class="only-cozy">Tip: <kbd>\</kbd> switches Console</span>
+            <span class="only-cozy">Tip: <kbd>\</kbd> switches to Console</span>
             {{end}}
-            <span class="only-console sb-keys">
-                {{range $bar.Keys}}<span><kbd>{{.Key}}</kbd> {{.Label}}</span>{{end}}
-                <span><kbd>\</kbd> cozy · <kbd>?</kbd> help</span>
-            </span>
+            <span class="only-console sb-keys"><kbd>1</kbd>–<kbd>6</kbd> pages · <kbd>\</kbd> cozy</span>
         </footer>
     </div>
 
@@ -298,6 +297,18 @@
                 var kind = node.getAttribute("data-time") || "datetime";
                 if (kind === "title") {
                     node.title = date.toLocaleString();
+                    return;
+                }
+                var zone = "";
+                var parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(date);
+                for (var i = 0; i < parts.length; i++) {
+                    if (parts[i].type === "timeZoneName") zone = parts[i].value;
+                }
+                if (kind === "clock" || kind === "clockzone") {
+                    var clock = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
+                    node.textContent = kind === "clockzone" && zone ? clock + " " + zone : clock;
+                    var zoneNode = node.closest(".stat") && node.closest(".stat").querySelector("[data-zone]");
+                    if (zoneNode && zone) zoneNode.textContent = zone;
                     return;
                 }
                 node.textContent = kind === "time" ? date.toLocaleTimeString() : date.toLocaleString();

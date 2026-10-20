@@ -74,7 +74,7 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 	if one.OverallStatus != "healthy" {
 		t.Fatalf("overall %q", one.OverallStatus)
 	}
-	if one.AttentionCozy != "All services are up" || one.AttentionConsole != "services up" {
+	if one.AttentionCozy != "No DHCP server is running" || one.AttentionConsole != "no dhcp server running" {
 		t.Fatalf("configured is not an issue: %q / %q", one.AttentionCozy, one.AttentionConsole)
 	}
 
@@ -84,7 +84,7 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.2", Status: "stopped"}},
 	}
 	annotateStatus(stopped)
-	const wantStopped = "1 thing needs attention: DHCP 10.0.0.2 Stopped"
+	const wantStopped = "1 thing needs attention: DHCP 10.0.0.2 is stopped"
 	if stopped.OverallStatus != "partial" || stopped.AttentionCozy != wantStopped {
 		t.Fatalf("stopped: %s %q", stopped.OverallStatus, stopped.AttentionCozy)
 	}
@@ -95,7 +95,7 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "configured"}},
 	}
 	annotateStatus(two)
-	const wantTwo = "1 thing needs attention: TFTP stopped"
+	const wantTwo = "1 thing needs attention: TFTP is stopped"
 	if two.OverallStatus != "partial" || two.AttentionCozy != wantTwo {
 		t.Fatalf("two issues: %s %q", two.OverallStatus, two.AttentionCozy)
 	}
@@ -105,7 +105,7 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 		TFTPServer: ServiceStatus{Status: "running"},
 	}
 	annotateStatus(down)
-	if down.OverallStatus != "down" || down.AttentionCozy != "1 thing needs attention: HTTP down" {
+	if down.OverallStatus != "down" || down.AttentionCozy != "1 thing needs attention: HTTP is down" {
 		t.Fatalf("down: %s %q", down.OverallStatus, down.AttentionCozy)
 	}
 }
@@ -141,10 +141,12 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	for _, want := range []string{
 		`data-theme="cozy"`,
 		"/dashboard/summary",
-		"System Healthy",
-		"Active Leases: 3",
+		"All services up",
+		"3 leases",
 		"All services are up",
-		"Leases",
+		"Active leases",
+		"In flight",
+		"Free addresses",
 	} {
 		if !strings.Contains(overview, want) {
 			t.Errorf("overview missing %q", want)
@@ -156,11 +158,10 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	for _, want := range []string{
 		`class="sb"`,
 		"All services up",
-		"5 leases · 2 servers",
 		"CONSOLE",
-		`<kbd>1</kbd> overview`,
-		`<kbd>\</kbd> cozy · <kbd>?</kbd> help`,
-		"Tip: <kbd>\\</kbd> switches Console",
+		`<kbd>1</kbd>–<kbd>6</kbd> pages`,
+		`<kbd>\</kbd> cozy`,
+		"Tip: <kbd>\\</kbd> switches to Console",
 	} {
 		if !strings.Contains(overview, want) {
 			t.Errorf("overview status bar missing %q", want)
@@ -205,6 +206,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Page      string
 		CSRFToken string
 		Servers   []DHCPServerView
+		Strip     leaseStrip
 	}{
 		Title: "DHCP",
 		Mode:  "console",
@@ -212,7 +214,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Servers: []DHCPServerView{{
 			TFTPIP:     "192.168.1.2",
 			Status:     "configured",
-			StatusWord: "Configured, not started",
+			StatusWord: "Configured",
 			LeaseRange: 50,
 			Used:       1,
 			Free:       49,
@@ -234,7 +236,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		}, {
 			TFTPIP:     "10.0.1.2",
 			Status:     "configured",
-			StatusWord: "Configured, not started",
+			StatusWord: "Configured",
 			LeaseRange: 25,
 		}},
 	})
@@ -261,16 +263,18 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 	for _, want := range []string{
 		`class="sb"`,
-		"DHCP is Configured, not started",
+		"DHCP is Configured",
 		"2 servers · 2 leases",
-		"Select a lease to see details",
+		"Select a host",
+		"In flight",
+		"Last refresh",
 		`id="det-title"`,
 		"Last seen",
 		"ubuntu 24.04",
 		"No leases on this server.",
 		`class="main"`,
 		"CONSOLE",
-		`<kbd>2</kbd> dhcp`,
+		`<kbd>1</kbd>–<kbd>6</kbd> pages`,
 		`class="label-fit"`,
 		`aria-hidden="true">Reserved`,
 		`aria-hidden="true">Start`,
@@ -286,11 +290,14 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(console, "/tmp/") || strings.Contains(console, "pxelinux.cfg") {
 		t.Error("dhcp page renders an internal menu path")
 	}
-	if !strings.Contains(console, ">Configured, not started<") {
+	if !strings.Contains(console, ">Configured<") {
 		t.Error("dhcp page did not show the server state")
 	}
-	if !strings.Contains(console, `class="st wa"`) {
-		t.Error("configured server is missing the warn pill")
+	if !strings.Contains(console, `class="st cf"`) {
+		t.Error("configured server is missing the idle pill")
+	}
+	if strings.Contains(console, ">Configured, not started<") {
+		t.Error("configured pill still uses the old label")
 	}
 
 	tftp := renderNamed(t, "tftp", &TFTPData{
@@ -319,7 +326,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	for _, want := range []string{
 		"TFTP status is unknown",
 		"1 file · 1 folder",
-		`<kbd>3</kbd> tftp`,
+		`<kbd>1</kbd>–<kbd>6</kbd> pages`,
 		`class="sb"`,
 		`>Up</a>`,
 		`href="/tftp">/</a>`,
@@ -362,7 +369,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if !strings.Contains(osOut, "24.04") || !strings.Contains(osOut, `id="versionSelect"`) || !strings.Contains(osOut, `class="ico ubuntu"`) {
 		t.Error("os images list or download form missing")
 	}
-	if !strings.Contains(osOut, "1 image") || !strings.Contains(osOut, `<kbd>4</kbd> images`) || !strings.Contains(osOut, "Ready") {
+	if !strings.Contains(osOut, "1 image") || !strings.Contains(osOut, `<kbd>1</kbd>–<kbd>6</kbd> pages`) || !strings.Contains(osOut, "Ready") {
 		t.Error("os images status bar missing")
 	}
 
@@ -401,7 +408,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if !strings.Contains(idle, "/api/syslinux/activate/6.04-pre1") {
 		t.Error("activate control missing for a downloaded inactive version")
 	}
-	if !strings.Contains(sys, "1 version") || !strings.Contains(sys, `<kbd>5</kbd> syslinux`) {
+	if !strings.Contains(sys, "1 version") || !strings.Contains(sys, `<kbd>1</kbd>–<kbd>6</kbd> pages`) {
 		t.Error("syslinux status bar missing")
 	}
 
@@ -413,7 +420,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			t.Errorf("provision missing %s", id)
 		}
 	}
-	for _, want := range []string{`class="sb"`, "CONSOLE", "0 files", `<kbd>6</kbd> provision`, `<kbd>⌘S</kbd> save`, `<kbd>\</kbd> cozy · <kbd>?</kbd> help`} {
+	for _, want := range []string{`class="sb"`, "CONSOLE", "0 files", `<kbd>1</kbd>–<kbd>6</kbd> pages`, `<kbd>\</kbd> cozy`} {
 		if !strings.Contains(prov, want) {
 			t.Errorf("provision status bar missing %q", want)
 		}
@@ -451,7 +458,7 @@ func TestPendingLayoutHelpers(t *testing.T) {
 		Page    string
 		Servers []DHCPServerView
 	}{Page: "dhcp", Servers: []DHCPServerView{{Status: "configured"}}})
-	if dhcp != "DHCP is Configured, not started" {
+	if dhcp != "DHCP is Configured" {
 		t.Fatalf("dhcp fallback %q", dhcp)
 	}
 }

@@ -175,6 +175,9 @@ func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, d
 		))
 		return
 	}
+	if shellPage(name) {
+		refreshHostHealth(r)
+	}
 	if err := tmpl.Execute(w, applyUIMode(r, data)); err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("template %q error: %v", name, err),

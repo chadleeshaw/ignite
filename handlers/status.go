@@ -76,7 +76,7 @@ func dhcpStatePill(state any) (label, class string) {
 	case "stopped":
 		return "Stopped", "er"
 	case "configured", "", "<nil>":
-		return "Configured, not started", "wa"
+		return "Configured", "cf"
 	default:
 		word := strings.TrimSpace(fmt.Sprint(state))
 		return word, "of"
@@ -120,6 +120,9 @@ type DHCPServerStatus struct {
 	Status      string    `json:"status"`
 	Description string    `json:"description"`
 	LeaseCount  int       `json:"lease_count"`
+	Free        int       `json:"free"`
+	Used        int       `json:"used"`
+	Total       int       `json:"total"`
 	LastCheck   time.Time `json:"last_check"`
 }
 
@@ -173,6 +176,12 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	for _, server := range servers {
 		leases, _ := h.container.LeaseService.GetLeasesByServer(ctx, server.ID)
 		state := dhcp.CurrentServerState(server.ID)
+		used := dhcp.PoolOccupancy(leases, now)
+		total := server.LeaseRange
+		free := total - used
+		if free < 0 {
+			free = 0
+		}
 
 		dhcpServers = append(dhcpServers, DHCPServerStatus{
 			ID:          server.ID,
@@ -180,6 +189,9 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 			Status:      string(state),
 			Description: "Dynamic IP assignment for network boot clients",
 			LeaseCount:  len(leases),
+			Free:        free,
+			Used:        used,
+			Total:       total,
 			LastCheck:   now,
 		})
 	}

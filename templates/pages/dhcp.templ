@@ -17,6 +17,34 @@
 {{if not .Servers}}
 <p class="note mt">No DHCP servers yet. Add one to hand out addresses.</p>
 {{else}}
+<section class="stats strip mt" aria-label="DHCP pool">
+    <div class="stat">
+        <div class="stat-title">Pool</div>
+        <div class="stat-value">{{.Strip.Free}} <span class="stat-unit">free</span></div>
+        <div class="stat-desc">{{.Strip.Used}} used / {{.Strip.Total}} total</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Reserved</div>
+        <div class="stat-value">{{.Strip.Reserved}}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Expired</div>
+        <div class="stat-value">{{.Strip.Expired}}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">In flight</div>
+        <div class="stat-value warn">{{.Strip.InFlight}}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Failed</div>
+        <div class="stat-value bad">{{.Strip.Failed}}</div>
+    </div>
+    <div class="stat">
+        <div class="stat-title">Last refresh</div>
+        <div class="stat-value"><time {{if not .Strip.Refreshed.IsZero}}datetime="{{rfc3339 .Strip.Refreshed}}" data-time="clock"{{end}}>{{if .Strip.Refreshed.IsZero}}—{{else}}{{utcLabel .Strip.Refreshed "15:04:05"}}{{end}}</time></div>
+        <div class="stat-desc" data-zone>UTC</div>
+    </div>
+</section>
 <div class="main">
 <div class="dhcp-servers">
 {{range .Servers}}
@@ -26,7 +54,7 @@
             <span class="ip">{{.TFTPIP}}</span>
             <span class="st {{dhcpStateClass .Status}}" data-status="{{.Status}}">{{dhcpStateLabel .Status}}</span>
             <p class="mu" style="margin-top:4px">
-                {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}
+                {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}{{if eq .Status "configured"}} · not started yet{{end}}
             </p>
         </div>
         <div class="actions stable">
@@ -144,8 +172,8 @@
 </div>
 
 <aside class="panel" id="lease-detail">
-    <div class="ph"><h3 id="det-title">Lease</h3></div>
-    <p class="note" id="det-empty">Select a lease to see details</p>
+    <div class="ph"><h3 id="det-title">Host details</h3></div>
+    <p class="note" id="det-empty">Select a host</p>
     <div class="det" id="lease-detail-body" hidden>
         <span>MAC</span><span id="det-mac">—</span>
         <span>IP</span><span id="det-ip">—</span>

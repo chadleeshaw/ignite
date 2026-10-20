@@ -298,7 +298,7 @@ func TestDHCPHandlers_GetDHCPServers_JSON(t *testing.T) {
 	assert.Equal(t, "server-1", body.Servers[0].ID)
 	assert.Equal(t, "192.168.1.1", body.Servers[0].TFTPIP)
 	assert.Equal(t, "configured", body.Servers[0].Status)
-	assert.Equal(t, "Configured, not started", body.Servers[0].StatusWord)
+	assert.Equal(t, "Configured", body.Servers[0].StatusWord)
 	assert.NotContains(t, w.Body.String(), `"running"`)
 	assert.Equal(t, 50, body.Servers[0].LeaseRange)
 	assert.Equal(t, 0, body.Servers[0].Used)
@@ -560,7 +560,7 @@ func TestDHCPStatePill(t *testing.T) {
 		t.Fatalf("stopped pill: %q %q", label, class)
 	}
 	label, class = dhcpStatePill(dhcp.ServerStateConfigured)
-	if label != "Configured, not started" || class != "wa" {
+	if label != "Configured" || class != "cf" {
 		t.Fatalf("configured pill: %q %q", label, class)
 	}
 }

@@ -49,10 +49,12 @@ func TestDashboardSummaryHTMLAndJSON(t *testing.T) {
 		require.Contains(t, rec.Header().Get("Content-Type"), "text/html")
 		body := rec.Body.String()
 		require.Contains(t, body, `class="stat-value">1`)
-		require.Contains(t, body, "192.168.1.10")
-		require.Contains(t, body, `data-status="configured"`)
-		require.Contains(t, body, "Configured, not started")
-		require.Contains(t, body, "stat")
+		for _, title := range []string{"Active leases", "Reserved", "Expired", "In flight", "Failed", "Free addresses"} {
+			require.Contains(t, body, title)
+		}
+		require.Contains(t, body, "2 used / 10 total")
+		require.Contains(t, body, `href="/dhcp"`)
+		require.NotContains(t, body, "192.168.1.10")
 		require.NotContains(t, body, "#ff")
 	})
 
@@ -72,6 +74,9 @@ func TestDashboardSummaryHTMLAndJSON(t *testing.T) {
 		require.Equal(t, 8, summary.Pools[0].Free)
 		require.Equal(t, 10, summary.Pools[0].Total)
 		require.Equal(t, dhcp.ServerStateConfigured, summary.Pools[0].Status)
+		raw := rec.Body.String()
+		require.NotContains(t, raw, "in_flight")
+		require.NotContains(t, raw, `"failed"`)
 	})
 }
 

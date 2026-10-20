@@ -153,6 +153,43 @@ func TestPoolOccupancyIgnoresExpired(t *testing.T) {
 	assert.Equal(t, 2, PoolOccupancy(leases, now))
 }
 
+func TestCountInstallOutcomes(t *testing.T) {
+	leases := []*Lease{
+		{State: StatePXERequested},
+		{State: StateBooting},
+		{State: StateImaging},
+		{State: StateConfiguring},
+		{State: StateFailed},
+		{State: StateFailed, Reserved: true},
+		{State: StateAssigned},
+		{State: StateComplete},
+		{State: StateImaged},
+		{State: StateOffline},
+		nil,
+	}
+	got := CountInstallOutcomes(leases)
+	assert.Equal(t, 4, got.InFlight)
+	assert.Equal(t, 2, got.Failed)
+}
+
+func TestBuildDashboardSummaryDerivesInstallOutcomes(t *testing.T) {
+	now := time.Date(2026, 10, 19, 12, 0, 0, 0, time.UTC)
+	server := &Server{ID: "a", IP: net.ParseIP("192.168.1.10"), LeaseRange: 20}
+	byServer := map[string][]*Lease{
+		"a": {
+			{ServerID: "a", Expiry: now.Add(time.Hour), State: StateBooting, IP: net.ParseIP("192.168.1.20")},
+			{ServerID: "a", Expiry: now.Add(time.Hour), State: StateFailed, IP: net.ParseIP("192.168.1.21")},
+			{ServerID: "a", Reserved: true, Expiry: now.Add(time.Hour), State: StateImaging, IP: net.ParseIP("192.168.1.22")},
+		},
+	}
+	summary := BuildDashboardSummary([]*Server{server}, byServer, now)
+	assert.Equal(t, 2, summary.InFlight)
+	assert.Equal(t, 1, summary.Failed)
+	assert.Equal(t, 17, summary.Free)
+	assert.Equal(t, 3, summary.Used)
+	assert.Equal(t, 20, summary.PoolTotal)
+}
+
 func TestOccupiesAddressReservedPastExpiry(t *testing.T) {
 	now := time.Now()
 	reserved := &Lease{Reserved: true, Expiry: now.Add(-time.Hour), IP: net.ParseIP("192.168.1.9")}

@@ -89,7 +89,7 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		require.Contains(t, body, `data-status="configured"`)
 		require.Contains(t, body, ">Running<")
 		require.Contains(t, body, ">Stopped<")
-		require.Contains(t, body, ">Configured, not started<")
+		require.Contains(t, body, ">Configured<")
 		require.NotContains(t, body, "badge-success\">stopped")
 	})
 
@@ -104,7 +104,7 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		require.Contains(t, body, `data-status="configured"`)
 		require.Contains(t, body, ">Running<")
 		require.Contains(t, body, ">Stopped<")
-		require.Contains(t, body, ">Configured, not started<")
+		require.Contains(t, body, ">Configured<")
 	})
 
 	t.Run("status content", func(t *testing.T) {
@@ -118,9 +118,9 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		require.Contains(t, body, `data-status="configured"`)
 		require.Contains(t, body, ">Running<")
 		require.Contains(t, body, ">Stopped<")
-		require.Contains(t, body, ">Configured, not started<")
-		require.Contains(t, body, "Partial Service")
-		require.Contains(t, body, `data-attention-cozy="1 thing needs attention: DHCP 10.0.0.2 Stopped"`)
+		require.Contains(t, body, ">Configured<")
+		require.Contains(t, body, "Partial service")
+		require.Contains(t, body, `data-attention-cozy="1 thing needs attention: DHCP 10.0.0.2 is stopped"`)
 	})
 
 	t.Run("dashboard summary", func(t *testing.T) {
@@ -144,12 +144,10 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		NewDashboardHandlers(container).Summary(htmlRec, htmlReq)
 		require.Equal(t, http.StatusOK, htmlRec.Code)
 		htmlBody := htmlRec.Body.String()
-		require.Contains(t, htmlBody, `data-status="running"`)
-		require.Contains(t, htmlBody, `data-status="stopped"`)
-		require.Contains(t, htmlBody, `data-status="configured"`)
-		require.Contains(t, htmlBody, ">Running<")
-		require.Contains(t, htmlBody, ">Stopped<")
-		require.Contains(t, htmlBody, ">Configured, not started<")
+		for _, title := range []string{"Active leases", "Reserved", "Expired", "In flight", "Failed", "Free addresses"} {
+			require.Contains(t, htmlBody, title)
+		}
+		require.Contains(t, htmlBody, "0 used / 30 total")
 	})
 }
 
