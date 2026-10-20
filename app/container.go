@@ -68,7 +68,9 @@ func NewContainer() (c *Container, err error) {
 	serverService := dhcp.NewDHCPServerService(serverRepo, leaseRepo)
 	leaseService := dhcp.NewDHCPLeaseService(leaseRepo, serverRepo)
 	osImageService := osimage.NewOSImageService(osImageRepo, downloadStatusRepo, cfg)
-	syslinuxService := syslinux.NewService(syslinuxRepo, syslinux.GetDefaultConfig())
+	slCfg := syslinux.GetDefaultConfig()
+	slCfg.TFTPDir = cfg.TFTP.Dir
+	syslinuxService := syslinux.NewService(syslinuxRepo, slCfg)
 	ipxeService := ipxe.NewService(cfg, osImageService)
 	prefs, err := handlers.NewBoltPreferenceStore(database, cfg.DB.Bucket+"_prefs")
 	if err != nil {

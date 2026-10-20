@@ -34,7 +34,7 @@
         <div class="fire {{if ne .Status "running"}}off{{end}}"><img src="/public/http/img/flame.svg" alt=""></div>
         <div>
             <small>Server {{.IP}}</small>
-            <b><span class="st {{dhcpStateClass .Status}}">{{dhcpStateLabel .Status}}</span></b>
+            <b><span class="st {{dhcpStateClass .Status}}" data-status="{{.Status}}">{{dhcpStateLabel .Status}}</span></b>
             <p>Active Leases: {{.LeaseCount}}</p>
             <small>{{.Description}}</small>
             <small>Server ID: {{.ID}}</small>

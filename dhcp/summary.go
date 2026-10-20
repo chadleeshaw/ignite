@@ -41,9 +41,9 @@ type PoolStat struct {
 	Used   int    `json:"used"`
 	Free   int    `json:"free"`
 	Total  int    `json:"total"`
-	// Status is the same running, stopped, or configured word as
-	// GET /dhcp/servers. The handler fills it from the listener state.
-	Status string `json:"status,omitempty"`
+	// Status is the listener state from CurrentServerState:
+	// running, stopped, or configured.
+	Status ServerState `json:"status"`
 }
 
 // DashboardSummary is the Overview card payload.
@@ -129,6 +129,11 @@ func PoolStatForServer(server *Server, leases []*Lease, now time.Time) PoolStat 
 	stat.Free = stat.Total - stat.Used
 	if stat.Free < 0 {
 		stat.Free = 0
+	}
+	if server != nil {
+		stat.Status = CurrentServerState(server.ID)
+	} else {
+		stat.Status = ServerStateConfigured
 	}
 	return stat
 }

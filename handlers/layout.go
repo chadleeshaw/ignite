@@ -143,8 +143,9 @@ func describeStatus(s *StatusPageData) (cozy, console string) {
 }
 
 // annotateStatus fills OverallStatus and the subtitle from one issue list.
-// A service counts when its reported status is not "running". HTTP not
-// running is "down"; any other issue is "partial".
+// HTTP not running is "down". A stopped listener is "partial". A DHCP
+// server that is only configured has not been started this boot, so it
+// does not count.
 func annotateStatus(s *StatusPageData) {
 	if s == nil {
 		return
@@ -168,8 +169,9 @@ func annotateStatus(s *StatusPageData) {
 	s.AttentionConsole = joined
 }
 
-// statusIssues lists services whose status is not running. DHCP servers that
-// share a status are one issue, and the status word is the value the tile shows.
+// statusIssues lists services that are down. Configured DHCP servers are
+// omitted: they are defined and have not been started, which is not partial
+// health. Servers that share a status are one issue.
 func statusIssues(s *StatusPageData) []string {
 	if s == nil {
 		return nil
@@ -184,7 +186,8 @@ func statusIssues(s *StatusPageData) []string {
 	grouped := map[string][]string{}
 	var order []string
 	for _, srv := range s.DHCPServers {
-		if srv.Status == "running" {
+		switch srv.Status {
+		case "running", "configured":
 			continue
 		}
 		word := dhcpStateLabel(srv.Status)
@@ -501,7 +504,7 @@ func dhcpTotals(data any) (servers, running, leases int, ok bool) {
 		if !item.IsValid() || item.Kind() != reflect.Struct {
 			continue
 		}
-		if run := item.FieldByName("Running"); run.IsValid() && run.Kind() == reflect.Bool && run.Bool() {
+		if status := item.FieldByName("Status"); status.IsValid() && status.Kind() == reflect.String && status.String() == "running" {
 			running++
 		}
 		if list := item.FieldByName("Leases"); list.IsValid() && (list.Kind() == reflect.Slice || list.Kind() == reflect.Array) {

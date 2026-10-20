@@ -24,13 +24,13 @@
     <div class="pad" style="justify-content: space-between;">
         <div>
             <span class="ip">{{.TFTPIP}}</span>
-            <span class="st {{dhcpStateClass .Status}}">{{dhcpStateLabel .Status}}</span>
+            <span class="st {{dhcpStateClass .Status}}" data-status="{{.Status}}">{{dhcpStateLabel .Status}}</span>
             <p class="mu" style="margin-top:4px">
                 {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}
             </p>
         </div>
         <div class="actions stable">
-            {{if .Running}}
+            {{if eq .Status "running"}}
             <button class="b dg sm" hx-post="/dhcp/stop?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Stop</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
             {{else}}
             <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Start</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
@@ -81,6 +81,7 @@
                     <th>IP</th>
                     <th>State</th>
                     <th>Last seen</th>
+                    <th>Menu</th>
                     <th>Actions</th>
                 </tr>
             </thead>
@@ -103,6 +104,7 @@
                     <td class="ip">{{.IP}}</td>
                     <td><span class="badge lease-state {{.StateBadgeClass}}" data-mac="{{.MAC}}">{{.StateDisplayName}}</span></td>
                     <td><time {{if not .LastSeen.IsZero}}datetime="{{rfc3339 .LastSeen}}" data-time="title"{{end}} title="{{if .LastSeen.IsZero}}No heartbeat recorded{{else}}{{utcLabel .LastSeen "2006-01-02 15:04:05"}}{{end}}">{{relTime .LastSeen}}</time></td>
+                    <td class="menu-name">{{if menuName .MenuName}}{{menuName .MenuName}}{{else}}—{{end}}</td>
                     <td class="acts">
                         <div class="actions stable">
                             <button class="b sm" hx-get="/open_modal?template=reservemodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content"><span class="label-fit"><span>{{if .Static}}Reserved{{else}}Reserve{{end}}</span><span aria-hidden="true">Reserve</span><span aria-hidden="true">Reserved</span></span></button>
@@ -128,7 +130,7 @@
                     </td>
                 </tr>
                 {{else}}
-                <tr><td colspan="5">No leases on this server.</td></tr>
+                <tr><td colspan="6">No leases on this server.</td></tr>
                 {{end}}
             </tbody>
         </table>

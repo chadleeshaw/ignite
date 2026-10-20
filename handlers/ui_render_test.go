@@ -71,12 +71,22 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 		},
 	}
 	annotateStatus(one)
-	if one.OverallStatus != "partial" {
+	if one.OverallStatus != "healthy" {
 		t.Fatalf("overall %q", one.OverallStatus)
 	}
-	const wantOne = "1 thing needs attention: DHCP 192.168.1.2, 10.0.1.2 Configured, not started"
-	if one.AttentionCozy != wantOne || one.AttentionConsole != "DHCP 192.168.1.2, 10.0.1.2 Configured, not started" {
-		t.Fatalf("one issue: %q / %q", one.AttentionCozy, one.AttentionConsole)
+	if one.AttentionCozy != "All services are up" || one.AttentionConsole != "services up" {
+		t.Fatalf("configured is not an issue: %q / %q", one.AttentionCozy, one.AttentionConsole)
+	}
+
+	stopped := &StatusPageData{
+		HTTPServer:  ServiceStatus{Status: "running"},
+		TFTPServer:  ServiceStatus{Status: "running"},
+		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.2", Status: "stopped"}},
+	}
+	annotateStatus(stopped)
+	const wantStopped = "1 thing needs attention: DHCP 10.0.0.2 Stopped"
+	if stopped.OverallStatus != "partial" || stopped.AttentionCozy != wantStopped {
+		t.Fatalf("stopped: %s %q", stopped.OverallStatus, stopped.AttentionCozy)
 	}
 
 	two := &StatusPageData{
@@ -85,7 +95,7 @@ func TestAttentionAgreesWithDHCPStatus(t *testing.T) {
 		DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "configured"}},
 	}
 	annotateStatus(two)
-	const wantTwo = "2 things need attention: TFTP stopped · DHCP 10.0.0.1 Configured, not started"
+	const wantTwo = "1 thing needs attention: TFTP stopped"
 	if two.OverallStatus != "partial" || two.AttentionCozy != wantTwo {
 		t.Fatalf("two issues: %s %q", two.OverallStatus, two.AttentionCozy)
 	}
@@ -201,7 +211,6 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Page:  "dhcp",
 		Servers: []DHCPServerView{{
 			TFTPIP:     "192.168.1.2",
-			Running:    false,
 			Status:     "configured",
 			StatusWord: "Configured, not started",
 			LeaseRange: 50,
@@ -224,7 +233,6 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			}},
 		}, {
 			TFTPIP:     "10.0.1.2",
-			Running:    false,
 			Status:     "configured",
 			StatusWord: "Configured, not started",
 			LeaseRange: 25,

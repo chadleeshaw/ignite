@@ -18,6 +18,12 @@ import (
 // (or has already been stopped).
 var ErrHandlerNotRunning = errors.New("DHCP handler is not running")
 
+// listenDHCP binds the DHCP socket. Tests replace it so a start can succeed
+// or fail without owning UDP port 67.
+var listenDHCP = func(network, address string) (net.PacketConn, error) {
+	return net.ListenPacket(network, address)
+}
+
 // ProtocolBootFiles carries the boot-file settings a ProtocolHandler needs.
 // The values are loaded once at construction time (see WithBootFiles) so the
 // packet path never pays for config.LoadDefault() per packet.
@@ -97,7 +103,7 @@ func (h *ProtocolHandler) Start() error {
 
 	// Bind first; only publish state after the bind succeeds.
 	ctx, cancel := context.WithCancel(context.Background())
-	conn, err := net.ListenPacket("udp4", ":67")
+	conn, err := listenDHCP("udp4", ":67")
 	if err != nil {
 		cancel()
 		return fmt.Errorf("failed to listen on UDP port 67: %w", err)
@@ -195,6 +201,19 @@ func (h *ProtocolHandler) newLease(mac string, ip net.IP) (*Lease, error) {
 		return nil, err
 	}
 	return lease, nil
+}
+
+// carryBootConfig copies the boot menu, IPMI settings, and provision token
+// onto a lease that replaced an older row for the same MAC.
+func carryBootConfig(dst, src *Lease) {
+	if dst == nil || src == nil {
+		return
+	}
+	dst.Menu = src.Menu
+	dst.IPMI = src.IPMI
+	if src.ProvisionToken != "" {
+		dst.ProvisionToken = src.ProvisionToken
+	}
 }
 
 // handleDiscover processes DHCP Discover messages
@@ -304,11 +323,17 @@ func (h *ProtocolHandler) handleRequest(p d4.Packet, options d4.Options) d4.Pack
 		if derr := h.leaseRepo.DeleteByMAC(ctx, mac); derr != nil {
 			log.Printf("Failed to delete stale lease for MAC %s: %v", mac, derr)
 		}
+		previous := lease
 		lease, err = h.newLease(mac, requestedIP.To4())
 		if err != nil {
 			log.Printf("Failed to build lease for MAC %s: %v", mac, err)
 			return h.createNakPacket(p)
 		}
+		// The installer often requests its own address, which is not the
+		// address DHCP handed out. Replacing the row must keep the boot
+		// menu: otherwise the later imaging callback lands on a lease whose
+		// menu is empty.
+		carryBootConfig(lease, previous)
 		// Never ACK an unpersisted lease.
 		if err := h.leaseRepo.Save(ctx, lease); err != nil {
 			log.Printf("Failed to save lease for MAC %s: %v", mac, err)

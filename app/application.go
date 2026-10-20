@@ -11,6 +11,7 @@ import (
 	"syscall"
 	"time"
 
+	"ignite/config"
 	"ignite/dhcp"
 	"ignite/handlers"
 	"ignite/routes"
@@ -77,7 +78,23 @@ func (a *Application) Start() error {
 
 	// Start TFTP server. Record the outcome so status never stays "unknown"
 	// after a start attempt, including a failed bind.
-	a.tftpServer = tftp.NewServer(a.container.Config.TFTP.Dir)
+	tftpRoot, err := config.ResolveTFTPRoot(a.container.Config.TFTP.Dir)
+	if err != nil {
+		handlers.SetTFTPRunning(false)
+		a.stopMaintenance()
+		return fmt.Errorf("failed to resolve TFTP root: %w", err)
+	}
+	for _, line := range tftpRoot.StartupLines() {
+		log.Print(line)
+	}
+	a.container.Config.TFTP.Dir = tftpRoot.Path
+	handlers.SetTFTPRoot(tftpRoot.Path)
+	if a.container.SyslinuxService != nil {
+		slCfg := a.container.SyslinuxService.GetConfig()
+		slCfg.TFTPDir = tftpRoot.Path
+		_ = a.container.SyslinuxService.UpdateConfig(rootCtx, slCfg)
+	}
+	a.tftpServer = tftp.NewServer(tftpRoot.Path)
 	if err := a.tftpServer.Start(); err != nil {
 		handlers.SetTFTPRunning(false)
 		a.stopMaintenance()

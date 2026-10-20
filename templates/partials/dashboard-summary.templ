@@ -18,7 +18,7 @@
         <div class="stat-title">{{.Server}}</div>
         <div class="stat-value">{{.Free}}</div>
         <div class="stat-desc">{{.Used}} used / {{.Total}} total</div>
-        {{if .Status}}<span class="st {{dhcpStateClass .Status}}">{{dhcpStateLabel .Status}}</span>{{end}}
+        <span class="st {{dhcpStateClass .Status}}">{{dhcpStateLabel .Status}}</span>
     </div>
     {{else}}
     <div class="stat">

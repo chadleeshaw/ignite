@@ -71,7 +71,7 @@ func TestDashboardSummaryHTMLAndJSON(t *testing.T) {
 		require.Equal(t, 2, summary.Pools[0].Used)
 		require.Equal(t, 8, summary.Pools[0].Free)
 		require.Equal(t, 10, summary.Pools[0].Total)
-		require.Equal(t, "configured", summary.Pools[0].Status)
+		require.Equal(t, dhcp.ServerStateConfigured, summary.Pools[0].Status)
 	})
 }
 

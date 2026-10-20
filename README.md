@@ -172,12 +172,14 @@ Ignite can be configured via environment variables. Here are the available optio
 | `DB_PATH`   | Path to store the database file.               | `./`               |
 | `DB_FILE`   | Name of the database file.                     | `ignite.db`        |
 | `DB_BUCKET` | Database bucket name.                          | `dhcp`             |
-| `TFTP_DIR`  | Directory for the TFTP server to serve files from. | `./public/tftp`   |
+| `TFTP_DIR`  | Directory for the TFTP server to serve files from. Created on startup. The release image sets `/app/public/tftp`. | `./public/tftp`   |
 | `HTTP_DIR`  | Directory for the HTTP server to serve files from. | `./public/http`   |
 | `HTTP_PORT` | Port for the HTTP server to listen on.         | `8080`             |
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
 | `BMC_TLS_INSECURE` | Skip TLS verification for Redfish BMCs. Set to `true`, `1`, `yes`, or `on` only for a self-signed BMC. Any other value verifies certificates. | verify TLS |
 | `BMC_SYSTEM_ID` | Redfish ComputerSystem `Id` when a BMC exposes more than one system. A `system_id` form field on `POST /pxe/submit_ipmi` overrides this. | first and only system |
+
+Startup logs the resolved TFTP root (`TFTP root: ...`). `TFTP_DIR` overrides the default. The directory is created if it is missing. When that directory cannot be created, Ignite falls back to a temporary directory named `ignite-tftp.*` under the system temp dir and logs a warning that boot files, OS images, and per-MAC configs will not survive a restart. The same warning is logged when `TFTP_DIR` itself points at a temp directory; the override is still used. The TFTP page shows this resolved path as the root.
 
 ## API Reference
 
@@ -216,7 +218,7 @@ htmx. Add `?format=json`, or send `Accept: application/json` without
     {
       "id": "server-id",
       "tftpip": "192.168.1.1",
-      "status": "badge-success",
+      "status": "running",
       "lease_range": 50,
       "used": 1,
       "free": 49,
@@ -235,9 +237,20 @@ htmx. Add `?format=json`, or send `Accept: application/json` without
 }
 ```
 
-`status` is `badge-success` when the server is running and `badge-error` when
-it is stopped. `used` and `free` follow `dhcp.PoolOccupancy` (reserved or
-unexpired). `menu`, `ipmi`, and `last_seen` are also present on each lease.
+`status` is the listener state, and the same value on `/status/content`,
+`/dashboard/summary` (`pools[].status`), and the DHCP page:
+
+| Value | Meaning |
+|-------|---------|
+| `running` | The listener is bound and serving. |
+| `stopped` | It was started and then stopped, or the last start failed. |
+| `configured` | It is defined and has not been started since this process booted. |
+
+A `configured` server does not make overall health `partial`. `used` and
+`free` follow `dhcp.PoolOccupancy` (reserved or unexpired). Each lease
+includes `menu_name` (a friendly label such as `ubuntu 24.04`, or `""`
+when no menu is assigned) plus `menu`, `ipmi`, and `last_seen`. `menu`
+does not include a filesystem path.
 
 ### POST Routes
 

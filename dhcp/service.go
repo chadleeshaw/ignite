@@ -148,7 +148,7 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 		return fmt.Errorf("failed to get server: %w", err)
 	}
 
-	if server.Started {
+	if s.hasHandler(serverID) {
 		return fmt.Errorf("server is already running")
 	}
 
@@ -156,6 +156,7 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 	// path never pays for config.LoadDefault() per packet.
 	appCfg, err := config.LoadDefault()
 	if err != nil {
+		NoteServerState(serverID, ServerStateStopped)
 		return fmt.Errorf("failed to load application config: %w", err)
 	}
 	bootFiles := ProtocolBootFiles{
@@ -169,6 +170,7 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 		WithBootFiles(bootFiles),
 	)
 	if err := handler.Start(); err != nil {
+		NoteServerState(serverID, ServerStateStopped)
 		return fmt.Errorf("failed to start DHCP handler: %w", err)
 	}
 
@@ -186,10 +188,19 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 		s.handlersMu.Lock()
 		delete(s.handlers, serverID)
 		s.handlersMu.Unlock()
+		NoteServerState(serverID, ServerStateStopped)
 		return fmt.Errorf("failed to update server state: %w", err)
 	}
 
+	NoteServerState(serverID, ServerStateRunning)
 	return nil
+}
+
+// hasHandler reports whether this process has a live listener for serverID.
+func (s *DHCPServerService) hasHandler(serverID string) bool {
+	s.handlersMu.RLock()
+	defer s.handlersMu.RUnlock()
+	return s.handlers[serverID] != nil
 }
 
 // StopServer stops a DHCP server
@@ -199,24 +210,27 @@ func (s *DHCPServerService) StopServer(ctx context.Context, serverID string) err
 		return fmt.Errorf("failed to get server: %w", err)
 	}
 
-	if !server.Started {
-		return fmt.Errorf("server is not running")
-	}
-
-	// Stop protocol handler
 	s.handlersMu.Lock()
-	if handler, exists := s.handlers[serverID]; exists {
-		if err := handler.Stop(); err != nil {
+	handler, listening := s.handlers[serverID]
+	if listening {
+		if err := handler.Stop(); err != nil && !errors.Is(err, ErrHandlerNotRunning) {
 			log.Printf("Error stopping DHCP handler: %v", err)
 		}
 		delete(s.handlers, serverID)
 	}
 	s.handlersMu.Unlock()
 
+	if !listening && !server.Started {
+		return fmt.Errorf("server is not running")
+	}
+
 	// Update server state
 	server.Started = false
 	server.UpdatedAt = time.Now()
 
+	// The socket is already closed. Record stopped even when the row cannot
+	// be saved, so the APIs do not keep reporting running.
+	NoteServerState(serverID, ServerStateStopped)
 	if err := s.serverRepo.Save(ctx, server); err != nil {
 		return fmt.Errorf("failed to update server state: %w", err)
 	}
@@ -226,11 +240,13 @@ func (s *DHCPServerService) StopServer(ctx context.Context, serverID string) err
 
 // DeleteServer deletes a DHCP server and all its leases
 func (s *DHCPServerService) DeleteServer(ctx context.Context, serverID string) error {
-	// Stop server if running
+	// Stop server if running. The listener is down from here on, whether or
+	// not the row delete succeeds.
 	s.handlersMu.Lock()
 	if handler, exists := s.handlers[serverID]; exists {
 		_ = handler.Stop()
 		delete(s.handlers, serverID)
+		NoteServerState(serverID, ServerStateStopped)
 	}
 	s.handlersMu.Unlock()
 
@@ -280,6 +296,7 @@ func (s *DHCPServerService) DeleteServer(ctx context.Context, serverID string) e
 	if err := s.serverRepo.Delete(ctx, serverID); err != nil {
 		return fmt.Errorf("failed to delete server: %w", err)
 	}
+	ClearServerState(serverID)
 
 	return nil
 }
