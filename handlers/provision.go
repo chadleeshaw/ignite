@@ -162,6 +162,8 @@ func (h *ProvisionHandlers) detectLanguage(path string) string {
 		return "xml"
 	case ".ipxe":
 		return "ipxe"
+	case ".sh", ".bash":
+		return "shell"
 	default:
 		// Check directory or filename for hints
 		if strings.Contains(path, "cloud-init") {
@@ -178,6 +180,9 @@ func (h *ProvisionHandlers) detectLanguage(path string) string {
 		}
 		if strings.Contains(path, "ipxe") {
 			return "ipxe"
+		}
+		if strings.Contains(path, "shell") {
+			return "shell"
 		}
 		if strings.Contains(path, "bootmenu") || strings.Contains(path, "pxe") {
 			return "ini"

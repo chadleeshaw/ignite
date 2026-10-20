@@ -409,8 +409,17 @@ function previewFile() {
     frame.className = 'bg-base-300 p-4 rounded-lg';
     const pre = document.createElement('pre');
     pre.id = 'preview-content';
-    pre.className = 'text-sm overflow-x-auto max-h-96 whitespace-pre-wrap';
-    pre.textContent = content;
+    pre.className = 'hl text-sm overflow-x-auto max-h-96 whitespace-pre-wrap';
+    var shown = language;
+    if (typeof igniteHighlightLanguage === 'function' && (!shown || shown === 'text')) {
+        shown = igniteHighlightLanguage(filename, content);
+    }
+    badge.textContent = shown;
+    if (typeof igniteHighlight === 'function') {
+        igniteHighlight(pre, content, shown);
+    } else {
+        pre.textContent = content;
+    }
     frame.appendChild(pre);
     const actions = document.createElement('div');
     actions.className = 'modal-action';

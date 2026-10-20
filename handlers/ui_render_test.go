@@ -405,6 +405,9 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(prov, "innerHTML") || strings.Contains(prov, "outerHTML") || strings.Contains(prov, "insertAdjacentHTML") {
 		t.Error("provision page still has an HTML string sink")
 	}
+	if !strings.Contains(prov, "/public/http/js/highlight.js") || !strings.Contains(prov, "igniteHighlight(") {
+		t.Error("provision preview is not wired to the shared highlighter")
+	}
 }
 
 func TestStatusBarDefaults(t *testing.T) {

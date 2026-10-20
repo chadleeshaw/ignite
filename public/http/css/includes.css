@@ -693,6 +693,28 @@ html[data-theme="console"] .sb {
 }
 .sb .grow { margin-left: auto; }
 
+/* Preview tokens. Colors are checked against the #1a1f45 pre background. */
+pre.hl, #preview-content {
+  font-family: var(--mono);
+  color: #eef1ff;
+  background: #1a1f45;
+  border-radius: 12px;
+}
+html[data-theme="console"] pre.hl,
+html[data-theme="console"] #preview-content {
+  border-radius: 8px;
+  font-size: 12.5px;
+}
+.tok-comment { color: #c9d2ee; }
+.tok-keyword { color: #ffc56a; }
+.tok-string { color: #8ef0c2; }
+.tok-number { color: #ffb7d5; }
+.tok-key { color: #9fd4ff; }
+.tok-var { color: #e7c8ff; }
+.tok-section { color: #ffd27a; }
+.tok-tag { color: #ffb09a; }
+.tok-punct { color: #d5dcf5; }
+
 .modal-box, .dropdown-content {
   background: var(--night-800);
   color: var(--text);
