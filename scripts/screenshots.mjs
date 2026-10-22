@@ -30,11 +30,44 @@ function findChrome() {
 }
 
 async function save(page, filename) {
+  await page.waitForFunction(() => {
+    const nodes = [...document.querySelectorAll("[data-time]")];
+    if (!nodes.length) return true;
+    return nodes.some((node) => /[A-Za-z]{3}\s+\d{1,2},/.test(node.textContent || ""));
+  }, { timeout: 8000 }).catch(() => {
+    throw new Error(`${filename}: timestamps were not rewritten with a short zone`);
+  });
   const png = await page.screenshot({ type: "png" });
   const file = resolve(outDir, filename);
   await sharp(png).png({ compressionLevel: 9, effort: 10 }).toFile(file);
+  const meta = await sharp(file).metadata();
+  if (meta.width !== 1280) throw new Error(`${filename} is ${meta.width}px wide`);
   const kb = Math.round(statSync(file).size / 1024);
-  console.log(`${filename} ${kb}KB`);
+  console.log(`${filename} ${meta.width}x${meta.height} ${kb}KB`);
+}
+
+async function assertCurrentOverview(page) {
+  const report = await page.evaluate(() => {
+    const nav = document.querySelector(".br img");
+    const text = document.body.innerText;
+    return {
+      navSrc: nav ? nav.getAttribute("src") : "",
+      activeLeases: text.includes("Active leases"),
+      inFlight: text.includes("In flight"),
+      freeAddresses: text.includes("Free addresses"),
+      serverId: text.includes("Server ID"),
+      lastUpdated: text.includes("Last Updated"),
+    };
+  });
+  if (!report.navSrc.includes("flame-nav.png")) {
+    throw new Error(`overview nav is not the current flame (${report.navSrc || "missing"})`);
+  }
+  if (!report.activeLeases || !report.inFlight || !report.freeAddresses) {
+    throw new Error("overview is missing the six-cell strip");
+  }
+  if (report.serverId || report.lastUpdated) {
+    throw new Error("overview still has the old status copy");
+  }
 }
 
 async function settle(page) {
@@ -43,9 +76,15 @@ async function settle(page) {
 }
 
 async function setMode(page, mode) {
+  const saved = page.waitForResponse(
+    (r) => r.url().includes("/api/preferences/mode") && r.request().method() === "POST",
+    { timeout: 8000 },
+  );
   await page.evaluate((next) => igniteSetMode(next), mode);
+  const response = await saved;
+  if (!response.ok()) throw new Error(`saving display mode ${mode} returned ${response.status()}`);
   await page.waitForFunction((next) => document.documentElement.getAttribute("data-theme") === next, {}, mode);
-  await new Promise((r) => setTimeout(r, 250));
+  await new Promise((r) => setTimeout(r, 200));
 }
 
 async function openProvisionFile(page) {
@@ -82,6 +121,7 @@ const browser = await puppeteer.launch({
 try {
   mkdirSync(outDir, { recursive: true });
   const page = await browser.newPage();
+  await page.setCacheEnabled(false);
   page.setDefaultTimeout(20000);
   await page.goto(`${base}/login`, { waitUntil: "networkidle0" });
   await settle(page);
@@ -91,6 +131,7 @@ try {
   await page.click('#login-form button[type="submit"]');
   await page.waitForFunction(() => location.pathname === "/");
   await settle(page);
+  await assertCurrentOverview(page);
 
   await save(page, "main_page.png");
   await setMode(page, "console");
@@ -136,6 +177,8 @@ try {
   await client.send("Network.clearBrowserCookies");
   await page.goto(`${base}/login`, { waitUntil: "networkidle0" });
   await settle(page);
+  const loginTheme = await page.$eval("html", (el) => el.getAttribute("data-theme"));
+  if (loginTheme !== "console") throw new Error(`console login rendered as ${loginTheme}`);
   await save(page, "login_console.png");
 } finally {
   await browser.close();
