@@ -120,6 +120,7 @@ func (a *Application) Start() error {
 		dhcp.SetListenersEnabled(false)
 		log.Print("DHCP is disabled")
 	}
+	log.Print(config.BMCTLSModeLog(a.container.Config.BMC.TLSVerify))
 
 	// Create HTTP router with injected dependencies and static file handling
 	router := routes.SetupWithContainerAndStatic(a.handlerContainer, a.staticHandler)

@@ -157,7 +157,7 @@ Ignite can be configured via environment variables. Here are the available optio
 | `DHCP_ENABLED` | When `false`, `0`, `no`, or `off`, no DHCP listener starts. Every server stays `configured` and does not make overall health `partial` or `down`. Starting one from the UI or API returns 409. Unset and any other value leave DHCP enabled. | `true` |
 | `SYSLINUX_CACHE_DIR` | Download and extract cache for Syslinux. Created on startup. Empty uses `$DB_PATH/syslinux` (`/app/data/syslinux` in the image). | `$DB_PATH/syslinux` |
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
-| `BMC_TLS_INSECURE` | Skip TLS verification for Redfish BMCs. Set to `true`, `1`, `yes`, or `on` only for a self-signed BMC. Any other value verifies certificates. | verify TLS |
+| `BMC_TLS_VERIFY` | Check the Redfish BMC certificate. Unset skips verification, which is what a self-signed homelab BMC needs. `strconv.ParseBool` values turn it on (`1`, `t`, `T`, `TRUE`, `true`, `True`) or off (`0`, `f`, `F`, `FALSE`, `false`, `False`). Any other value logs a warning and stays off. | `false` |
 | `BMC_SYSTEM_ID` | Redfish ComputerSystem `Id` when a BMC exposes more than one system. A `system_id` form field on `POST /pxe/submit_ipmi` overrides this. | first and only system |
 | `COOKIE_SECURE` | `Secure` flag on `ignite_session` and `ignite_mode`. `auto` sets it only when the request is TLS or `X-Forwarded-Proto` is `https`. `true` always sets it. `false` never does. Any other value is `auto`. The CSRF token is not a cookie. | `auto` |
 
@@ -204,7 +204,7 @@ docker rm ignite-seed
 sudo chown -R 1001:1001 /path/on/host
 ```
 
-Upgrading a v2.x container that was started without these mounts: copy the database and the TFTP directory out before removing the container, recreate it with both named volumes, and restore the files. `docker cp` into the new container writes as root, so return ownership to the `ignite` user (uid 1001) afterward. Syslinux archives extracted under `/tmp/syslinux-downloads` are not in either copy. Download those versions again after the upgrade.
+Upgrading a v2.x container that was started without these mounts: copy the database and the TFTP directory out before removing the container, recreate it with both named volumes, and restore the files. `docker cp` into the new container writes as root, so return ownership to the `ignite` user (uid 1001) afterward. Syslinux archives extracted under `/tmp/syslinux-downloads` are not in either copy. Download those versions again after the upgrade. Redfish skips BMC certificate checks unless `BMC_TLS_VERIFY=true`.
 
 ```bash
 docker cp <container>:/app/data/ignite.db ./ignite.db
@@ -312,7 +312,7 @@ does not include a filesystem path.
 | `/tftp/delete_file`       | Deletes a file from the TFTP directory.       |
 | `/tftp/upload_file`       | Uploads a file to the TFTP directory.         |
 | `/pxe/submit_menu`        | Submits a new PXE boot menu.                  |
-| `/pxe/submit_ipmi`        | Redfish power and one-time PXE boot. Verifies TLS unless `BMC_TLS_INSECURE` is set. Powers On when the host is off and ForceRestart only when it is on. With more than one system and no `system_id` / `BMC_SYSTEM_ID`, responds `409`. |
+| `/pxe/submit_ipmi`        | Redfish power and one-time PXE boot. Skips TLS verification unless `BMC_TLS_VERIFY=true`. Powers On when the host is off and ForceRestart only when it is on. With more than one system and no `system_id` / `BMC_SYSTEM_ID`, responds `409`. |
 | `/prov/newtemplate`       | Creates a new provisioning template.          |
 | `/prov/save`              | Saves a provisioning file.                    |
 | `/provision/save-file`    | Saves file content via API.                   |

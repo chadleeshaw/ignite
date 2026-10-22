@@ -20,7 +20,8 @@ type IPMIHandlers struct {
 }
 
 // NewIPMIHandlers creates a new IPMIHandlers instance.
-// TLS verification follows config (on by default). Tests replace dial.
+// TLS verification follows config and is off unless BMC_TLS_VERIFY is set.
+// Tests replace dial.
 func NewIPMIHandlers(container *Container) *IPMIHandlers {
 	return &IPMIHandlers{container: container, dial: dialGofish}
 }
@@ -74,7 +75,7 @@ func (h *IPMIHandlers) SubmitIPMI(w http.ResponseWriter, r *http.Request) {
 	if dial == nil {
 		dial = dialGofish
 	}
-	session, err := dial(bmcCtx, fmt.Sprintf("https://%s/redfish/v1", ip), username, password, h.tlsInsecure())
+	session, err := dial(bmcCtx, fmt.Sprintf("https://%s/redfish/v1", ip), username, password, h.tlsVerify())
 	if err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Failed to connect to Redfish service: %s", err.Error()),
@@ -169,11 +170,11 @@ func (h *IPMIHandlers) updateDHCPLeaseWithIPMI(ctx context.Context, tftpip, mac,
 	return nil
 }
 
-func (h *IPMIHandlers) tlsInsecure() bool {
+func (h *IPMIHandlers) tlsVerify() bool {
 	if h == nil || h.container == nil || h.container.Config == nil {
 		return false
 	}
-	return h.container.Config.BMC.TLSInsecure
+	return h.container.Config.BMC.TLSVerify
 }
 
 func (h *IPMIHandlers) configuredSystemID() string {

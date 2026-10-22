@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -25,11 +26,12 @@ type Config struct {
 }
 
 // BMCConfig controls how Ignite talks to a Redfish BMC.
-// TLS verification is on unless TLSInsecure is explicitly set.
+// Certificate checks are off unless TLSVerify is set. Homelab BMCs are
+// usually self-signed.
 type BMCConfig struct {
-	// TLSInsecure skips certificate verification. The default is false.
-	// Set BMC_TLS_INSECURE to true, 1, yes, or on only for a self-signed BMC.
-	TLSInsecure bool
+	// TLSVerify is BMC_TLS_VERIFY. False, the default, skips certificate
+	// verification. True checks the BMC certificate.
+	TLSVerify bool
 	// SystemID is the Redfish ComputerSystem Id used when a BMC exposes more
 	// than one system. Empty means use the only system. A request can override
 	// this with the system_id form field. Env: BMC_SYSTEM_ID.
@@ -124,8 +126,8 @@ func NewConfigBuilder() *ConfigBuilder {
 			OSImages: getDefaultOSImageConfig(),
 			ServerIP: getEnv("SERVER_IP", ""),
 			BMC: BMCConfig{
-				TLSInsecure: getEnvBool("BMC_TLS_INSECURE", false),
-				SystemID:    getEnv("BMC_SYSTEM_ID", ""),
+				TLSVerify: bmcTLSVerify(),
+				SystemID:  getEnv("BMC_SYSTEM_ID", ""),
 			},
 		},
 	}
@@ -245,23 +247,28 @@ func dhcpEnabled() bool {
 	}
 }
 
-// getEnvBool parses a boolean environment variable.
-// True values are 1, true, yes, and on. Anything else, including an unset
-// variable, returns fallback. An unrecognized set value returns false so a
-// typo cannot turn TLS verification off.
-func getEnvBool(key string, fallback bool) bool {
-	value, ok := os.LookupEnv(key)
+// bmcTLSVerify reports whether Redfish should check BMC certificates.
+// Unset stays false, so a self-signed BMC connects. Parsing uses
+// strconv.ParseBool. An invalid value logs a warning and stays false.
+func bmcTLSVerify() bool {
+	value, ok := os.LookupEnv("BMC_TLS_VERIFY")
 	if !ok {
-		return fallback
-	}
-	switch strings.ToLower(strings.TrimSpace(value)) {
-	case "1", "true", "yes", "on":
-		return true
-	case "0", "false", "no", "off":
-		return false
-	default:
 		return false
 	}
+	verify, err := strconv.ParseBool(value)
+	if err != nil {
+		log.Printf("BMC_TLS_VERIFY=%q is not a boolean; TLS verification stays disabled", value)
+		return false
+	}
+	return verify
+}
+
+// BMCTLSModeLog is the single startup line for the effective Redfish TLS mode.
+func BMCTLSModeLog(verify bool) string {
+	if verify {
+		return "BMC TLS verification: enabled"
+	}
+	return "BMC TLS verification: disabled (set BMC_TLS_VERIFY=true to enable)"
 }
 
 // getDefaultOSImageConfig returns the default OS image configuration
