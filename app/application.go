@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -99,14 +100,26 @@ func (a *Application) Start() error {
 		_ = a.container.SyslinuxService.UpdateConfig(rootCtx, slCfg)
 		log.Printf("Syslinux cache: %s", slCfg.TempDir)
 	}
-	a.tftpServer = tftp.NewServer(tftpRoot.Path)
+	tftpPort, err := strconv.Atoi(a.container.Config.TFTP.Port)
+	if err != nil {
+		handlers.SetTFTPRunning(false)
+		a.stopMaintenance()
+		return fmt.Errorf("invalid TFTP port %q: %w", a.container.Config.TFTP.Port, err)
+	}
+	a.tftpServer = tftp.NewServerWithPort(tftpRoot.Path, tftpPort)
 	if err := a.tftpServer.Start(); err != nil {
 		handlers.SetTFTPRunning(false)
 		a.stopMaintenance()
 		return fmt.Errorf("failed to start TFTP server: %w", err)
 	}
 	handlers.SetTFTPRunning(true)
-	log.Printf("TFTP server started on port 69, serving from %s", a.container.Config.TFTP.Dir)
+	log.Printf("TFTP server started on port %d, serving from %s", tftpPort, a.container.Config.TFTP.Dir)
+	if a.container.Config.DHCP.Enabled {
+		dhcp.SetListenersEnabled(true)
+	} else {
+		dhcp.SetListenersEnabled(false)
+		log.Print("DHCP is disabled")
+	}
 
 	// Create HTTP router with injected dependencies and static file handling
 	router := routes.SetupWithContainerAndStatic(a.handlerContainer, a.staticHandler)

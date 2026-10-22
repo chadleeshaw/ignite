@@ -11,9 +11,8 @@ import (
 	"ignite/dhcp"
 )
 
-// tftpPort is the UDP port the TFTP server listens on (tftp/tftp.go binds
-// port 69; there is no longer a config knob for it).
-const tftpPort = 69
+// defaultTFTPPort is the UDP port used when TFTP_PORT is unset.
+const defaultTFTPPort = 69
 
 // serviceRegistry tracks in-process TFTP running state. The status handlers
 // read it instead of probing the socket: a UDP dial cannot prove the TFTP
@@ -111,12 +110,13 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	httpStatus := checkHTTPServerStatus(httpPort)
 
 	// TFTP server status — tracked runtime state, never a UDP guess.
+	tftpListen := tftpListenPort(h.container)
 	tftpStatus := ServiceStatus{
 		Name:        "TFTP Server",
 		Status:      TFTPStatus(),
 		Description: "Network boot file server for PXE clients",
-		Details:     fmt.Sprintf("Port %d", tftpPort),
-		Port:        tftpPort,
+		Details:     fmt.Sprintf("Port %d", tftpListen),
+		Port:        tftpListen,
 		LastCheck:   now,
 	}
 
@@ -158,9 +158,24 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	}, nil
 }
 
+// tftpListenPort is the configured TFTP UDP port. An empty or invalid value
+// falls back to 69, which is also the config default.
+func tftpListenPort(container *Container) int {
+	if container == nil || container.Config == nil {
+		return defaultTFTPPort
+	}
+	port, err := strconv.Atoi(container.Config.TFTP.Port)
+	if err != nil || port < 1 || port > 65535 {
+		return defaultTFTPPort
+	}
+	return port
+}
+
 // overallServiceStatus rolls HTTP, TFTP, and DHCP listener state into one word.
 // configured DHCP servers have not been started this boot, so they do not
-// make the service partial. stopped means a listener failed or was stopped.
+// make the service partial. While DHCP is disabled every server is
+// configured, so those servers do not make health partial or down.
+// stopped means a listener failed or was stopped.
 func overallServiceStatus(httpStatus, tftpStatus string, dhcpStates []dhcp.ServerState) string {
 	if httpStatus != "running" {
 		return "down"

@@ -152,7 +152,9 @@ Ignite can be configured via environment variables. Here are the available optio
 | `DB_BUCKET` | Database bucket name.                          | `dhcp`             |
 | `TFTP_DIR`  | Directory for the TFTP server to serve files from. Created on startup. The release image sets `/app/public/tftp`. | `./public/tftp`   |
 | `HTTP_DIR`  | Directory for the HTTP server to serve files from. | `./public/http`   |
-| `HTTP_PORT` | Port for the HTTP server to listen on.         | `8080`             |
+| `HTTP_PORT` | TCP port for the HTTP server.                   | `8080`             |
+| `TFTP_PORT` | UDP port for the TFTP server. Ports below 1024 need extra privileges. Set this above 1024 to run TFTP as the unprivileged `ignite` user. | `69` |
+| `DHCP_ENABLED` | When `false`, `0`, `no`, or `off`, no DHCP listener starts. Every server stays `configured` and does not make overall health `partial` or `down`. Starting one from the UI or API returns 409. Unset and any other value leave DHCP enabled. | `true` |
 | `SYSLINUX_CACHE_DIR` | Download and extract cache for Syslinux. Created on startup. Empty uses `$DB_PATH/syslinux` (`/app/data/syslinux` in the image). | `$DB_PATH/syslinux` |
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
 | `BMC_TLS_INSECURE` | Skip TLS verification for Redfish BMCs. Set to `true`, `1`, `yes`, or `on` only for a self-signed BMC. Any other value verifies certificates. | verify TLS |

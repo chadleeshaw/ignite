@@ -45,10 +45,14 @@ type DBConfig struct {
 type DHCPConfig struct {
 	BiosFile string
 	EFIFile  string
+	// Enabled is DHCP_ENABLED. False means this process does not bind a
+	// DHCP listener. Unset stays enabled. Only 0, false, no, and off disable it.
+	Enabled bool
 }
 
 type TFTPConfig struct {
-	Dir string
+	Dir  string
+	Port string
 }
 
 type HTTPConfig struct {
@@ -101,9 +105,11 @@ func NewConfigBuilder() *ConfigBuilder {
 			DHCP: DHCPConfig{
 				BiosFile: getEnv("BIOS_FILE", "boot-bios/pxelinux.0"),
 				EFIFile:  getEnv("EFI_FILE", "boot-efi/syslinux.efi"),
+				Enabled:  dhcpEnabled(),
 			},
 			TFTP: TFTPConfig{
-				Dir: getEnv("TFTP_DIR", "./public/tftp"),
+				Dir:  getEnv("TFTP_DIR", "./public/tftp"),
+				Port: getEnv("TFTP_PORT", "69"),
 			},
 			HTTP: HTTPConfig{
 				Dir:  getEnv("HTTP_DIR", "./public/http"),
@@ -195,6 +201,9 @@ func (cb *ConfigBuilder) validate() error {
 	if port, err := strconv.Atoi(cb.config.HTTP.Port); err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("HTTP port must be a number between 1 and 65535, got %q", cb.config.HTTP.Port)
 	}
+	if port, err := strconv.Atoi(cb.config.TFTP.Port); err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("TFTP port must be a number between 1 and 65535, got %q", cb.config.TFTP.Port)
+	}
 	if cb.config.TFTP.Dir == "" {
 		return fmt.Errorf("TFTP directory cannot be empty")
 	}
@@ -218,6 +227,22 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// dhcpEnabled reports whether this process should bind DHCP listeners.
+// Unset, and any value other than 0, false, no, or off, leaves DHCP enabled
+// so a typo cannot turn the listeners off.
+func dhcpEnabled() bool {
+	value, ok := os.LookupEnv("DHCP_ENABLED")
+	if !ok {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
 }
 
 // getEnvBool parses a boolean environment variable.
