@@ -5,6 +5,8 @@ import (
 	"os"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewServer(t *testing.T) {
@@ -18,6 +20,26 @@ func TestNewServer(t *testing.T) {
 		t.Fatalf("Failed to create test directory: %v", err)
 	}
 	defer os.RemoveAll(serveDir)
+}
+
+func TestServerBindsConfiguredPort(t *testing.T) {
+	probe, err := net.ListenUDP("udp4", &net.UDPAddr{Port: 0})
+	require.NoError(t, err)
+	port := probe.LocalAddr().(*net.UDPAddr).Port
+	require.NoError(t, probe.Close())
+
+	server := NewServerWithPort(t.TempDir(), port)
+	require.NoError(t, server.Start())
+	t.Cleanup(server.Stop)
+
+	conn, err := net.DialUDP("udp4", nil, &net.UDPAddr{IP: net.IPv4(127, 0, 0, 1), Port: port})
+	require.NoError(t, err)
+	conn.Close()
+
+	again := NewServerWithPort(t.TempDir(), port)
+	err = again.Start()
+	require.Error(t, err)
+	again.Stop()
 }
 
 func TestServerStart(t *testing.T) {

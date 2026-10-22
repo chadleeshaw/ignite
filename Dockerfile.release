@@ -27,8 +27,10 @@ RUN curl -L -o ./ignite https://github.com/chadleeshaw/ignite/releases/download/
 # Copy public files
 COPY --chown=ignite:ignite ./public ./public
 
-# Create data directory for database
+# Create the data directory before the volume so a new named volume is
+# owned by ignite (uid 1001). The database and Syslinux cache live here.
 RUN mkdir -p /app/data && chown ignite:ignite /app/data
+VOLUME /app/data
 
 # Declared after COPY so a new named volume is seeded from ./public/tftp.
 VOLUME /app/public/tftp
@@ -39,6 +41,6 @@ USER ignite
 EXPOSE 8080
 
 HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
-    CMD curl -f http://localhost:8080/ || exit 1
+    CMD curl -f http://localhost:${HTTP_PORT}/ || exit 1
 
 CMD ["./ignite"]

@@ -18,6 +18,8 @@ type Server struct {
 	serveDir    string
 	absServeDir string
 
+	port int
+
 	mu         sync.Mutex
 	listener   *net.UDPConn
 	tftpServer *v3.Server
@@ -25,8 +27,17 @@ type Server struct {
 	running    bool
 }
 
-// NewServer creates and returns a new TFTP server instance with the specified directory for serving files.
+// NewServer creates a TFTP server that listens on UDP port 69.
 func NewServer(serveDir string) *Server {
+	return NewServerWithPort(serveDir, 69)
+}
+
+// NewServerWithPort creates a TFTP server that listens on port.
+// A port outside 1–65535 is replaced with 69.
+func NewServerWithPort(serveDir string, port int) *Server {
+	if port < 1 || port > 65535 {
+		port = 69
+	}
 	abs, err := filepath.Abs(serveDir)
 	if err != nil {
 		abs = serveDir
@@ -34,6 +45,7 @@ func NewServer(serveDir string) *Server {
 	return &Server{
 		serveDir:    serveDir,
 		absServeDir: abs,
+		port:        port,
 	}
 }
 
@@ -59,9 +71,9 @@ func (s *Server) resolvePath(filename string) (string, error) {
 	return full, nil
 }
 
-// Start initiates the TFTP server, listening for incoming connections on port 69.
-// The UDP socket is bound before Start reports success. It returns an error if
-// the server is already running.
+// Start initiates the TFTP server, listening for incoming connections on the
+// configured UDP port. The socket is bound before Start reports success. It
+// returns an error if the server is already running.
 func (s *Server) Start() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -69,10 +81,14 @@ func (s *Server) Start() error {
 	if s.running {
 		return fmt.Errorf("tftp: server already running")
 	}
+	port := s.port
+	if port == 0 {
+		port = 69
+	}
 
-	listener, err := net.ListenUDP("udp4", &net.UDPAddr{Port: 69})
+	listener, err := net.ListenUDP("udp4", &net.UDPAddr{Port: port})
 	if err != nil {
-		return fmt.Errorf("tftp: failed to bind UDP port 69: %w", err)
+		return fmt.Errorf("tftp: failed to bind UDP port %d: %w", port, err)
 	}
 
 	tftpServer := v3.NewServer(s.readHandler, s.writeHandler)

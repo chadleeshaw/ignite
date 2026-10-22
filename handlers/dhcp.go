@@ -133,19 +133,28 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allConfigured := len(serverViews) > 0
+	for _, view := range serverViews {
+		if view.Status != "configured" {
+			allConfigured = false
+			break
+		}
+	}
 	data := struct {
 		Title         string
 		Mode          string
 		Page          string
 		CSRFToken     string
 		OverallStatus string
+		AllConfigured bool
 		Servers       []DHCPServerView
 		Strip         leaseStrip
 	}{
-		Title:   "DHCP",
-		Page:    "dhcp",
-		Servers: serverViews,
-		Strip:   strip,
+		Title:         "DHCP",
+		Page:          "dhcp",
+		AllConfigured: allConfigured,
+		Servers:       serverViews,
+		Strip:         strip,
 	}
 
 	renderCachedTemplate(w, r, "dhcp", data, "Unable to render the DHCP page")
@@ -210,6 +219,11 @@ func (h *DHCPHandlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 
 	if err := h.serverService.StartServer(ctx, serverID); err != nil {
 		// StartServer records stopped when the listener fails to bind.
+		// DHCP_ENABLED=false is a conflict: the listener is not bound.
+		if errors.Is(err, dhcp.ErrDHCPDisabled) {
+			HandleError(w, r, dhcpDisabledError())
+			return
+		}
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Failed to start server: %v", err),
 			"Unable to start the DHCP server. Please try again later.",
@@ -221,6 +235,17 @@ func (h *DHCPHandlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("HX-Redirect", "/dhcp")
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("DHCP server started successfully"))
+}
+
+// dhcpDisabledError is the 409 returned when a start is requested while
+// DHCP_ENABLED is off. The listener is not bound.
+func dhcpDisabledError() *AppError {
+	return NewAppError(
+		ErrorTypeConflict,
+		"DHCP is disabled",
+		"DHCP is disabled. Set DHCP_ENABLED=true before starting a server.",
+		http.StatusConflict,
+	)
 }
 
 // StopDHCPServer handles POST /dhcp/stop
@@ -381,6 +406,10 @@ func (h *DHCPHandlers) SubmitDHCPServer(w http.ResponseWriter, r *http.Request) 
 		// Update existing server
 		err := h.serverService.UpdateServer(ctx, serverID, config)
 		if err != nil {
+			if errors.Is(err, dhcp.ErrDHCPDisabled) {
+				HandleError(w, r, dhcpDisabledError())
+				return
+			}
 			HandleError(w, r, NewInternalError(
 				fmt.Sprintf("Failed to update DHCP server %s: %v", serverID, err),
 				"Unable to update DHCP server. Please try again later.",

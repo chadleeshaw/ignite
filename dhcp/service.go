@@ -15,6 +15,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// ErrDHCPDisabled is returned when a start is requested while DHCP_ENABLED
+// is off. The listener is not bound.
+var ErrDHCPDisabled = errors.New("DHCP is disabled")
+
 // sharedAllocMu serializes IP allocation across the DHCP packet path
 // (ProtocolHandler) and the service path (DHCPLeaseService). Both services
 // are constructed independently, so the shared mutex lives at package scope;
@@ -158,6 +162,9 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 	if err != nil {
 		NoteServerState(serverID, ServerStateStopped)
 		return fmt.Errorf("failed to load application config: %w", err)
+	}
+	if !appCfg.DHCP.Enabled {
+		return ErrDHCPDisabled
 	}
 	bootFiles := ProtocolBootFiles{
 		BiosFile: appCfg.DHCP.BiosFile,

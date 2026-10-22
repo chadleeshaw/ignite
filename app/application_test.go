@@ -2,7 +2,9 @@ package app
 
 import (
 	"embed"
+	"net"
 	"path/filepath"
+	"strconv"
 	"testing"
 
 	"ignite/handlers"
@@ -12,6 +14,7 @@ import (
 )
 
 func TestNewApplicationWithStatic(t *testing.T) {
+	t.Setenv("DB_PATH", t.TempDir())
 	// Create a simple empty embedded filesystem for testing
 	testFS := embed.FS{}
 	app, err := NewApplicationWithStatic(testFS)
@@ -29,6 +32,11 @@ func TestStartAndStopRecordTFTPStatus(t *testing.T) {
 	t.Setenv("DB_FILE", "tftp-status.db")
 	t.Setenv("HTTP_PORT", "18081")
 	t.Setenv("TFTP_DIR", filepath.Join(t.TempDir(), "tftp"))
+	probe, err := net.ListenUDP("udp4", &net.UDPAddr{Port: 0})
+	require.NoError(t, err)
+	tftpPort := probe.LocalAddr().(*net.UDPAddr).Port
+	require.NoError(t, probe.Close())
+	t.Setenv("TFTP_PORT", strconv.Itoa(tftpPort))
 
 	app, err := NewApplicationWithStatic(embed.FS{})
 	require.NoError(t, err)
@@ -39,6 +47,7 @@ func TestStartAndStopRecordTFTPStatus(t *testing.T) {
 		require.Equal(t, "stopped", handlers.TFTPStatus())
 		return
 	}
+	require.Equal(t, ":18081", app.httpServer.Addr)
 	require.Equal(t, "running", handlers.TFTPStatus())
 	require.NoError(t, app.Stop())
 	require.Equal(t, "stopped", handlers.TFTPStatus())
