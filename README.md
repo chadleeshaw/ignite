@@ -1,7 +1,7 @@
 # Ignite
 
 <p align="center">
-  <img src="./public/http/img/Ignite_small.png" alt="Ignite" width="400"/>
+  <img src="./public/http/img/flame-512.png" alt="Ignite" width="180"/>
 </p>
 
 Ignite is a powerful, all-in-one solution for network booting and server provisioning, implemented in Go. It simplifies the complexities of setting up network boot environments by integrating DHCP, TFTP, and a web-based management interface into a single, easy-to-use application.

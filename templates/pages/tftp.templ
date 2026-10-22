@@ -9,21 +9,27 @@
             <a href="{{if .PrevDirectory}}/tftp/open?dir={{.PrevDirectory}}{{else}}/tftp{{end}}">Up</a>
             <span aria-hidden="true">/</span>
             {{end}}
-            <a href="/tftp">tftp root</a>
-            <span aria-hidden="true">/</span>
-            <a href="/tftp">/</a>
+            <a href="/tftp">⌂ TFTP root</a>
             {{range .Breadcrumbs}}
-            <span>/</span>
+            <span aria-hidden="true">/</span>
             <a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a>
             {{end}}
         </nav>
-        {{if .Root}}<p class="mu">{{.Root}}</p>{{end}}
     </div>
     <div class="actions">
         <span class="st {{if eq .ServerStatus "running"}}ok{{else if eq .ServerStatus "unknown"}}wa{{else}}er{{end}}">{{.ServerStatus}}</span>
         <button class="b p" type="button" onclick="document.getElementById('uploadModal').showModal()">Upload</button>
     </div>
 </header>
+
+{{if .Root}}
+<section class="stats strip root-strip mt" aria-label="TFTP root">
+    <div class="stat">
+        <div class="stat-title">Root</div>
+        <div class="stat-value mono root-path">{{.Root}}</div>
+    </div>
+</section>
+{{end}}
 
 <section class="panel mt">
     <div class="scroll">

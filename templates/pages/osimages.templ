@@ -15,7 +15,7 @@
     {{if .Downloads}}
     {{with index .Downloads 0}}
     <article class="sv on">
-        <div class="fire"><img src="/public/http/img/flame.svg" alt=""></div>
+        <div class="fire"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
         <div>
             <small>Downloading · {{.Progress}}%</small>
             <b>{{.OS}} {{.Version}}</b>
@@ -25,7 +25,7 @@
     {{end}}
     {{else}}
     <article class="sv">
-        <div class="fire off"><img src="/public/http/img/flame.svg" alt=""></div>
+        <div class="fire off"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
         <div>
             <small>Downloads</small>
             <b>Idle</b>

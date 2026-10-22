@@ -65,6 +65,10 @@ html:not([data-theme="console"]) .only-console { display: none !important; }
 html[data-theme="console"] .only-cozy { display: none !important; }
 html:not([data-theme="console"]) .console-view { display: none !important; }
 html[data-theme="console"] .cozy-view { display: none !important; }
+html:not([data-theme="console"]) .lease-rows { display: none !important; }
+
+/* .panel { display:flex } would otherwise beat the hidden attribute. */
+[hidden] { display: none !important; }
 
 .sparks { position: fixed; inset: 0; pointer-events: none; z-index: 0; overflow: hidden; }
 .sp {
@@ -103,6 +107,21 @@ html[data-theme="console"] .app { gap: 10px; }
 }
 html[data-theme="console"] .stage { gap: 10px; }
 .stage > * { flex-shrink: 0; }
+.stage:has(#editor-panel) { overflow: hidden; }
+.stage:has(#editor-panel) > .main.flip {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-items: stretch;
+  overflow: hidden;
+}
+.stage:has(#editor-panel) > .main.flip > .panel {
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+#file-list .fl { flex: 1 1 auto; min-height: 0; overflow: auto; }
+#help-panel { max-height: 30vh; overflow: auto; }
 
 .ignite-nav {
   display: flex;
@@ -126,7 +145,7 @@ html[data-theme="console"] .ignite-nav { border-radius: 12px; }
   padding-left: 4px;
   color: var(--text);
 }
-.br img { width: 28px; height: 28px; }
+.br img { width: 25px; height: 32px; display: block; }
 
 .n {
   padding: 7px 13px;
@@ -219,6 +238,8 @@ html[data-theme="console"] .mode-btn[data-mode="console"] kbd {
 }
 html[data-theme="console"] .pagehead h1 { font-size: 22px; font-weight: 800; }
 .pagehead .sub { color: var(--text-muted); font-size: 13px; margin-top: 2px; }
+.stats.root-strip { grid-template-columns: minmax(0, 1fr); }
+.root-path { font-size: 14px !important; font-weight: 600 !important; overflow-wrap: anywhere; }
 .crumbs { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; color: var(--text-muted); font-family: var(--mono); font-size: 12px; margin-top: 8px; }
 .crumbs a { color: var(--flame-300); text-decoration: none; }
 .mt { margin-top: 12px; }
@@ -274,7 +295,7 @@ html[data-theme="console"] .sv { border-radius: 10px; }
   flex: none;
 }
 html[data-theme="console"] .fire { border-radius: 8px; }
-.fire img { width: 24px; height: 24px; }
+.fire img { width: 19px; height: 24px; display: block; }
 .fire.off { filter: grayscale(1); opacity: 0.55; }
 .sv small { display: block; color: var(--text-muted); font-size: 11.5px; }
 .sv b { font-size: 14px; font-weight: 700; }
@@ -705,8 +726,17 @@ html[data-theme="console"] .chip { border-radius: 6px; }
 .code-edit {
   display: grid;
   grid-template-columns: 3.2em minmax(0, 1fr);
-  min-height: 360px;
+  grid-template-rows: minmax(0, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  height: min(70vh, calc(100vh - 18rem));
+  max-height: calc(100vh - 18rem);
+  overflow: hidden;
   background: rgba(5, 8, 22, 0.55);
+}
+.stage:has(#editor-panel) .code-edit {
+  height: auto;
+  max-height: 100%;
 }
 .code-edit .ln {
   margin: 0;
@@ -717,13 +747,20 @@ html[data-theme="console"] .chip { border-radius: 6px; }
   font-size: 12.5px;
   line-height: 21px;
   white-space: pre;
-  overflow: hidden;
+  overflow: auto;
+  scrollbar-width: none;
   user-select: none;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
 }
+.code-edit .ln::-webkit-scrollbar { display: none; }
 #editor-textarea {
   width: 100%;
-  min-height: 360px;
+  min-height: 0;
   height: 100%;
+  max-height: 100%;
+  overflow: auto;
   border: 0;
   border-radius: 0;
   background: transparent;
@@ -732,7 +769,7 @@ html[data-theme="console"] .chip { border-radius: 6px; }
   font-size: 12.5px;
   line-height: 21px;
   padding: 12px 16px;
-  resize: vertical;
+  resize: none;
 }
 .editor-head { flex-wrap: wrap; }
 .prov-top { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(0, 2fr); gap: 12px; margin-top: 12px; }
@@ -863,7 +900,7 @@ select option { color: var(--text); background: var(--night-800); }
 html[data-theme="console"] .login-card { border-radius: 10px; }
 .login-card h1 { font-size: 28px; font-weight: 800; margin: 8px 0 4px; }
 .login-brand { display: flex; flex-direction: column; align-items: center; text-align: center; margin-bottom: 18px; }
-.login-brand img { width: 48px; height: 48px; }
+.login-brand img { width: 49px; height: 64px; display: block; }
 
 .empty {
   padding: 28px 16px;

@@ -8,7 +8,7 @@
 
     <div class="tiles2">
         <article class="sv {{if eq .HTTPServer.Status "running"}}on{{end}}">
-            <div class="fire {{if ne .HTTPServer.Status "running"}}off{{end}}"><img src="/public/http/img/flame.svg" alt=""></div>
+            <div class="fire {{if ne .HTTPServer.Status "running"}}off{{end}}"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
             <div>
                 <small>HTTP server · web UI &amp; API</small>
                 <b class="mono">port {{.HTTPServer.Port}}</b>
@@ -17,7 +17,7 @@
             <span class="st {{if eq .HTTPServer.Status "running"}}ok{{else}}er{{end}}" style="margin-left:auto">{{if eq .HTTPServer.Status "running"}}Running{{else}}Stopped{{end}}</span>
         </article>
         <article class="sv {{if eq .TFTPServer.Status "running"}}on{{end}}">
-            <div class="fire {{if ne .TFTPServer.Status "running"}}off{{end}}"><img src="/public/http/img/flame.svg" alt=""></div>
+            <div class="fire {{if ne .TFTPServer.Status "running"}}off{{end}}"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
             <div>
                 <small>TFTP server · boot files</small>
                 <b class="mono">port {{.TFTPServer.Port}}</b>
@@ -31,7 +31,7 @@
     <div class="tiles3">
         {{range .DHCPServers}}
         <article class="sv {{if eq .Status "running"}}on{{end}}">
-            <div class="fire {{if ne .Status "running"}}off{{end}}"><img src="/public/http/img/flame.svg" alt=""></div>
+            <div class="fire {{if ne .Status "running"}}off{{end}}"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
             <div style="min-width:0">
                 <small>DHCP server</small>
                 <b class="mono">{{.IP}}</b>
@@ -44,6 +44,7 @@
                 <span class="st {{dhcpStateClass .Status}}" data-status="{{.Status}}">{{dhcpStateLabel .Status}}</span>
                 {{if ne .Status "running"}}
                 <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none">Start</button>
+                {{if and (eq .Status "configured") (allConfigured $)}}<span class="mu">If DHCP is disabled, Start explains why.</span>{{end}}
                 {{end}}
             </span>
         </article>

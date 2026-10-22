@@ -116,8 +116,9 @@ func rfc3339(v any) string {
 	return t.UTC().Format(time.RFC3339)
 }
 
-// utcLabel is the no-JS fallback for an absolute timestamp. The zone is
-// written out so the string is not mistaken for the browser's local time.
+// utcLabel is the no-JS fallback for an absolute timestamp. The clock is
+// formatted in the value's own zone. "UTC" is appended only when that zone
+// really is UTC.
 func utcLabel(v any, layout string) string {
 	t, ok := asTime(v)
 	if !ok || t.IsZero() {
@@ -126,7 +127,33 @@ func utcLabel(v any, layout string) string {
 	if layout == "" {
 		layout = "2006-01-02 15:04:05"
 	}
-	return t.UTC().Format(layout) + " UTC"
+	label := t.Format(layout)
+	zone := zoneName(t)
+	if zone == "" {
+		return label
+	}
+	return label + " " + zone
+}
+
+// zoneName is the no-JS zone label. UTC is used only for a UTC instant.
+func zoneName(v any) string {
+	t, ok := asTime(v)
+	if !ok || t.IsZero() {
+		return ""
+	}
+	name, offset := t.Zone()
+	if t.Location() == time.UTC || name == "UTC" {
+		return "UTC"
+	}
+	if name != "" {
+		return name
+	}
+	sign := "+"
+	if offset < 0 {
+		sign = "-"
+		offset = -offset
+	}
+	return fmt.Sprintf("%s%02d:%02d", sign, offset/3600, (offset%3600)/60)
 }
 
 func asTime(v any) (time.Time, bool) {
@@ -479,6 +506,44 @@ func fieldLen(data any, name string) (int, bool) {
 		return 0, false
 	}
 	return f.Len(), true
+}
+
+// allConfigured reports whether every DHCP server on the page is configured.
+// A handler can set AllConfigured. Otherwise the Servers or DHCPServers
+// slice is scanned. An empty list is false, so the hint stays off until
+// there is a server to start.
+func allConfigured(data any) bool {
+	v := dataValue(data)
+	if !v.IsValid() || v.Kind() != reflect.Struct {
+		return false
+	}
+	if flag := v.FieldByName("AllConfigured"); flag.IsValid() && flag.Kind() == reflect.Bool {
+		return flag.Bool()
+	}
+	for _, name := range []string{"Servers", "DHCPServers"} {
+		list := v.FieldByName(name)
+		if !list.IsValid() || list.Kind() != reflect.Slice {
+			continue
+		}
+		if list.Len() == 0 {
+			return false
+		}
+		for i := 0; i < list.Len(); i++ {
+			item := list.Index(i)
+			for item.Kind() == reflect.Pointer || item.Kind() == reflect.Interface {
+				if item.IsNil() {
+					return false
+				}
+				item = item.Elem()
+			}
+			status := item.FieldByName("Status")
+			if !status.IsValid() || status.Kind() != reflect.String || status.String() != "configured" {
+				return false
+			}
+		}
+		return true
+	}
+	return false
 }
 
 func dhcpTotals(data any) (servers, running, leases int, ok bool) {

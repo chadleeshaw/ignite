@@ -10,18 +10,21 @@ import (
 
 // SyslinuxVersion represents a Syslinux version available for download
 type SyslinuxVersion struct {
-	ID           string     `json:"id"`
-	Version      string     `json:"version"`      // 6.03, 6.04-pre1, etc.
-	BootType     string     `json:"boot_type"`    // bios, efi, ipxe
-	DownloadURL  string     `json:"download_url"` // Full URL to tar.gz
-	FileName     string     `json:"file_name"`    // syslinux-6.03.tar.gz
-	Size         int64      `json:"size"`         // Size in bytes
-	Checksum     string     `json:"checksum"`     // SHA256 hash if available
-	Downloaded   bool       `json:"downloaded"`   // Whether it's been downloaded
-	Active       bool       `json:"active"`       // Currently active version
-	CreatedAt    time.Time  `json:"created_at"`
-	UpdatedAt    time.Time  `json:"updated_at"`
-	DownloadedAt *time.Time `json:"downloaded_at,omitempty"`
+	ID          string `json:"id"`
+	Version     string `json:"version"`      // 6.03, 6.04-pre1, etc.
+	BootType    string `json:"boot_type"`    // bios, efi, ipxe
+	DownloadURL string `json:"download_url"` // Full URL to tar.gz
+	FileName    string `json:"file_name"`    // syslinux-6.03.tar.gz
+	Size        int64  `json:"size"`         // Size in bytes
+	Checksum    string `json:"checksum"`     // SHA256 hash if available
+	Downloaded  bool   `json:"downloaded"`   // Whether it's been downloaded
+	Active      bool   `json:"active"`       // Currently active version
+	// NeedsRedownload is set for the page when Downloaded is still true but
+	// the extract cache is not in the current data directory. It is not stored.
+	NeedsRedownload bool       `json:"-"`
+	CreatedAt       time.Time  `json:"created_at"`
+	UpdatedAt       time.Time  `json:"updated_at"`
+	DownloadedAt    *time.Time `json:"downloaded_at,omitempty"`
 }
 
 // SyslinuxBootFile represents an individual boot file extracted from Syslinux

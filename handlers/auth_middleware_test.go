@@ -128,7 +128,7 @@ func TestAuthMiddleware_StaticFiles(t *testing.T) {
 	staticPaths := []string{
 		"/public/http/css/tailwind.css",
 		"/public/http/css/provision.css",
-		"/public/http/img/Ignite_small.png",
+		"/public/http/img/favicon-32.png",
 		"/public/http/js/app.js",
 		"/public/provision/templates/kickstart/default.templ",
 	}

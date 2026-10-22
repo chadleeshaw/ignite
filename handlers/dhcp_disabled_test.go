@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"fmt"
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strconv"
+	"strings"
 	"testing"
 
 	"ignite/config"
@@ -27,6 +30,35 @@ func TestStartDHCPServerDisabledIsConflict(t *testing.T) {
 	require.Equal(t, http.StatusConflict, rec.Code)
 	require.Contains(t, rec.Body.String(), "DHCP is disabled")
 	require.Contains(t, rec.Body.String(), "DHCP_ENABLED=true")
+	servers.AssertExpectations(t)
+}
+
+func TestSubmitDHCPRestartDisabledUsesBackendMessage(t *testing.T) {
+	servers := &MockServerService{}
+	servers.On("UpdateServer", mock.Anything, "srv", mock.Anything).
+		Return(fmt.Errorf("server configuration updated but failed to restart server: %w", dhcp.ErrDHCPDisabled))
+	h := &DHCPHandlers{serverService: servers, leaseService: &MockLeaseService{}}
+
+	form := url.Values{
+		"server_id":  {"srv"},
+		"network":    {"192.168.1.2"},
+		"subnet":     {"255.255.255.0"},
+		"gateway":    {"192.168.1.1"},
+		"dns":        {"8.8.8.8"},
+		"startIP":    {"192.168.1.100"},
+		"endIP":      {"192.168.1.149"},
+		"lease_time": {"2"},
+	}
+	req := httptest.NewRequest(http.MethodPost, "/dhcp/submit_dhcp", strings.NewReader(form.Encode()))
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	req.Header.Set("Accept", "application/json")
+	req.Header.Set("HX-Request", "true")
+	rec := httptest.NewRecorder()
+	h.SubmitDHCPServer(rec, req)
+
+	require.Equal(t, http.StatusConflict, rec.Code)
+	require.Contains(t, rec.Body.String(), "DHCP is disabled. Set DHCP_ENABLED=true before starting a server.")
+	require.NotContains(t, rec.Body.String(), "<html")
 	servers.AssertExpectations(t)
 }
 
@@ -70,6 +102,7 @@ func TestDHCPDisabledStatusStaysConfiguredAndHealthy(t *testing.T) {
 	require.Contains(t, body, "All services up")
 	require.NotContains(t, body, ">Stopped<")
 	require.Contains(t, body, "port 6969")
+	require.NotContains(t, body, "Server ID")
 
 	views, _, err := (&DHCPHandlers{serverService: servers, leaseService: leases, config: cfg}).serverViews(req.Context(), []*dhcp.Server{server})
 	require.NoError(t, err)

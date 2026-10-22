@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="csrf-token" content="{{.CSRFToken}}">
     <title>{{with fieldString . "Title"}}{{.}}{{else}}Ignite{{end}}</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/public/http/img/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/public/http/img/flame-512.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/http/img/apple-touch-icon.png">
     <link rel="stylesheet" href="/public/http/css/tailwind.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -22,7 +25,7 @@
     </div>
     <div class="app">
         <nav class="ignite-nav" aria-label="Primary">
-            <a class="br" href="/"><img src="/public/http/img/flame.svg" alt="">Ignite</a>
+            <a class="br" href="/"><picture><source type="image/webp" srcset="/public/http/img/flame-nav.webp 1x, /public/http/img/flame-nav@2x.webp 2x"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="25" height="32" alt=""></picture>Ignite</a>
             <a class="n {{if eq (pageID .) "overview"}}on{{end}}" href="/" {{if eq (pageID .) "overview"}}aria-current="page"{{end}}>Overview<kbd class="only-console">1</kbd></a>
             <a class="n {{if eq (pageID .) "dhcp"}}on{{end}}" href="/dhcp" {{if eq (pageID .) "dhcp"}}aria-current="page"{{end}}>DHCP<kbd class="only-console">2</kbd></a>
             <a class="n {{if eq (pageID .) "tftp"}}on{{end}}" href="/tftp" {{if eq (pageID .) "tftp"}}aria-current="page"{{end}}>TFTP<kbd class="only-console">3</kbd></a>
@@ -147,6 +150,15 @@
             return fetch(url, opts);
         }
 
+        function igniteReadableMessage(text) {
+            if (!text) return false;
+            var value = String(text).replace(/^\s+|\s+$/g, "");
+            if (!value || value.length > 240) return false;
+            if (value.indexOf("\n") !== -1 || value.indexOf("\r") !== -1) return false;
+            if (value.indexOf("<") !== -1 || value.indexOf("{") !== -1 || value.indexOf("}") !== -1) return false;
+            return true;
+        }
+
         function igniteResponseMessage(xhr, fallback) {
             var text = "";
             if (xhr && typeof xhr.responseText === "string") text = xhr.responseText.trim();
@@ -154,17 +166,29 @@
             if (text.charAt(0) === "{") {
                 try {
                     var data = JSON.parse(text);
+                    var message = "";
                     if (data && data.error) {
-                        if (data.error.user_message) return String(data.error.user_message);
-                        if (data.error.message) return String(data.error.message);
+                        if (data.error.user_message) message = String(data.error.user_message);
+                        else if (data.error.message) message = String(data.error.message);
                     }
-                    if (data && data.message) return String(data.message);
-                    if (data && data.user_message) return String(data.user_message);
+                    if (!message && data && data.message) message = String(data.message);
+                    if (!message && data && data.user_message) message = String(data.user_message);
+                    if (igniteReadableMessage(message)) return message;
                 } catch (e) {}
-                return fallback || "That action failed.";
+                return fallback || "";
             }
-            if (text.charAt(0) === "<") return fallback || "";
-            return text;
+            if (igniteReadableMessage(text)) return text;
+            return fallback || "";
+        }
+
+        function igniteFailureMessage(evt) {
+            var xhr = evt.detail && evt.detail.xhr;
+            var path = igniteRequestPath(evt);
+            var fallback = "That action failed.";
+            if (xhr && xhr.status === 409 && (path.indexOf("/dhcp/start") !== -1 || path.indexOf("/dhcp/submit_dhcp") !== -1)) {
+                fallback = "DHCP is disabled. Set DHCP_ENABLED=true before starting a server.";
+            }
+            return igniteResponseMessage(xhr, fallback);
         }
 
         function igniteApplyMode(mode) {
@@ -298,6 +322,25 @@
             return null;
         }
 
+        function igniteZoneStamp(date) {
+            if (!date || isNaN(date.getTime())) return "";
+            return new Intl.DateTimeFormat(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                timeZoneName: "short"
+            }).format(date);
+        }
+
+        function igniteZoneName(date) {
+            var parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(date);
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].type === "timeZoneName") return parts[i].value;
+            }
+            return "";
+        }
+
         function igniteFormatTimes(root) {
             var scope = root && root.querySelectorAll ? root : document;
             scope.querySelectorAll("[data-time], time[datetime]").forEach(function (node) {
@@ -310,23 +353,23 @@
                 }
                 var date = new Date(raw);
                 if (isNaN(date.getTime())) return;
+                var stamp = igniteZoneStamp(date);
                 if (kind === "title") {
-                    node.title = date.toLocaleString();
+                    node.title = stamp;
                     return;
                 }
-                var zone = "";
-                var parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(date);
-                for (var i = 0; i < parts.length; i++) {
-                    if (parts[i].type === "timeZoneName") zone = parts[i].value;
-                }
-                if (kind === "clock" || kind === "clockzone") {
-                    var clock = date.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit", hour12: false });
-                    node.textContent = kind === "clockzone" && zone ? clock + " " + zone : clock;
-                    var zoneNode = node.closest(".stat") && node.closest(".stat").querySelector("[data-zone]");
-                    if (zoneNode && zone) zoneNode.textContent = zone;
-                    return;
-                }
-                node.textContent = kind === "time" ? date.toLocaleTimeString() : date.toLocaleString();
+                node.textContent = stamp;
+                if (node.hasAttribute("title")) node.title = stamp;
+                var zoneNode = node.closest(".stat") && node.closest(".stat").querySelector("[data-zone]");
+                var zone = igniteZoneName(date);
+                if (zoneNode && zone) zoneNode.textContent = zone;
+            });
+            scope.querySelectorAll("[data-seen-title][data-seen-at]").forEach(function (node) {
+                var raw = node.getAttribute("data-seen-at") || "";
+                if (!raw) return;
+                var date = new Date(raw);
+                if (isNaN(date.getTime())) return;
+                node.setAttribute("data-seen-title", igniteZoneStamp(date));
             });
         }
 
@@ -354,7 +397,7 @@
                     igniteToast("Your session expired", false, { reload: true });
                     return;
                 }
-                igniteToast(igniteResponseMessage(evt.detail.xhr, "That action failed."), false);
+                igniteToast(igniteFailureMessage(evt), false);
             } else if (evt.detail.successful) {
                 var successMessage = igniteResponseMessage(evt.detail.xhr, "");
                 if (successMessage && successMessage !== "That action failed.") {

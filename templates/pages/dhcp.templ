@@ -42,7 +42,7 @@
     <div class="stat">
         <div class="stat-title">Last refresh</div>
         <div class="stat-value"><time {{if not .Strip.Refreshed.IsZero}}datetime="{{rfc3339 .Strip.Refreshed}}" data-time="clock"{{end}}>{{if .Strip.Refreshed.IsZero}}—{{else}}{{utcLabel .Strip.Refreshed "15:04:05"}}{{end}}</time></div>
-        <div class="stat-desc" data-zone>UTC</div>
+        <div class="stat-desc" data-zone>{{if .Strip.Refreshed.IsZero}}—{{else}}{{zoneName .Strip.Refreshed}}{{end}}</div>
     </div>
 </section>
 <div class="main">
@@ -62,6 +62,7 @@
             <button class="b dg sm" hx-post="/dhcp/stop?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Stop</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
             {{else}}
             <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Start</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
+            {{if and (eq .Status "configured") (allConfigured $)}}<span class="mu">If DHCP is disabled, Start explains why.</span>{{end}}
             {{end}}
             <button class="b sm" hx-get="/open_modal?template=dhcpmodal&server_id={{.ID}}" hx-target="#modal-content">Edit</button>
             <button class="b dg sm" hx-post="/dhcp/delete?server_id={{.ID}}" hx-swap="none" hx-confirm="Delete this DHCP server?">Delete</button>
@@ -101,7 +102,7 @@
         {{end}}
     </div>
 
-    <div class="lease-rows">
+    <div class="lease-rows only-console">
         <table class="lease-table">
             <thead>
                 <tr>
@@ -232,7 +233,7 @@ function selectLease(el) {
             seen.textContent = el.getAttribute('data-seen') || '—';
             seen.title = el.getAttribute('data-seen-title') || '';
         } else {
-            seen.textContent = seenDate.toLocaleString();
+            seen.textContent = igniteZoneStamp(seenDate);
             seen.title = seen.textContent;
         }
     }
@@ -302,7 +303,7 @@ function showLeaseHistory(mac) {
                     left.appendChild(source);
                     var when = document.createElement("span");
                     when.className = "mu";
-                    when.textContent = entry.timestamp ? new Date(entry.timestamp).toLocaleString() : "";
+                    when.textContent = entry.timestamp ? igniteZoneStamp(new Date(entry.timestamp)) : "";
                     row.appendChild(left);
                     row.appendChild(when);
                     body.appendChild(row);

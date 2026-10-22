@@ -56,9 +56,12 @@
                     <td>
                         {{if .Active}}
                         <span class="st ok">active</span>
-                        {{else if .Downloaded}}
+                        {{end}}
+                        {{if .NeedsRedownload}}
+                        <span class="st wa">re-download</span>
+                        {{else if and .Downloaded (not .Active)}}
                         <span class="st wa">downloaded</span>
-                        {{else}}
+                        {{else if not .Downloaded}}
                         <span class="st of">available</span>
                         {{end}}
                     </td>
@@ -66,13 +69,13 @@
                     <td>{{if .DownloadedAt}}<time datetime="{{rfc3339 .DownloadedAt}}" data-time="datetime">{{utcLabel .DownloadedAt "2006-01-02 15:04"}}</time>{{else}}—{{end}}</td>
                     <td>
                         <div class="actions">
-                            {{if not .Downloaded}}
+                            {{if or (not .Downloaded) .NeedsRedownload}}
                             <button class="b p sm"
                                     hx-post="/api/syslinux/download/{{.Version}}"
                                     hx-swap="none"
-                                    hx-confirm="Download Syslinux {{.Version}}? The download also becomes the active BIOS and EFI install.">Download</button>
+                                    hx-confirm="{{if .NeedsRedownload}}Re-download Syslinux {{.Version}}? The cache moved to the data directory, so this copy has to be downloaded again. The download also becomes the active BIOS and EFI install.{{else}}Download Syslinux {{.Version}}? The download also becomes the active BIOS and EFI install.{{end}}">{{if .NeedsRedownload}}Re-download{{else}}Download{{end}}</button>
                             {{end}}
-                            {{if and .Downloaded (not .Active)}}
+                            {{if and .Downloaded (not .Active) (not .NeedsRedownload)}}
                             <button class="b sm"
                                     hx-post="/api/syslinux/activate/{{.Version}}"
                                     hx-swap="none"
@@ -93,7 +96,7 @@
             </tbody>
         </table>
     </div>
-    <p class="note">One active version supplies both BIOS and EFI boot files. This page does not list the files inside a version.</p>
+    <p class="note">One active version supplies both BIOS and EFI boot files. This page does not list the files inside a version. A version marked re-download was saved before the cache moved to the data directory. Download it again before activating.</p>
     {{else}}
     <div class="note">
         <p>No Syslinux versions yet. Scan the mirror to list what can be installed.</p>
