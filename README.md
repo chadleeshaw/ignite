@@ -36,49 +36,27 @@ Designed for developers, system administrators, and hobbyists, Ignite provides a
 
 ## Screenshots
 
-The nav is Overview, DHCP, TFTP, OS Images, Syslinux, and Provision. Cozy is the default density. Console is the same layout in a monospace, tighter rhythm. Service health that used to live on a separate Status page is on Overview.
+The nav is Overview, DHCP, TFTP, OS Images, Syslinux, and Provision. Cozy is the default density. Console is the same layout in a monospace, tighter rhythm. Service health that used to live on a separate Status page is on Overview. Both Overview shots are 1280 pixels wide.
 
 ### **Overview**
 Service tiles for HTTP, TFTP, and DHCP, plus the lease and pool summary slot.
 
-![Overview in Cozy mode](./public/http/img/main_page.png)
+<table>
+  <tr>
+    <td width="50%" align="center"><strong>Cozy</strong><br><img src="./public/http/img/main_page.png" alt="Overview in Cozy" width="100%"></td>
+    <td width="50%" align="center"><strong>Console</strong><br><img src="./public/http/img/console_page.png" alt="Overview in Console" width="100%"></td>
+  </tr>
+</table>
 
-![Overview in Console mode](./public/http/img/console_page.png)
+### **Other pages**
 
-### **DHCP**
-Servers, pool free space, and leases with state, reservation, boot menu, and last-seen time.
-
-![DHCP in Cozy mode](./public/http/img/dhcp_page.png)
-
-![DHCP in Console mode](./public/http/img/dhcp_console.png)
-
-### **TFTP**
-Boot-file browser for the TFTP root, with upload, download, and view.
-
-![TFTP in Cozy mode](./public/http/img/tftp_page.png)
-
-![TFTP in Console mode](./public/http/img/tftp_console.png)
-
-### **Provision**
-Template and config file picker beside the editor.
-
-![Provision in Cozy mode](./public/http/img/provision_page.png)
-
-![Provision in Console mode](./public/http/img/provision_console.png)
-
-### **OS Images**
-Installed kernels and initrds.
-
-![OS Images in Cozy mode](./public/http/img/osimage_page.png)
-
-![OS Images in Console mode](./public/http/img/osimage_console.png)
-
-### **Syslinux**
-Versions available to install. One active version covers BIOS and EFI.
-
-![Syslinux in Cozy mode](./public/http/img/syslinux_page.png)
-
-![Syslinux in Console mode](./public/http/img/syslinux_console.png)
+- DHCP: [Cozy](./public/http/img/dhcp_page.png) · [Console](./public/http/img/dhcp_console.png)
+- DHCP detail: [Cozy](./public/http/img/dhcp_detail.png) · [Console](./public/http/img/dhcp_detail_console.png)
+- TFTP: [Cozy](./public/http/img/tftp_page.png) · [Console](./public/http/img/tftp_console.png)
+- OS Images: [Cozy](./public/http/img/osimage_page.png) · [Console](./public/http/img/osimage_console.png)
+- Syslinux: [Cozy](./public/http/img/syslinux_page.png) · [Console](./public/http/img/syslinux_console.png)
+- Provision: [Cozy](./public/http/img/provision_page.png) · [Console](./public/http/img/provision_console.png)
+- Login: [Cozy](./public/http/img/login_page.png) · [Console](./public/http/img/login_console.png)
 
 ## Getting Started
 
@@ -135,7 +113,7 @@ go run vmtest.go clean # Clean up test files
 
 **README screenshots**:
 
-Regenerate the images under `public/http/img/` with headless Chrome. TCP 8080 and UDP 69 must be free. The target builds Ignite, seeds a temporary database (DHCP leases, OS images, and Syslinux versions), and writes a Cozy and a Console capture of each nav page.
+Regenerate the images under `public/http/img/` with headless Chrome. TCP 8080 and UDP 69 must be free. The target builds Ignite, seeds a temporary database (DHCP leases, OS images, and Syslinux versions), and writes a Cozy and a Console capture of each nav page, the login page, and the DHCP host-detail state. Overview is captured at 1280×800.
 
 ```bash
 make screenshots

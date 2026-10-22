@@ -5,8 +5,9 @@
 // Chrome is taken from CHROME_PATH, or google-chrome / chromium on PATH.
 // The server should already be logged-in-able as admin/admin and seeded
 // (scripts/seed-demo.go). Writes a Cozy and a Console PNG for each nav
-// page under public/http/img/. Each navigation reloads Cozy from the
-// server, then the script switches to Console before the second capture.
+// page under public/http/img/, plus the login page and the DHCP host
+// detail. Each navigation reloads Cozy from the server, then the script
+// switches to Console before the second capture. Viewport width is 1280.
 
 import { spawnSync } from "node:child_process";
 import { mkdirSync, statSync } from "node:fs";
@@ -58,6 +59,19 @@ async function openProvisionFile(page) {
   });
 }
 
+async function selectHost(page) {
+  const picked = await page.evaluate(() => {
+    const theme = document.documentElement.getAttribute("data-theme");
+    const sel = theme === "console" ? ".lease-rows .lease-pick" : ".cozy-view .lease-pick";
+    const el = document.querySelector(sel);
+    if (!el || typeof selectLease !== "function") return "";
+    selectLease(el);
+    const body = document.getElementById("lease-detail-body");
+    return body && !body.hidden ? el.getAttribute("data-ip") || "selected" : "";
+  });
+  if (!picked) throw new Error("host detail did not open");
+}
+
 const browser = await puppeteer.launch({
   executablePath: findChrome(),
   headless: true,
@@ -70,6 +84,8 @@ try {
   const page = await browser.newPage();
   page.setDefaultTimeout(20000);
   await page.goto(`${base}/login`, { waitUntil: "networkidle0" });
+  await settle(page);
+  await save(page, "login_page.png");
   await page.type("#username", "admin");
   await page.type("#password", "admin");
   await page.click('#login-form button[type="submit"]');
@@ -106,9 +122,21 @@ try {
     }
     await save(page, consoleFile);
     if (path === "/dhcp") {
+      await setMode(page, "cozy");
+      await selectHost(page);
+      await save(page, "dhcp_detail.png");
+      await setMode(page, "console");
+      await selectHost(page);
+      await save(page, "dhcp_detail_console.png");
       await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     }
   }
+
+  const client = await page.createCDPSession();
+  await client.send("Network.clearBrowserCookies");
+  await page.goto(`${base}/login`, { waitUntil: "networkidle0" });
+  await settle(page);
+  await save(page, "login_console.png");
 } finally {
   await browser.close();
 }
