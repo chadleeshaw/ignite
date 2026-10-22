@@ -68,8 +68,14 @@ func NewContainer() (c *Container, err error) {
 	serverService := dhcp.NewDHCPServerService(serverRepo, leaseRepo)
 	leaseService := dhcp.NewDHCPLeaseService(leaseRepo, serverRepo)
 	osImageService := osimage.NewOSImageService(osImageRepo, downloadStatusRepo, cfg)
+	cacheDir, err := config.ResolveSyslinuxCacheDir(cfg.DB.DBPath, cfg.Syslinux.CacheDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve syslinux cache: %w", err)
+	}
+	cfg.Syslinux.CacheDir = cacheDir
 	slCfg := syslinux.GetDefaultConfig()
 	slCfg.TFTPDir = cfg.TFTP.Dir
+	slCfg.TempDir = cacheDir
 	syslinuxService := syslinux.NewService(syslinuxRepo, slCfg)
 	ipxeService := ipxe.NewService(cfg, osImageService)
 	prefs, err := handlers.NewBoltPreferenceStore(database, cfg.DB.Bucket+"_prefs")

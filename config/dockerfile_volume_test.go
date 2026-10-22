@@ -50,6 +50,36 @@ func TestTFTPVolumeFollowsPublicCopy(t *testing.T) {
 	}
 }
 
+// TestDataVolumeFollowsChown checks both images declare VOLUME /app/data
+// after the directory is created and given to the ignite user. A fresh
+// named volume then starts owned by uid 1001, which is who writes ignite.db
+// and the Syslinux cache.
+func TestDataVolumeFollowsChown(t *testing.T) {
+	root := repoRoot(t)
+	for _, name := range []string{"dockerfile", "Dockerfile.release"} {
+		t.Run(name, func(t *testing.T) {
+			raw, err := os.ReadFile(filepath.Join(root, name))
+			require.NoError(t, err)
+			instructions := dockerfileInstructions(string(raw))
+
+			chownIdx, volIdx := -1, -1
+			for i, line := range instructions {
+				if strings.Contains(line, "mkdir -p /app/data") && strings.Contains(line, "chown ignite:ignite /app/data") {
+					require.Equal(t, -1, chownIdx, "duplicate data directory setup")
+					chownIdx = i
+				}
+				if line == "VOLUME /app/data" {
+					require.Equal(t, -1, volIdx, "duplicate data VOLUME")
+					volIdx = i
+				}
+			}
+			require.GreaterOrEqual(t, chownIdx, 0, "data directory chown missing")
+			require.GreaterOrEqual(t, volIdx, 0, "VOLUME /app/data missing")
+			require.Greater(t, volIdx, chownIdx, "VOLUME /app/data must follow the chown")
+		})
+	}
+}
+
 func dockerfileInstructions(text string) []string {
 	var instructions []string
 	var b strings.Builder

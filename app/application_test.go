@@ -12,6 +12,7 @@ import (
 )
 
 func TestNewApplicationWithStatic(t *testing.T) {
+	t.Setenv("DB_PATH", t.TempDir())
 	// Create a simple empty embedded filesystem for testing
 	testFS := embed.FS{}
 	app, err := NewApplicationWithStatic(testFS)

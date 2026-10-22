@@ -41,8 +41,10 @@ WORKDIR /app
 COPY --from=builder /build/ignite .
 COPY --chown=ignite:ignite ./public ./public
 
-# Create data directory for database
+# Create the data directory before the volume so a new named volume is
+# owned by ignite (uid 1001). The database and Syslinux cache live here.
 RUN mkdir -p /app/data && chown ignite:ignite /app/data
+VOLUME /app/data
 
 # Declared after COPY so a new named volume is seeded from ./public/tftp.
 VOLUME /app/public/tftp

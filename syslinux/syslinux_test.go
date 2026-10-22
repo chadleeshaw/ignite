@@ -205,7 +205,7 @@ func TestGetDefaultConfig(t *testing.T) {
 	assert.Equal(t, "./public/tftp", config.TFTPDir)
 	assert.Equal(t, "boot-bios", config.BiosDir)
 	assert.Equal(t, "boot-efi", config.EfiDir)
-	assert.Equal(t, "/tmp/syslinux-downloads", config.TempDir)
+	assert.Equal(t, "./syslinux", config.TempDir)
 	assert.True(t, config.AutoExtract)
 	assert.False(t, config.KeepArchive)
 	assert.True(t, config.VerifyChecksum)

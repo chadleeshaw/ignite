@@ -147,12 +147,13 @@ Ignite can be configured via environment variables. Here are the available optio
 
 | Variable    | Description                                    | Default            |
 |-------------|------------------------------------------------|--------------------|
-| `DB_PATH`   | Path to store the database file.               | `./`               |
+| `DB_PATH`   | Path to store the database file. The Syslinux cache defaults to a `syslinux` directory under this path. | `./`               |
 | `DB_FILE`   | Name of the database file.                     | `ignite.db`        |
 | `DB_BUCKET` | Database bucket name.                          | `dhcp`             |
 | `TFTP_DIR`  | Directory for the TFTP server to serve files from. Created on startup. The release image sets `/app/public/tftp`. | `./public/tftp`   |
 | `HTTP_DIR`  | Directory for the HTTP server to serve files from. | `./public/http`   |
 | `HTTP_PORT` | Port for the HTTP server to listen on.         | `8080`             |
+| `SYSLINUX_CACHE_DIR` | Download and extract cache for Syslinux. Created on startup. Empty uses `$DB_PATH/syslinux` (`/app/data/syslinux` in the image). | `$DB_PATH/syslinux` |
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
 | `BMC_TLS_INSECURE` | Skip TLS verification for Redfish BMCs. Set to `true`, `1`, `yes`, or `on` only for a self-signed BMC. Any other value verifies certificates. | verify TLS |
 | `BMC_SYSTEM_ID` | Redfish ComputerSystem `Id` when a BMC exposes more than one system. A `system_id` form field on `POST /pxe/submit_ipmi` overrides this. | first and only system |
@@ -160,13 +161,14 @@ Ignite can be configured via environment variables. Here are the available optio
 
 Startup logs the resolved TFTP root (`TFTP root: ...`), which is the absolute directory the server reads and writes. `TFTP_DIR` overrides the default. The directory is created if it is missing. When that directory cannot be created, Ignite falls back to a temporary directory named `ignite-tftp.*` under the system temp dir and logs a warning that boot files, OS images, and per-MAC configs will not survive a restart. The same warning is logged when `TFTP_DIR` itself points at a temp directory; the override is still used. The TFTP page shows the configured `TFTP_DIR` as given (`./public/tftp`, or `/app/public/tftp` in the image). When startup had to serve a temporary directory, the page shows that temporary path instead.
 
-Both container images declare `VOLUME /app/public/tftp` after `./public` is copied in. A fresh named volume starts with the TFTP files shipped in the image (`boot.ipxe` and the OS directories). Mount it by name so boot files, downloaded OS images, and per-MAC configs survive a container recreate:
+Both container images declare `VOLUME /app/public/tftp` after `./public` is copied in, and `VOLUME /app/data` after that directory is created and given to the `ignite` user (uid 1001). A fresh TFTP volume starts with the files shipped in the image (`boot.ipxe` and the OS directories). A fresh data volume starts empty and owned by uid 1001, which is who writes `/app/data/ignite.db` and `/app/data/syslinux`. Mount both by name so the database, the Syslinux cache, boot files, downloaded OS images, and per-MAC configs survive a container recreate:
 
 ```bash
 docker run -d \
   --name ignite \
   -p 8080:8080 \
   -p 69:69/udp \
+  -v ignite-data:/app/data \
   -v ignite-tftp:/app/public/tftp \
   ghcr.io/chadleeshaw/ignite:v3.0.0
 ```
@@ -181,10 +183,14 @@ services:
       - "8080:8080"
       - "69:69/udp"
     volumes:
+      - ignite-data:/app/data
       - ignite-tftp:/app/public/tftp
 volumes:
+  ignite-data:
   ignite-tftp:
 ```
+
+Startup logs the Syslinux cache (`Syslinux cache: ...`). `SYSLINUX_CACHE_DIR` overrides the default. Versions downloaded before this change lived in `/tmp/syslinux-downloads`, which is not copied. Download those versions again.
 
 A bind mount of an empty host directory (`-v /path/on/host:/app/public/tftp` when `/path/on/host` is empty) hides those shipped files. Seed the host directory from the image, give it to the `ignite` user (uid 1001), then start Ignite with the bind mount. `docker cp` onto the host writes the files as root, and the app cannot create boot files in a directory it does not own. A named volume keeps the `ignite` ownership on its own.
 
@@ -196,13 +202,16 @@ docker rm ignite-seed
 sudo chown -R 1001:1001 /path/on/host
 ```
 
-Upgrading a v2.x container that was started without a TFTP mount: copy the directory out before removing the container, recreate it with the named volume, and restore the files. `docker cp` into the new container writes as root, so return ownership to the `ignite` user (uid 1001) afterward.
+Upgrading a v2.x container that was started without these mounts: copy the database and the TFTP directory out before removing the container, recreate it with both named volumes, and restore the files. `docker cp` into the new container writes as root, so return ownership to the `ignite` user (uid 1001) afterward. Syslinux archives extracted under `/tmp/syslinux-downloads` are not in either copy. Download those versions again after the upgrade.
 
 ```bash
+docker cp <container>:/app/data/ignite.db ./ignite.db
 docker cp <container>:/app/public/tftp ./tftp-backup
-# remove the old container, then start the new one with -v ignite-tftp:/app/public/tftp
+# remove the old container, then start the new one with
+# -v ignite-data:/app/data -v ignite-tftp:/app/public/tftp
+docker cp ./ignite.db <container>:/app/data/ignite.db
 docker cp ./tftp-backup/. <container>:/app/public/tftp
-docker exec -u root <container> chown -R ignite:ignite /app/public/tftp
+docker exec -u root <container> chown -R ignite:ignite /app/data /app/public/tftp
 ```
 
 ## API Reference
@@ -434,12 +443,12 @@ docker run -d \
   --name ignite \
   -p 8080:8080 \
   -p 69:69/udp \
-  -v $(pwd)/data:/app/data \
+  -v ignite-data:/app/data \
   -v ignite-tftp:/app/public/tftp \
   ghcr.io/chadleeshaw/ignite:v3.0.0
 ```
 
-Compose and a Swarm stack (`docker stack deploy -c docker-compose.yml ignite`) mount the same named TFTP volume. The `./data` bind in the `docker run` example above is the database directory (`/app/data/ignite.db`). Generated provisioning files stay in `/app/public/provision`. The image does not declare a volume for either path.
+Compose and a Swarm stack (`docker stack deploy -c docker-compose.yml ignite`) mount the same named volumes. `ignite-data` is `/app/data` (`ignite.db` and the Syslinux cache). `ignite-tftp` is `/app/public/tftp`. Generated provisioning files stay in `/app/public/provision`. The image does not declare a volume for that path.
 
 ```yaml
 services:
@@ -449,12 +458,14 @@ services:
       - "8080:8080"
       - "69:69/udp"
     volumes:
+      - ignite-data:/app/data
       - ignite-tftp:/app/public/tftp
 volumes:
+  ignite-data:
   ignite-tftp:
 ```
 
-A bind mount of an empty host directory onto `/app/public/tftp` hides the boot files shipped in the image. Seed that directory from the image first, as described next to `TFTP_DIR` above. The same section has the v2.x upgrade steps: `docker cp <container>:/app/public/tftp ./tftp-backup`, then recreate with `ignite-tftp` and copy the backup back.
+A bind mount of an empty host directory onto `/app/public/tftp` hides the boot files shipped in the image. Seed that directory from the image first, as described next to `TFTP_DIR` above. The same section has the v2.x upgrade steps: copy `ignite.db` and the TFTP directory out, recreate with `ignite-data` and `ignite-tftp`, copy them back, and `chown` both to uid 1001.
 
 #### **Option 2: Build from Source**
 ```bash
@@ -463,7 +474,7 @@ docker build -t ignite:local .
 
 # Quick build using release binary (faster, smaller image)
 docker build -f Dockerfile.release -t ignite:release .
-docker run -d --name ignite -p 8080:8080 -p 69:69/udp -v ignite-tftp:/app/public/tftp ignite:release
+docker run -d --name ignite -p 8080:8080 -p 69:69/udp -v ignite-data:/app/data -v ignite-tftp:/app/public/tftp ignite:release
 ```
 
 ### **Binary Installation**

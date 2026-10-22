@@ -97,6 +97,7 @@ func (a *Application) Start() error {
 		slCfg := a.container.SyslinuxService.GetConfig()
 		slCfg.TFTPDir = tftpRoot.Path
 		_ = a.container.SyslinuxService.UpdateConfig(rootCtx, slCfg)
+		log.Printf("Syslinux cache: %s", slCfg.TempDir)
 	}
 	a.tftpServer = tftp.NewServer(tftpRoot.Path)
 	if err := a.tftpServer.Start(); err != nil {

@@ -14,6 +14,7 @@ type Config struct {
 	TFTP      TFTPConfig
 	HTTP      HTTPConfig
 	Provision ProvisionConfig
+	Syslinux  Syslinux
 	OSImages  OSImageConfig
 	// ServerIP overrides the IP address advertised to network-boot clients.
 	// Empty means auto-detect; can also be set via the SERVER_IP environment
@@ -57,6 +58,12 @@ type HTTPConfig struct {
 
 type ProvisionConfig struct {
 	Dir string
+}
+
+// Syslinux is the download-cache location.
+type Syslinux struct {
+	// CacheDir is SYSLINUX_CACHE_DIR. Empty means a syslinux directory under DB_PATH.
+	CacheDir string
 }
 
 type OSImageConfig struct {
@@ -104,6 +111,9 @@ func NewConfigBuilder() *ConfigBuilder {
 			},
 			Provision: ProvisionConfig{
 				Dir: getEnv("PROV_DIR", "./public/provision"),
+			},
+			Syslinux: Syslinux{
+				CacheDir: getEnv("SYSLINUX_CACHE_DIR", ""),
 			},
 			OSImages: getDefaultOSImageConfig(),
 			ServerIP: getEnv("SERVER_IP", ""),
