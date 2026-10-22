@@ -2,12 +2,15 @@ package handlers
 
 import (
 	"context"
+	"crypto/x509"
 	"encoding/json"
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"strings"
 	"testing"
+	"time"
 
 	"ignite/config"
 
@@ -85,17 +88,17 @@ func TestSubmitIPMIUsesPowerStateAndSystemID(t *testing.T) {
 	off := &fakeBMCSystem{id: "sys-off", power: redfish.OffPowerState}
 	on := &fakeBMCSystem{id: "sys-on", power: redfish.OnPowerState}
 	session := &fakeBMCSession{systems: []bmcSystem{off, on}}
-	var gotInsecure bool
+	var gotVerify bool
 	var gotEndpoint string
 
 	h := &IPMIHandlers{
-		container: &Container{Config: &config.Config{BMC: config.BMCConfig{TLSInsecure: false, SystemID: "sys-on"}}},
-		dial: func(ctx context.Context, endpoint, username, password string, insecure bool) (bmcSession, error) {
+		container: &Container{Config: &config.Config{BMC: config.BMCConfig{TLSVerify: true, SystemID: "sys-on"}}},
+		dial: func(ctx context.Context, endpoint, username, password string, verify bool) (bmcSession, error) {
 			require.NotNil(t, ctx)
 			deadline, ok := ctx.Deadline()
 			require.True(t, ok)
 			require.False(t, deadline.IsZero())
-			gotInsecure = insecure
+			gotVerify = verify
 			gotEndpoint = endpoint
 			require.Equal(t, "root", username)
 			require.Equal(t, "secret", password)
@@ -116,7 +119,7 @@ func TestSubmitIPMIUsesPowerStateAndSystemID(t *testing.T) {
 
 	require.Equal(t, http.StatusSeeOther, rec.Code)
 	require.Equal(t, "/dhcp", rec.Header().Get("Location"))
-	require.False(t, gotInsecure)
+	require.True(t, gotVerify)
 	require.Equal(t, "https://10.0.0.5/redfish/v1", gotEndpoint)
 	require.Equal(t, redfish.ForceRestartResetType, on.reset)
 	require.Empty(t, off.reset)
@@ -157,12 +160,35 @@ func TestSubmitIPMIAmbiguousSystems(t *testing.T) {
 	require.Contains(t, body.Error.UserMessage, "system_id")
 }
 
-func TestSubmitIPMIInsecureOptIn(t *testing.T) {
-	var gotInsecure bool
+func TestDialGofishSelfSignedCert(t *testing.T) {
+	srv := httptest.NewTLSServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	t.Cleanup(cancel)
+
+	_, err := dialGofish(ctx, srv.URL, "root", "secret", false)
+	require.Error(t, err)
+	require.False(t, certUnknown(err), "default must accept the self-signed certificate: %v", err)
+
+	_, err = dialGofish(ctx, srv.URL, "root", "secret", true)
+	require.Error(t, err)
+	require.True(t, certUnknown(err), "BMC_TLS_VERIFY must reject the self-signed certificate: %v", err)
+}
+
+func certUnknown(err error) bool {
+	var unknown x509.UnknownAuthorityError
+	return errors.As(err, &unknown)
+}
+
+func TestSubmitIPMISkipsVerifyByDefault(t *testing.T) {
+	var gotVerify bool
 	h := &IPMIHandlers{
-		container: &Container{Config: &config.Config{BMC: config.BMCConfig{TLSInsecure: true}}},
-		dial: func(_ context.Context, _, _, _ string, insecure bool) (bmcSession, error) {
-			gotInsecure = insecure
+		container: &Container{Config: &config.Config{}},
+		dial: func(_ context.Context, _, _, _ string, verify bool) (bmcSession, error) {
+			gotVerify = verify
 			return &fakeBMCSession{systems: []bmcSystem{&fakeBMCSystem{id: "1", power: redfish.OffPowerState}}}, nil
 		},
 	}
@@ -172,5 +198,5 @@ func TestSubmitIPMIInsecureOptIn(t *testing.T) {
 	rec := httptest.NewRecorder()
 	h.SubmitIPMI(rec, req)
 	require.Equal(t, http.StatusSeeOther, rec.Code)
-	require.True(t, gotInsecure)
+	require.False(t, gotVerify)
 }

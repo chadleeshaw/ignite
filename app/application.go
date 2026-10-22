@@ -120,6 +120,7 @@ func (a *Application) Start() error {
 		dhcp.SetListenersEnabled(false)
 		log.Print("DHCP is disabled")
 	}
+	log.Print(config.BMCTLSModeLog(a.container.Config.BMC.TLSVerify))
 
 	// Every page gets the same overall service word as the Overview pill.
 	handlers.SetPageHealth(func(r *http.Request) string {

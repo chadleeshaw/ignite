@@ -34,8 +34,9 @@ type bmcSession interface {
 	Systems() ([]bmcSystem, error)
 }
 
-// bmcDialer opens a Redfish session. insecure skips TLS verification.
-type bmcDialer func(ctx context.Context, endpoint, username, password string, insecure bool) (bmcSession, error)
+// bmcDialer opens a Redfish session. verify checks the BMC certificate.
+// False accepts a self-signed certificate.
+type bmcDialer func(ctx context.Context, endpoint, username, password string, verify bool) (bmcSession, error)
 
 // selectBMCSystem picks the ComputerSystem to operate on.
 // A non-empty id must match exactly one system. With no id, the BMC must
@@ -145,12 +146,12 @@ func (s gofishSystem) Reset(resetType redfish.ResetType) error {
 
 // dialGofish connects with the caller's context, so a timeout on ctx bounds
 // the handshake and the calls made on the returned session.
-func dialGofish(ctx context.Context, endpoint, username, password string, insecure bool) (bmcSession, error) {
+func dialGofish(ctx context.Context, endpoint, username, password string, verify bool) (bmcSession, error) {
 	client, err := gofish.ConnectContext(ctx, gofish.ClientConfig{
 		Endpoint: endpoint,
 		Username: username,
 		Password: password,
-		Insecure: insecure,
+		Insecure: !verify,
 	})
 	if err != nil {
 		return nil, err
