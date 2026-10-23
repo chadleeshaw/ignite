@@ -19,10 +19,12 @@ const TEMPLATE = /\{\{-?[\s\S]*?-?\}\}/g;
 const YAML: Rule[] = [
   { source: "#[^\\n]*", flags: "y", cls: "tok-comment" },
   { source: "\"(?:\\\\.|[^\"\\\\\\n])*\"|'(?:\\\\.|[^'\\\\\\n])*'", flags: "y", cls: "tok-string" },
-  { source: "^[ \\t]*[A-Za-z_][\\w.-]*(?=\\s*:)", flags: "ym", cls: "tok-key" },
-  { source: "\\b(?:true|false|yes|no|null|on|off)\\b", flags: "y", cls: "tok-keyword" },
+  { source: "(?<=(?:^|\\n)[ \\t]*(?:-[ \\t]+)?)[A-Za-z_][\\w.-]*(?=\\s*:)", flags: "ym", cls: "tok-key" },
+  { source: "\\b(?:true|false|yes|no|null|on|off)\\b", flags: "y", cls: "tok-bool" },
   { source: "(?<![\\w.])\\d+(?:\\.\\d+)?(?![\\w.])", flags: "y", cls: "tok-number" },
   { source: "^[ \\t]*-(?=\\s)", flags: "ym", cls: "tok-punct" },
+  { source: "(?<=-[ \\t]+)[^ \\t#\\n][^#\\n]*?(?=[ \\t]*(?:#|$))", flags: "ym", cls: "tok-string" },
+  { source: "(?<=:[ \\t]*)[^ \\t#\\n|>][^#\\n]*?(?=[ \\t]*(?:#|$))", flags: "ym", cls: "tok-string" },
 ];
 
 const KICKSTART: Rule[] = [
@@ -49,7 +51,7 @@ const PRESEED: Rule[] = [
   { source: "\\bd-i\\b", flags: "y", cls: "tok-keyword" },
   { source: "\\b[a-z0-9]+(?:/[A-Za-z0-9_.-]+)+", flags: "y", cls: "tok-key" },
   { source: "\\b(?:string|boolean|select|multiselect|note|password|error)\\b", flags: "y", cls: "tok-key" },
-  { source: "\\b(?:true|false)\\b", flags: "y", cls: "tok-keyword" },
+  { source: "\\b(?:true|false)\\b", flags: "y", cls: "tok-bool" },
   { source: "(?<![\\w.])\\d+(?:\\.\\d+)?(?![\\w.])", flags: "y", cls: "tok-number" },
 ];
 
@@ -204,6 +206,21 @@ function tokenizeMasked(text: string, language: string): Token[] {
   return tokens;
 }
 
+// emitTemplate keeps {{ }} and the words inside on the template accent, and
+// pulls .Field names onto their own class so the action reads as one chip.
+function emitTemplate(text: string, push: (text: string, cls: string) => void): void {
+  const re = /\{\{-?|-?\}\}|\.[A-Za-z_][\w.]*/g;
+  let match: RegExpExecArray | null;
+  let i = 0;
+  while ((match = re.exec(text))) {
+    push(text.slice(i, match.index), "tok-template");
+    const part = match[0];
+    push(part, part.charAt(0) === "." ? "tok-template-field" : "tok-template");
+    i = match.index + part.length;
+  }
+  push(text.slice(i), "tok-template");
+}
+
 function project(original: string, tokens: Token[], ranges: Range[]): Token[] {
   const out: Token[] = [];
   const push = (text: string, cls: string) => {
@@ -219,7 +236,7 @@ function project(original: string, tokens: Token[], ranges: Range[]): Token[] {
       const abs = i + local;
       const range = ranges.find((item) => abs >= item.start && abs < item.end);
       if (range) {
-        push(original.slice(range.start, range.end), "tok-template");
+        emitTemplate(original.slice(range.start, range.end), push);
         local += range.end - abs;
         continue;
       }

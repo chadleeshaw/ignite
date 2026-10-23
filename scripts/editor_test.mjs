@@ -37,6 +37,9 @@ function classes(tokens) {
 function has(tokens, cls, text) {
   return tokens.some((tok) => tok.cls === cls && (!text || tok.text === text));
 }
+function covers(tokens, cls, text) {
+  return tokens.some((tok) => tok.cls === cls && tok.text.includes(text));
+}
 
 const samples = {
   yaml: "#cloud-config\nhostname: {{ .hostname }}\npackages:\n  - nginx\n",
@@ -70,16 +73,36 @@ if (beforePost.some((tok) => tok.cls === "tok-keyword" && tok.text === "if")) {
 
 const yaml = api.tokenize("hostname: {{ .hostname }}\n", "yaml");
 if (!has(yaml, "tok-key", "hostname")) throw new Error("yaml key missing");
-if (!has(yaml, "tok-template", "{{ .hostname }}")) throw new Error("yaml template missing");
+if (!covers(yaml, "tok-template", "{{") || !covers(yaml, "tok-template", "}}")) {
+  throw new Error("yaml template delimiters missing");
+}
+if (!has(yaml, "tok-template-field", ".hostname")) throw new Error("yaml template field missing");
+
+const plain = api.tokenize("# note\nhostname: jammy\npackage_update: true\n  - nginx\n", "yaml");
+if (!has(plain, "tok-comment", "# note")) throw new Error("yaml comment missing");
+if (!has(plain, "tok-key", "hostname")) throw new Error("yaml key missing on a plain value");
+if (!has(plain, "tok-string", "jammy")) throw new Error("yaml plain string missing");
+if (!has(plain, "tok-bool", "true")) throw new Error("yaml boolean missing");
+if (!has(plain, "tok-string", "nginx")) throw new Error("yaml list string missing");
+const nested = api.tokenize("  - content: |\n      network:\n", "yaml");
+if (!has(nested, "tok-key", "content") || !has(nested, "tok-key", "network")) {
+  throw new Error("yaml key inside a list was swallowed by the value");
+}
+if (nested.some((tok) => tok.cls === "tok-string" && tok.text.includes("content"))) {
+  throw new Error("yaml key was classified as a string");
+}
 
 const commented = api.tokenize("# keep {{ .hostname }}\n", "yaml");
-if (!has(commented, "tok-template", "{{ .hostname }}")) throw new Error("template inside a comment was not overlaid");
+if (!covers(commented, "tok-template", "{{")) throw new Error("template inside a comment was not overlaid");
+if (!has(commented, "tok-template-field", ".hostname")) throw new Error("template field inside a comment was not overlaid");
 if (!commented.some((tok) => tok.cls === "tok-comment" && tok.text.includes("#"))) {
   throw new Error("comment text lost its class");
 }
 
 const quoted = api.tokenize('echo "{{ .hostname }}"\n', "shell");
-if (!has(quoted, "tok-template", "{{ .hostname }}")) throw new Error("template inside a string was not overlaid");
+if (!covers(quoted, "tok-template", "{{") || !has(quoted, "tok-template-field", ".hostname")) {
+  throw new Error("template inside a string was not overlaid");
+}
 
 const attack = "<script>alert(1)</script>\n# {{ .hostname }}\n";
 for (const lang of Object.keys(samples)) {
@@ -153,5 +176,52 @@ if (outdented.value !== "hostname: box\n" || outdented.start !== 0) {
 }
 const block = api.indentText("a\nb\n", 0, 3, false);
 if (block.value !== "  a\n  b\n") throw new Error(`block indent failed: ${JSON.stringify(block)}`);
+
+function channel(hex, i) {
+  const v = parseInt(hex.slice(1 + i * 2, 3 + i * 2), 16) / 255;
+  return v <= 0.04045 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4;
+}
+function luminance(hex) {
+  return 0.2126 * channel(hex, 0) + 0.7152 * channel(hex, 1) + 0.0722 * channel(hex, 2);
+}
+function contrast(a, b) {
+  const hi = Math.max(luminance(a), luminance(b));
+  const lo = Math.min(luminance(a), luminance(b));
+  return (hi + 0.05) / (lo + 0.05);
+}
+function mix(bg, fg, alpha) {
+  const parse = (hex) => [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
+  const [br, bgc, bb] = parse(bg);
+  const [fr, fgf, fb] = parse(fg);
+  const n = (c, d) => Math.round(alpha * c + (1 - alpha) * d);
+  return `#${[n(fr, br), n(fgf, bgc), n(fb, bb)].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
+const css = readFileSync(resolve(root, "public/editor/src/editor.css"), "utf8");
+const colors = {};
+for (const match of css.matchAll(/--hl-([a-z]+):\s*(#[0-9a-fA-F]{6})/g)) colors[match[1]] = match[2].toLowerCase();
+const wash = css.match(/--hl-template-bg:\s*rgba\(\s*(\d+)\s*,\s*(\d+)\s*,\s*(\d+)\s*,\s*([0-9.]+)\s*\)/);
+if (!wash) throw new Error("template background is not an rgba() wash");
+const washHex = `#${[wash[1], wash[2], wash[3]].map((n) => Number(n).toString(16).padStart(2, "0")).join("")}`;
+const washAlpha = Number(wash[4]);
+const surfaces = ["#1a1f45", "#13172f", "#2c335c"];
+const required = ["comment", "key", "string", "number", "keyword", "section", "template", "field", "var", "tag", "punct"];
+for (const name of required) {
+  if (!colors[name]) throw new Error(`missing --hl-${name}`);
+  for (const surface of surfaces) {
+    const ratio = contrast(colors[name], surface);
+    if (ratio < 4.5) throw new Error(`--hl-${name} ${colors[name]} on ${surface} is ${ratio.toFixed(2)}:1`);
+  }
+}
+for (const surface of surfaces) {
+  const chip = mix(surface, washHex, washAlpha);
+  for (const name of ["template", "field"]) {
+    const ratio = contrast(colors[name], chip);
+    if (ratio < 4.5) throw new Error(`--hl-${name} on the template chip (${chip}) is ${ratio.toFixed(2)}:1`);
+  }
+}
+if (!/#code-edit \.tok-comment \{[^}]*font-style:\s*italic/.test(css)) {
+  throw new Error("comments are not italic");
+}
 
 console.log("editor tests passed");

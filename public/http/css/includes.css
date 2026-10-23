@@ -804,7 +804,25 @@ html[data-theme="console"] .chip { border-radius: 6px; }
   tab-size: 4;
 }
 .editor-head { flex-wrap: wrap; }
-.prov-top { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(0, 2fr); gap: 12px; margin-top: 12px; }
+.prov-top {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+  align-items: start;
+}
+.prov-top .stats.strip {
+  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
+}
+.prov-top .stat {
+  min-width: 0;
+  overflow: hidden;
+}
+.prov-top .stat-title {
+  white-space: normal;
+  overflow-wrap: anywhere;
+  line-height: 1.25;
+}
 .os-top { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(0, 2.4fr); gap: 12px; margin-top: 12px; }
 .dl-row {
   display: grid;
