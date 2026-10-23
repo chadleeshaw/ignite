@@ -136,6 +136,7 @@ func seedOSImages(ctx context.Context, repo osimage.OSImageRepository) error {
 			ID: "fedora-40", OS: "fedora", Version: "40", Architecture: "x86_64",
 			KernelPath: "fedora/40/vmlinuz", InitrdPath: "fedora/40/initrd.img",
 			KernelSize: 13_631_488, InitrdSize: 104_857_600, CreatedAt: when.Add(24 * time.Hour),
+			EOL: true, EOLDate: "2025-05-13",
 		},
 	}
 	for _, image := range images {

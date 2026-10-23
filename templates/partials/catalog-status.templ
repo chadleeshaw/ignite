@@ -1,7 +1,46 @@
-<div id="catalog-status" data-catalog-source="{{.Catalog.Source}}" data-refreshed="{{.Catalog.RefreshedAt}}">
-    <span>Catalog: {{.Catalog.Source}} · refreshed {{if .Catalog.RefreshedAt}}{{.Catalog.RefreshedAt}}{{else}}—{{end}}</span>
-    <button class="b sm" type="button" hx-post="/osimages/catalog/refresh" hx-target="#catalog-status" hx-swap="outerHTML">Refresh catalog</button>
-    {{if or (ne .Catalog.Source "live") (gt (len .Catalog.Errors) 0)}}
-    <span class="chip st wa">{{if ne .Catalog.Source "live"}}Showing the last saved catalog{{else}}Some release sources failed{{end}}</span>
-    {{end}}
+<div id="catalog-status" class="catalog-status" data-catalog-source="{{.Catalog.Source}}" data-refreshed="{{.Catalog.RefreshedAt}}" data-refreshing="{{if .Catalog.Refreshing}}true{{else}}false{{end}}">
+    <p class="catalog-line">Catalog: {{.Catalog.Source}} · refreshed {{if refreshedKnown .Catalog.RefreshedAt}}<time datetime="{{.Catalog.RefreshedAt}}" data-time="datetime">{{.Catalog.RefreshedAt}}</time>{{else}}Never{{end}}</p>
+    <div class="catalog-actions">
+        <button class="b sm" type="button"
+                hx-post="/osimages/catalog/refresh"
+                hx-target="#catalog-status"
+                hx-swap="outerHTML"
+                hx-disabled-elt="this"
+                hx-params="none"
+                hx-headers="{{csrfHeaders .CSRFToken}}"
+                {{if .Catalog.Refreshing}}disabled aria-busy="true"{{end}}>
+            <span class="spin" aria-hidden="true"></span>
+            <span class="refresh-idle">Refresh catalog</span>
+            <span class="refresh-busy">Refreshing…</span>
+        </button>
+        {{if or (ne .Catalog.Source "live") (gt (len .Catalog.Errors) 0)}}
+        {{$errTitle := catalogErrorTitle .Catalog.Errors}}
+        {{if gt (len .Catalog.Errors) 0}}
+        <button type="button" class="chip st wa catalog-warn" popovertarget="catalog-errors" title="{{$errTitle}}">
+            {{template "catalog-chip-label" .}}
+        </button>
+        <div id="catalog-errors" class="catalog-pop" popover>
+            <ul>
+                {{range $os, $msg := .Catalog.Errors}}
+                <li><span class="mono">{{$os}}</span> {{$msg}}</li>
+                {{end}}
+            </ul>
+        </div>
+        {{else}}
+        <span class="chip st wa catalog-warn">{{template "catalog-chip-label" .}}</span>
+        {{end}}
+        {{end}}
+    </div>
 </div>
+
+{{define "catalog-chip-label"}}
+{{- if eq .Catalog.Source "bundled" -}}
+Using the built-in list
+{{- else if eq .Catalog.Source "cached" -}}
+Using cached list from {{if refreshedKnown .Catalog.RefreshedAt}}<time datetime="{{.Catalog.RefreshedAt}}" data-time="datetime">{{.Catalog.RefreshedAt}}</time>{{else}}Never{{end}}
+{{- else if eq (len .Catalog.Errors) 1 -}}
+1 release source failed
+{{- else -}}
+{{len .Catalog.Errors}} release sources failed
+{{- end -}}
+{{end}}

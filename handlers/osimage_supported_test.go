@@ -58,7 +58,11 @@ func TestOSImageRowsMarkEOL(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	require.Contains(t, body, `data-eol="true"`)
-	require.Contains(t, body, ">EOL<")
+	require.Contains(t, body, `class="st wa eol-badge" title="End of life 2026-05-27"`)
+	require.Contains(t, body, ">EOL 2026-05-27<")
+	require.Contains(t, body, `hx-delete="/osimages/delete/eol"`)
+	require.NotRegexp(t, `delete/eol"[^>]*disabled`, body)
+	require.NotContains(t, body, `class="st ok">Ready</span>`)
 	require.NotContains(t, body, `data-eol="false"`)
 }
 

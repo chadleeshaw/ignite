@@ -52,9 +52,13 @@ func TestCatalogRefreshFragmentAndJSON(t *testing.T) {
 	require.Contains(t, body, `id="catalog-status"`)
 	require.Contains(t, body, `data-catalog-source="live"`)
 	require.Contains(t, body, `data-refreshed="2026-10-23T01:02:03Z"`)
-	require.Contains(t, body, "Catalog: live · refreshed 2026-10-23T01:02:03Z")
+	require.Contains(t, body, "Catalog: live · refreshed")
+	require.Contains(t, body, `<time datetime="2026-10-23T01:02:03Z" data-time="datetime">2026-10-23T01:02:03Z</time>`)
+	require.Contains(t, body, `hx-disabled-elt="this"`)
+	require.Contains(t, body, `hx-post="/osimages/catalog/refresh"`)
 	require.NotContains(t, body, `"source"`)
 	require.NotContains(t, body, "chip")
+	require.NotContains(t, body, "Never")
 }
 
 func TestCatalogRefreshConflictAndUnavailableArePlainText(t *testing.T) {
