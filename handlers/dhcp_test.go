@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"net"
 	"net/http"
@@ -14,6 +15,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockServerService is a mock implementation of dhcp.ServerService
@@ -241,8 +243,11 @@ func TestDHCPHandlers_GetDHCPServers_Success(t *testing.T) {
 	mockLeaseService.On("GetLeasesByServer", mock.Anything, "server-1").Return(leases, nil)
 	mockLeaseService.On("GetLeasesByServer", mock.Anything, "server-2").Return([]*dhcp.Lease{}, nil)
 
+	chdirRepoRoot(t)
+
 	// Create request
 	req := httptest.NewRequest("GET", "/dhcp/servers", nil)
+	req.Header.Set("Accept", "text/html")
 	w := httptest.NewRecorder()
 
 	// Execute
@@ -251,9 +256,52 @@ func TestDHCPHandlers_GetDHCPServers_Success(t *testing.T) {
 	// Assert
 	assert.Equal(t, http.StatusOK, w.Code)
 	assert.Contains(t, w.Header().Get("Content-Type"), "text/html")
+	assert.Contains(t, w.Body.String(), "192.168.1.1")
+	assert.Contains(t, w.Body.String(), "192.168.2.1")
+	assert.Contains(t, w.Body.String(), "aa:bb:cc:dd:ee:ff")
+	assert.NotContains(t, w.Body.String(), "Template: dhcp.templ")
 
 	mockServerService.AssertExpectations(t)
 	mockLeaseService.AssertExpectations(t)
+}
+
+func TestDHCPHandlers_GetDHCPServers_JSON(t *testing.T) {
+	mockServerService := &MockServerService{}
+	mockLeaseService := &MockLeaseService{}
+	h := &DHCPHandlers{
+		serverService: mockServerService,
+		leaseService:  mockLeaseService,
+		config:        createTestContainer().Config,
+	}
+	servers := []*dhcp.Server{{
+		ID:         "server-1",
+		IP:         net.ParseIP("192.168.1.1"),
+		IPStart:    net.ParseIP("192.168.1.100"),
+		LeaseRange: 50,
+		Started:    true,
+	}}
+	mockServerService.On("GetAllServers", mock.Anything).Return(servers, nil)
+	mockLeaseService.On("GetLeasesByServer", mock.Anything, "server-1").Return([]*dhcp.Lease{}, nil)
+
+	req := httptest.NewRequest("GET", "/dhcp/servers?format=json", nil)
+	w := httptest.NewRecorder()
+	h.GetDHCPServers(w, req)
+
+	assert.Equal(t, http.StatusOK, w.Code)
+	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
+	var body struct {
+		Servers []DHCPServerView `json:"servers"`
+	}
+	require.NoError(t, json.Unmarshal(w.Body.Bytes(), &body))
+	require.Len(t, body.Servers, 1)
+	assert.Equal(t, "server-1", body.Servers[0].ID)
+	assert.Equal(t, "192.168.1.1", body.Servers[0].TFTPIP)
+	assert.Equal(t, "configured", body.Servers[0].Status)
+	assert.Equal(t, 50, body.Servers[0].LeaseRange)
+	assert.Equal(t, 0, body.Servers[0].Used)
+	assert.Equal(t, 50, body.Servers[0].Free)
+	assert.Equal(t, 0, body.Servers[0].InFlight)
+	assert.Equal(t, 0, body.Servers[0].Failed)
 }
 
 // Test GetDHCPServers error case
@@ -499,17 +547,4 @@ func TestDHCPHandlers_GetLeaseStateHistory_Success(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
 
 	mockLeaseService.AssertExpectations(t)
-}
-
-// Test utility functions
-func TestDHCPHandlers_getServerStatusBadge(t *testing.T) {
-	handlers := &DHCPHandlers{}
-
-	// Test started server
-	badge := handlers.getServerStatusBadge(true)
-	assert.Equal(t, "badge-success", badge)
-
-	// Test stopped server
-	badge = handlers.getServerStatusBadge(false)
-	assert.Equal(t, "badge-error", badge)
 }

@@ -7,23 +7,22 @@ import (
 	"strconv"
 	"sync"
 	"time"
+
+	"ignite/dhcp"
 )
 
-// tftpPort is the UDP port the TFTP server listens on (tftp/tftp.go binds
-// port 69; there is no longer a config knob for it).
-const tftpPort = 69
+// defaultTFTPPort is the UDP port used when TFTP_PORT is unset.
+const defaultTFTPPort = 69
 
-// serviceRegistry tracks in-process service running state. The status handlers
-// read it instead of probing sockets: UDP dials cannot prove a TFTP/DHCP
-// listener is actually running. The DHCP server handlers update the DHCP
-// entries on start/stop/delete; the TFTP entry is updated via SetTFTPRunning
-// by whatever component starts or stops the TFTP server.
+// serviceRegistry tracks in-process TFTP running state. The status handlers
+// read it instead of probing the socket: a UDP dial cannot prove the TFTP
+// listener is actually running. DHCP listener state lives in dhcp.ServerState
+// and is updated by the DHCP service when a listener starts, stops, or fails.
 var serviceRegistry = struct {
 	sync.RWMutex
 	tftpRunning bool
 	tftpKnown   bool
-	dhcpRunning map[string]bool // DHCP server ID -> running
-}{dhcpRunning: make(map[string]bool)}
+}{}
 
 // SetTFTPRunning records whether the TFTP server is running. It is exported so
 // the application layer that starts/stops the TFTP server can report state.
@@ -41,9 +40,9 @@ func isTFTPRunning() bool {
 	return serviceRegistry.tftpKnown && serviceRegistry.tftpRunning
 }
 
-// tftpStatusString renders the TFTP state honestly: "unknown" until something
+// TFTPStatus renders the TFTP state honestly: "unknown" until something
 // reports it, never a guessed "running".
-func tftpStatusString() string {
+func TFTPStatus() string {
 	serviceRegistry.RLock()
 	defer serviceRegistry.RUnlock()
 	if !serviceRegistry.tftpKnown {
@@ -53,32 +52,6 @@ func tftpStatusString() string {
 		return "running"
 	}
 	return "stopped"
-}
-
-// setDHCPRunning records the running state of a DHCP server.
-func setDHCPRunning(serverID string, running bool) {
-	serviceRegistry.Lock()
-	serviceRegistry.dhcpRunning[serverID] = running
-	serviceRegistry.Unlock()
-}
-
-// forgetDHCPServer drops the tracked state for a deleted DHCP server.
-func forgetDHCPServer(serverID string) {
-	serviceRegistry.Lock()
-	delete(serviceRegistry.dhcpRunning, serverID)
-	serviceRegistry.Unlock()
-}
-
-// isDHCPRunning reports tracked running state for a DHCP server, falling back
-// to the server model's Started field when nothing was tracked.
-func isDHCPRunning(serverID string, modelStarted bool) bool {
-	serviceRegistry.RLock()
-	running, ok := serviceRegistry.dhcpRunning[serverID]
-	serviceRegistry.RUnlock()
-	if ok {
-		return running
-	}
-	return modelStarted
 }
 
 // StatusHandlers handles status-related requests
@@ -114,10 +87,13 @@ type DHCPServerStatus struct {
 // StatusPageData represents data for the status page
 type StatusPageData struct {
 	Title         string             `json:"title"`
+	Mode          string             `json:"-"`
+	CSRFToken     string             `json:"-"`
 	HTTPServer    ServiceStatus      `json:"http_server"`
 	TFTPServer    ServiceStatus      `json:"tftp_server"`
 	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
 	LastUpdated   string             `json:"last_updated"`
+	LastUpdatedAt string             `json:"last_updated_at"`
 	OverallStatus string             `json:"overall_status"`
 	AutoRefresh   bool               `json:"auto_refresh"`
 	RefreshSecs   int                `json:"refresh_secs"`
@@ -134,57 +110,40 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	httpStatus := checkHTTPServerStatus(httpPort)
 
 	// TFTP server status — tracked runtime state, never a UDP guess.
+	tftpListen := tftpListenPort(h.container)
 	tftpStatus := ServiceStatus{
 		Name:        "TFTP Server",
-		Status:      tftpStatusString(),
+		Status:      TFTPStatus(),
 		Description: "Network boot file server for PXE clients",
-		Details:     fmt.Sprintf("Port %d", tftpPort),
-		Port:        tftpPort,
+		Details:     fmt.Sprintf("Port %d", tftpListen),
+		Port:        tftpListen,
 		LastCheck:   now,
 	}
 
-	// DHCP servers status — from the tracked running state, falling back to
-	// the server model's Started field.
+	// DHCP servers status — the listener record, never the persisted Started flag.
 	servers, err := h.container.ServerService.GetAllServers(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("failed to get DHCP servers: %w", err)
 	}
 
 	var dhcpServers []DHCPServerStatus
+	var dhcpStates []dhcp.ServerState
 	for _, server := range servers {
 		leases, _ := h.container.LeaseService.GetLeasesByServer(ctx, server.ID)
-
-		status := "configured"
-		if isDHCPRunning(server.ID, server.Started) {
-			status = "running"
-		}
+		state := dhcp.CurrentServerState(server.ID)
+		dhcpStates = append(dhcpStates, state)
 
 		dhcpServers = append(dhcpServers, DHCPServerStatus{
 			ID:          server.ID,
 			IP:          server.IP.String(),
-			Status:      status,
+			Status:      string(state),
 			Description: "Dynamic IP assignment for network boot clients",
 			LeaseCount:  len(leases),
 			LastCheck:   now,
 		})
 	}
 
-	// Overall status: the page itself is served over HTTP, so a failed HTTP
-	// check means something is seriously wrong; anything else degraded is
-	// "partial".
-	overallStatus := "healthy"
-	if httpStatus.Status != "running" {
-		overallStatus = "down"
-	} else if tftpStatus.Status != "running" {
-		overallStatus = "partial"
-	} else {
-		for _, s := range dhcpServers {
-			if s.Status != "running" {
-				overallStatus = "partial"
-				break
-			}
-		}
-	}
+	overallStatus := overallServiceStatus(httpStatus.Status, tftpStatus.Status, dhcpStates)
 
 	return &StatusPageData{
 		Title:         "System Status",
@@ -192,31 +151,66 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 		TFTPServer:    tftpStatus,
 		DHCPServers:   dhcpServers,
 		LastUpdated:   now.Format("2006-01-02 15:04:05"),
+		LastUpdatedAt: formatRFC3339(now),
 		OverallStatus: overallStatus,
 		AutoRefresh:   true,
 		RefreshSecs:   5,
 	}, nil
 }
 
-// HandleStatusPage serves the status monitoring page
-func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
-	if !requireConfig(w, r, h.container) {
-		return
+// tftpListenPort is the configured TFTP UDP port. An empty or invalid value
+// falls back to 69, which is also the config default.
+func tftpListenPort(container *Container) int {
+	if container == nil || container.Config == nil {
+		return defaultTFTPPort
 	}
-
-	data, err := h.getStatusData(r)
-	if err != nil {
-		HandleError(w, r, NewInternalError(
-			fmt.Sprintf("failed to get status data: %v", err),
-			"Unable to load system status",
-		))
-		return
+	port, err := strconv.Atoi(container.Config.TFTP.Port)
+	if err != nil || port < 1 || port > 65535 {
+		return defaultTFTPPort
 	}
-
-	renderCachedTemplate(w, r, "status", data, "Unable to render the status page")
+	return port
 }
 
-// HandleStatusContent serves status content for HTMX updates
+// overallServiceStatus rolls HTTP, TFTP, and DHCP listener state into one word.
+// configured DHCP servers have not been started this boot, so they do not
+// make the service partial. While DHCP is disabled every server is
+// configured, so those servers do not make health partial or down.
+// stopped means a listener failed or was stopped.
+func overallServiceStatus(httpStatus, tftpStatus string, dhcpStates []dhcp.ServerState) string {
+	if httpStatus != "running" {
+		return "down"
+	}
+	if tftpStatus != "running" {
+		return "partial"
+	}
+	for _, state := range dhcpStates {
+		if state == dhcp.ServerStateStopped {
+			return "partial"
+		}
+	}
+	return "healthy"
+}
+
+// CurrentOverallStatus is the same overall service word /status/content
+// renders: healthy, partial, or down. An error reading status yields "".
+func (h *StatusHandlers) CurrentOverallStatus(r *http.Request) string {
+	if h == nil || r == nil {
+		return ""
+	}
+	data, err := h.getStatusData(r)
+	if err != nil || data == nil {
+		return ""
+	}
+	return data.OverallStatus
+}
+
+// HandleStatusPage redirects a bookmark for /status to Overview.
+// GET /status/content remains the fragment Overview polls.
+func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request) {
+	http.Redirect(w, r, "/", http.StatusFound)
+}
+
+// HandleStatusContent serves status content for HTMX updates.
 func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Request) {
 	if !requireConfig(w, r, h.container) {
 		return

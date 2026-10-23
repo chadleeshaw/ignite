@@ -1,6 +1,9 @@
 package config
 
 import (
+	"bytes"
+	"log"
+	"os"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
@@ -97,6 +100,59 @@ func TestOSVersion_ExpectedChecksum(t *testing.T) {
 	// Optional: zero value is empty
 	var empty OSVersion
 	assert.Empty(t, empty.ExpectedChecksum)
+}
+
+func TestLoadDefault_BMCEnv(t *testing.T) {
+	unsetEnv(t, "BMC_TLS_VERIFY")
+	t.Setenv("BMC_SYSTEM_ID", "")
+	cfg, err := LoadDefault()
+	assert.NoError(t, err)
+	assert.False(t, cfg.BMC.TLSVerify)
+	assert.Empty(t, cfg.BMC.SystemID)
+
+	t.Setenv("BMC_TLS_VERIFY", "true")
+	t.Setenv("BMC_SYSTEM_ID", "System.Embedded.1")
+	cfg, err = LoadDefault()
+	assert.NoError(t, err)
+	assert.True(t, cfg.BMC.TLSVerify)
+	assert.Equal(t, "System.Embedded.1", cfg.BMC.SystemID)
+
+	t.Setenv("BMC_TLS_VERIFY", "1")
+	cfg, err = LoadDefault()
+	assert.NoError(t, err)
+	assert.True(t, cfg.BMC.TLSVerify)
+
+	t.Setenv("BMC_TLS_VERIFY", "false")
+	cfg, err = LoadDefault()
+	assert.NoError(t, err)
+	assert.False(t, cfg.BMC.TLSVerify)
+}
+
+func TestBMCTLSVerifyInvalidFallsBack(t *testing.T) {
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+
+	t.Setenv("BMC_TLS_VERIFY", "maybe")
+	cfg, err := LoadDefault()
+	assert.NoError(t, err)
+	assert.False(t, cfg.BMC.TLSVerify)
+	assert.Contains(t, buf.String(), `BMC_TLS_VERIFY="maybe" is not a boolean`)
+	assert.Equal(t, "BMC TLS verification: disabled (set BMC_TLS_VERIFY=true to enable)", BMCTLSModeLog(false))
+	assert.Equal(t, "BMC TLS verification: enabled", BMCTLSModeLog(true))
+}
+
+func unsetEnv(t *testing.T, key string) {
+	t.Helper()
+	prev, had := os.LookupEnv(key)
+	assert.NoError(t, os.Unsetenv(key))
+	t.Cleanup(func() {
+		if had {
+			_ = os.Setenv(key, prev)
+		} else {
+			_ = os.Unsetenv(key)
+		}
+	})
 }
 
 func TestLoadDefault_ServerIPEnv(t *testing.T) {

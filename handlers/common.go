@@ -16,8 +16,23 @@ import (
 	"ignite/dhcp"
 )
 
-// TFTPDir holds the directory path for TFTP server operations.
+// TFTPDir holds the absolute directory path for TFTP server operations.
 var TFTPDir string
+
+// TFTPDisplayRoot is the path label for the TFTP page. It is the configured
+// TFTP_DIR as given. Startup sets it to the temporary directory only when
+// that directory is what the server is actually serving.
+var TFTPDisplayRoot string
+
+// SetTFTPRoot records the resolved TFTP directory used by file handlers.
+func SetTFTPRoot(dir string) {
+	TFTPDir = dir
+}
+
+// SetTFTPDisplayRoot records the path shown on the TFTP page.
+func SetTFTPDisplayRoot(dir string) {
+	TFTPDisplayRoot = dir
+}
 
 // HTTPDir holds the directory path for HTTP server operations.
 var HTTPDir string
@@ -104,9 +119,13 @@ func parseTemplates() map[string]*template.Template {
 		"tftp":               {baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ"},
 		"status":             {baseTemplate, "templates/pages/status.templ"},
 		"status-content":     {"templates/partials/status-content.templ"},
+		"dashboard-summary":  {"templates/partials/dashboard-summary.templ"},
+		"dhcp-servers":       {"templates/partials/dhcp-servers.templ"},
 		"provision":          {baseTemplate, "templates/pages/provision.templ"},
 		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
 		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
+		"error":              {baseTemplate, "templates/pages/error.templ"},
+		"error-public":       {"templates/pages/error-public.templ"},
 		"dhcpmodal":          {"templates/modals/dhcpmodal.templ"},
 		"reservemodal":       {"templates/modals/reservemodal.templ"},
 		"bootmodal":          {"templates/modals/bootmodal.templ"},
@@ -132,6 +151,10 @@ func parseTemplates() map[string]*template.Template {
 // renderCachedTemplate executes a cached template by name. A missing entry
 // (parse failure) or an execution error produces a generic error response
 // instead of a nil-pointer panic or an internal-error leak.
+//
+// Every page render goes through applyUIMode here, which replaces any Mode
+// the handler put on the data. A hardcoded cozy or console cannot win over
+// the stored preference.
 func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, data any, userMessage string) {
 	tmpl, ok := LoadTemplates()[name]
 	if !ok || tmpl == nil {
@@ -141,7 +164,7 @@ func renderCachedTemplate(w http.ResponseWriter, r *http.Request, name string, d
 		))
 		return
 	}
-	if err := tmpl.Execute(w, data); err != nil {
+	if err := tmpl.Execute(w, applyUIMode(r, data)); err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("template %q error: %v", name, err),
 			userMessage,
@@ -247,7 +270,7 @@ func (h *ModalHandlers) OpenModalHandler(w http.ResponseWriter, r *http.Request)
 		}
 
 		w.Header().Set("Content-Type", "text/html")
-		if err := t.Execute(w, data); err != nil {
+		if err := t.Execute(w, applyUIMode(r, data)); err != nil {
 			HandleError(w, r, NewInternalError(
 				fmt.Sprintf("Error executing template %s: %v", template, err),
 				"Unable to render the dialog",

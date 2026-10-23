@@ -20,10 +20,10 @@
         <div class="flex items-center justify-between mb-4">
             <div class="flex items-center space-x-3">
                 <span class="ip-address text-2xl font-bold text-primary">{{ .TFTPIP }}</span>
-                <span class="badge {{ .Status }} badge-lg">{{if eq .Status "badge-success"}}Running{{else}}Stopped{{end}}</span>
+                <span class="badge {{if eq .Status "running"}}badge-success{{else if eq .Status "configured"}}badge-warning{{else}}badge-error{{end}} badge-lg">{{.Status}}</span>
             </div>
             <div class="flex items-center space-x-2">
-                {{if eq .Status "badge-success"}}
+                {{if eq .Status "running"}}
                 <button class="btn btn-sm btn-error tooltip tooltip-bottom" data-tip="Stop Server" hx-post="/dhcp/stop?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-stop mr-1"></i>Stop</button>
                 {{else}}
                 <button class="btn btn-sm btn-success tooltip tooltip-bottom" data-tip="Start Server" hx-post="/dhcp/start?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-play mr-1"></i>Start</button>
@@ -32,6 +32,25 @@
                 <button class="btn btn-sm btn-warning tooltip tooltip-bottom" data-tip="Delete Server" hx-post="/dhcp/delete?server_id={{ .ID }}" hx-target="body" hx-swap="innerHTML"><i class="fas fa-trash"></i></button>
             </div>
         </div>
+
+        <section class="stats mb-4" aria-label="Lease counts">
+            <div class="stat">
+                <div class="stat-title">Used</div>
+                <div class="stat-value">{{.Used}}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">Free</div>
+                <div class="stat-value">{{.Free}}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">In flight</div>
+                <div class="stat-value">{{.InFlight}}</div>
+            </div>
+            <div class="stat">
+                <div class="stat-title">Failed</div>
+                <div class="stat-value">{{.Failed}}</div>
+            </div>
+        </section>
 
         <div class="overflow-x-auto md:overflow-visible">
             <table class="table w-full">
@@ -65,7 +84,8 @@
                             </button>
                         </td>
                         <td class="text-center">
-                            <button hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs tooltip tooltip-top {{if .Menu.Filename}}btn-accent{{else}}btn-ghost{{end}}" data-tip="Configure Boot Menu">Configure</button>
+                            {{if .MenuName}}{{.MenuName}}{{else}}—{{end}}
+                            <button hx-get="/open_modal?template=bootmodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="bootMenuBtn-{{ .MAC }}" class="btn btn-xs tooltip tooltip-top {{if .MenuName}}btn-accent{{else}}btn-ghost{{end}}" data-tip="Configure Boot Menu">Configure</button>
                         </td>
                         <td class="text-center">
                             <button hx-get="/open_modal?template=ipmimodal&network={{$tftpip}}&mac={{.MAC}}" hx-target="#modal-content" hx-swap="innerHTML" id="ipmiBtn-{{ .MAC }}" class="btn btn-xs tooltip tooltip-top {{if .IPMI.Username}}btn-accent{{else}}btn-ghost{{end}}" data-tip="Configure IPMI">Configure</button>
@@ -150,7 +170,7 @@ function updateLeaseState(mac, newState) {
     })
     .then(response => response.json())
     .then(data => {
-        if (data.status === 'success') {
+        if (data.success) {
             // Update the badge in place instead of reloading the page
             const badge = document.getElementById('lease-state-' + mac);
             if (badge) {

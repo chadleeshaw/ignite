@@ -62,6 +62,9 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 
 	data := struct {
 		Title         string
+		Mode          string
+		CSRFToken     string
+		OverallStatus string
 		OSImages      []*osimage.OSImage
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string

@@ -110,16 +110,80 @@ func SendError(w http.ResponseWriter, r *http.Request, err *AppError) {
 	}
 }
 
-// SendHTMLError sends an error for HTML responses (for template-based pages)
+// errorPageData is the view model for HTML error pages.
+type errorPageData struct {
+	Title         string
+	Mode          string
+	CSRFToken     string
+	OverallStatus string
+	StatusCode    int
+	Heading       string
+	Message       string
+}
+
+// SendHTMLError renders the shared error page. Mode comes from the signed-in
+// user's preference, or cozy when there is no session. A failure to render
+// falls back to a plain response and does not call back into HandleError.
 func SendHTMLError(w http.ResponseWriter, r *http.Request, err *AppError) {
-	// Log the internal error message
 	log.Printf("HTML Error [%s] %s: %s", r.Method, r.URL.Path, err.Message)
 	if err.Details != nil {
 		log.Printf("Error details: %+v", err.Details)
 	}
 
-	// For HTML responses, use standard HTTP error
-	http.Error(w, err.UserMessage, err.StatusCode)
+	code := err.StatusCode
+	if code == 0 {
+		code = http.StatusInternalServerError
+	}
+	heading := http.StatusText(code)
+	if heading == "" {
+		heading = "Error"
+	}
+	message := err.UserMessage
+	if message == "" {
+		message = heading
+	}
+
+	page := errorPageData{
+		Title:      heading,
+		StatusCode: code,
+		Heading:    heading,
+		Message:    message,
+	}
+	// Unauthenticated 404/405 handlers run outside AuthMiddleware. They must
+	// not render the admin shell (nav links to /dhcp and the rest).
+	name := "error"
+	if !isAuthenticated(r) {
+		name = "error-public"
+	}
+	tmpl := LoadTemplates()[name]
+	if tmpl == nil {
+		http.Error(w, message, code)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.WriteHeader(code)
+	if execErr := tmpl.Execute(w, applyUIMode(r, page)); execErr != nil {
+		log.Printf("failed to render error page: %v", execErr)
+	}
+}
+
+// NotFound renders the HTML 404 page for routes that did not match.
+func NotFound(w http.ResponseWriter, r *http.Request) {
+	HandleError(w, r, NewNotFoundError(
+		"no route matched "+r.URL.Path,
+		"The page you requested was not found.",
+	))
+}
+
+// MethodNotAllowed renders the HTML error page when the path exists but the
+// method does not.
+func MethodNotAllowed(w http.ResponseWriter, r *http.Request) {
+	HandleError(w, r, NewAppError(
+		ErrorTypeValidation,
+		r.Method+" is not allowed for "+r.URL.Path,
+		"That action is not available on this page.",
+		http.StatusMethodNotAllowed,
+	))
 }
 
 // WrapError wraps a standard error into an AppError

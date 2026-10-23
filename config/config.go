@@ -2,8 +2,10 @@ package config
 
 import (
 	"fmt"
+	"log"
 	"os"
 	"strconv"
+	"strings"
 )
 
 // Config represents the application configuration with immutable design
@@ -13,11 +15,27 @@ type Config struct {
 	TFTP      TFTPConfig
 	HTTP      HTTPConfig
 	Provision ProvisionConfig
+	Syslinux  Syslinux
 	OSImages  OSImageConfig
 	// ServerIP overrides the IP address advertised to network-boot clients.
 	// Empty means auto-detect; can also be set via the SERVER_IP environment
 	// variable, which takes precedence.
 	ServerIP string
+	// BMC controls Redfish connections to baseboard management controllers.
+	BMC BMCConfig
+}
+
+// BMCConfig controls how Ignite talks to a Redfish BMC.
+// Certificate checks are off unless TLSVerify is set. Homelab BMCs are
+// usually self-signed.
+type BMCConfig struct {
+	// TLSVerify is BMC_TLS_VERIFY. False, the default, skips certificate
+	// verification. True checks the BMC certificate.
+	TLSVerify bool
+	// SystemID is the Redfish ComputerSystem Id used when a BMC exposes more
+	// than one system. Empty means use the only system. A request can override
+	// this with the system_id form field. Env: BMC_SYSTEM_ID.
+	SystemID string
 }
 
 type DBConfig struct {
@@ -29,10 +47,14 @@ type DBConfig struct {
 type DHCPConfig struct {
 	BiosFile string
 	EFIFile  string
+	// Enabled is DHCP_ENABLED. False means this process does not bind a
+	// DHCP listener. Unset stays enabled. Only 0, false, no, and off disable it.
+	Enabled bool
 }
 
 type TFTPConfig struct {
-	Dir string
+	Dir  string
+	Port string
 }
 
 type HTTPConfig struct {
@@ -42,6 +64,12 @@ type HTTPConfig struct {
 
 type ProvisionConfig struct {
 	Dir string
+}
+
+// Syslinux is the download-cache location.
+type Syslinux struct {
+	// CacheDir is SYSLINUX_CACHE_DIR. Empty means a syslinux directory under DB_PATH.
+	CacheDir string
 }
 
 type OSImageConfig struct {
@@ -79,9 +107,11 @@ func NewConfigBuilder() *ConfigBuilder {
 			DHCP: DHCPConfig{
 				BiosFile: getEnv("BIOS_FILE", "boot-bios/pxelinux.0"),
 				EFIFile:  getEnv("EFI_FILE", "boot-efi/syslinux.efi"),
+				Enabled:  dhcpEnabled(),
 			},
 			TFTP: TFTPConfig{
-				Dir: getEnv("TFTP_DIR", "./public/tftp"),
+				Dir:  getEnv("TFTP_DIR", "./public/tftp"),
+				Port: getEnv("TFTP_PORT", "69"),
 			},
 			HTTP: HTTPConfig{
 				Dir:  getEnv("HTTP_DIR", "./public/http"),
@@ -90,8 +120,15 @@ func NewConfigBuilder() *ConfigBuilder {
 			Provision: ProvisionConfig{
 				Dir: getEnv("PROV_DIR", "./public/provision"),
 			},
+			Syslinux: Syslinux{
+				CacheDir: getEnv("SYSLINUX_CACHE_DIR", ""),
+			},
 			OSImages: getDefaultOSImageConfig(),
 			ServerIP: getEnv("SERVER_IP", ""),
+			BMC: BMCConfig{
+				TLSVerify: bmcTLSVerify(),
+				SystemID:  getEnv("BMC_SYSTEM_ID", ""),
+			},
 		},
 	}
 }
@@ -166,6 +203,9 @@ func (cb *ConfigBuilder) validate() error {
 	if port, err := strconv.Atoi(cb.config.HTTP.Port); err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("HTTP port must be a number between 1 and 65535, got %q", cb.config.HTTP.Port)
 	}
+	if port, err := strconv.Atoi(cb.config.TFTP.Port); err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("TFTP port must be a number between 1 and 65535, got %q", cb.config.TFTP.Port)
+	}
 	if cb.config.TFTP.Dir == "" {
 		return fmt.Errorf("TFTP directory cannot be empty")
 	}
@@ -189,6 +229,46 @@ func getEnv(key, fallback string) string {
 		return value
 	}
 	return fallback
+}
+
+// dhcpEnabled reports whether this process should bind DHCP listeners.
+// Unset, and any value other than 0, false, no, or off, leaves DHCP enabled
+// so a typo cannot turn the listeners off.
+func dhcpEnabled() bool {
+	value, ok := os.LookupEnv("DHCP_ENABLED")
+	if !ok {
+		return true
+	}
+	switch strings.ToLower(strings.TrimSpace(value)) {
+	case "0", "false", "no", "off":
+		return false
+	default:
+		return true
+	}
+}
+
+// bmcTLSVerify reports whether Redfish should check BMC certificates.
+// Unset stays false, so a self-signed BMC connects. Parsing uses
+// strconv.ParseBool. An invalid value logs a warning and stays false.
+func bmcTLSVerify() bool {
+	value, ok := os.LookupEnv("BMC_TLS_VERIFY")
+	if !ok {
+		return false
+	}
+	verify, err := strconv.ParseBool(value)
+	if err != nil {
+		log.Printf("BMC_TLS_VERIFY=%q is not a boolean; TLS verification stays disabled", value)
+		return false
+	}
+	return verify
+}
+
+// BMCTLSModeLog is the single startup line for the effective Redfish TLS mode.
+func BMCTLSModeLog(verify bool) string {
+	if verify {
+		return "BMC TLS verification: enabled"
+	}
+	return "BMC TLS verification: disabled (set BMC_TLS_VERIFY=true to enable)"
 }
 
 // getDefaultOSImageConfig returns the default OS image configuration

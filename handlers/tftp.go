@@ -288,19 +288,31 @@ func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 
 // FileInfo represents file metadata for display
 type FileInfo struct {
-	Name         string
-	Size         string
-	LastModified string
-	IsDir        bool
+	Name           string
+	Size           string
+	LastModified   string
+	LastModifiedAt string
+	IsDir          bool
 }
 
 // TFTPData holds information for rendering the TFTP management page
 type TFTPData struct {
 	Title           string
+	Mode            string
+	CSRFToken       string
+	OverallStatus   string
 	ServerRunning   bool
 	ServerDirectory string
 	PrevDirectory   string
+	Root            string
+	Breadcrumbs     []TFTPCrumb
 	Files           []FileInfo
+}
+
+// TFTPCrumb is one step below the TFTP root in the page breadcrumb.
+type TFTPCrumb struct {
+	Dir  string
+	Name string
 }
 
 // getTFTP retrieves file information for the root TFTP directory.
@@ -348,10 +360,11 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		}
 
 		fileInfos = append(fileInfos, FileInfo{
-			Name:         relativePath,
-			Size:         humanReadableSize(fileInfo.Size()),
-			LastModified: fileInfo.ModTime().Format("2006-01-02 15:04:05"),
-			IsDir:        fileInfo.IsDir(),
+			Name:           relativePath,
+			Size:           humanReadableSize(fileInfo.Size()),
+			LastModified:   fileInfo.ModTime().Format("2006-01-02 15:04:05"),
+			LastModifiedAt: formatRFC3339(fileInfo.ModTime()),
+			IsDir:          fileInfo.IsDir(),
 		})
 	}
 
@@ -360,8 +373,18 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 		ServerRunning:   isTFTPRunning(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
+		Root:            tftpPageRoot(),
 		Files:           fileInfos,
 	}, nil
+}
+
+// tftpPageRoot is the path the TFTP page prints. File operations keep using
+// the absolute TFTPDir.
+func tftpPageRoot() string {
+	if TFTPDisplayRoot != "" {
+		return TFTPDisplayRoot
+	}
+	return TFTPDir
 }
 
 // mustAbs returns the absolute form of p, falling back to p itself on error.

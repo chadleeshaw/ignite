@@ -36,6 +36,7 @@ func mockStatusPageData(withServers bool) *StatusPageData {
 			LastCheck:   now,
 		},
 		LastUpdated:   now.Format("2006-01-02 15:04:05"),
+		LastUpdatedAt: formatRFC3339(now),
 		OverallStatus: "healthy",
 		AutoRefresh:   true,
 		RefreshSecs:   5,
@@ -95,6 +96,7 @@ func TestStatusPageRendersFully(t *testing.T) {
 		"192.168.1.1",      // DHCP server IP
 		"Active Leases: 3", // DHCP lease count
 		"Last Updated:",    // string LastUpdated, not .Format on it
+		`data-updated="`,
 		"Port 8080 - responding",
 	} {
 		if !strings.Contains(out, want) {

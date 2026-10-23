@@ -6,6 +6,7 @@ import (
 	"encoding/json"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"sync"
 	"time"
@@ -19,13 +20,20 @@ var (
 	defaultPassword = "admin"
 )
 
-// sessionStore holds the server-side session table: token -> expiry.
+// sessionEntry is one server-side login. The CSRF token is bound to the
+// session and is not stored in a cookie, so a cross-site form cannot read it.
+type sessionEntry struct {
+	expiry time.Time
+	csrf   string
+}
+
+// sessionStore holds the server-side session table: token -> entry.
 // A session is valid only if its token is present here and not expired,
 // so logout (delete) and expiry are enforced server-side.
 var sessionStore = struct {
 	sync.RWMutex
-	tokens map[string]time.Time
-}{tokens: make(map[string]time.Time)}
+	tokens map[string]sessionEntry
+}{tokens: make(map[string]sessionEntry)}
 
 // sessionTTL is how long a login session stays valid.
 const sessionTTL = 24 * time.Hour
@@ -49,14 +57,22 @@ func generateSessionToken() (string, error) {
 	return hex.EncodeToString(b), nil
 }
 
-// createSession mints a new random token, stores it server-side, and returns it.
+// createSession mints a new random token and a per-session CSRF token,
+// stores them server-side, and returns the session token.
 func createSession() (string, error) {
 	token, err := generateSessionToken()
 	if err != nil {
 		return "", err
 	}
+	csrf, err := generateSessionToken()
+	if err != nil {
+		return "", err
+	}
 	sessionStore.Lock()
-	sessionStore.tokens[token] = time.Now().Add(sessionTTL)
+	sessionStore.tokens[token] = sessionEntry{
+		expiry: time.Now().Add(sessionTTL),
+		csrf:   csrf,
+	}
 	sessionStore.Unlock()
 	return token, nil
 }
@@ -77,26 +93,71 @@ func validSession(token string) bool {
 		return false
 	}
 	sessionStore.RLock()
-	expiry, ok := sessionStore.tokens[token]
+	entry, ok := sessionStore.tokens[token]
 	sessionStore.RUnlock()
 	if !ok {
 		return false
 	}
-	if time.Now().After(expiry) {
+	if time.Now().After(entry.expiry) {
 		destroySession(token)
 		return false
 	}
 	return true
 }
 
-// sessionCookie builds the session cookie with secure flags.
-func sessionCookie(token string, expired bool) *http.Cookie {
+// sessionCSRF returns the CSRF token bound to a live session.
+// An unknown or expired session returns an empty string.
+func sessionCSRF(token string) string {
+	if !validSession(token) {
+		return ""
+	}
+	sessionStore.RLock()
+	entry, ok := sessionStore.tokens[token]
+	sessionStore.RUnlock()
+	if !ok {
+		return ""
+	}
+	return entry.csrf
+}
+
+// cookieSecure reports whether a cookie should set the Secure flag.
+// COOKIE_SECURE is auto (the default), true, or false. auto, and any other
+// value, sets Secure only when the request arrived on TLS or when
+// X-Forwarded-Proto is https. The CSRF token is not a cookie.
+func cookieSecure(r *http.Request) bool {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("COOKIE_SECURE"))) {
+	case "true":
+		return true
+	case "false":
+		return false
+	default:
+		return requestIsHTTPS(r)
+	}
+}
+
+// requestIsHTTPS reports a TLS connection or an https reverse-proxy hop.
+func requestIsHTTPS(r *http.Request) bool {
+	if r == nil {
+		return false
+	}
+	if r.TLS != nil {
+		return true
+	}
+	proto := r.Header.Get("X-Forwarded-Proto")
+	if i := strings.Index(proto, ","); i >= 0 {
+		proto = proto[:i]
+	}
+	return strings.EqualFold(strings.TrimSpace(proto), "https")
+}
+
+// sessionCookie builds the session cookie. Secure follows cookieSecure.
+func sessionCookie(r *http.Request, token string, expired bool) *http.Cookie {
 	c := &http.Cookie{
 		Name:     "ignite_session",
 		Value:    token,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   true,
+		Secure:   cookieSecure(r),
 		SameSite: http.SameSiteLaxMode,
 	}
 	if expired {
@@ -124,11 +185,11 @@ type LoginRequest struct {
 	Password string `json:"password"`
 }
 
-// LoginResponse represents a login response
+// LoginResponse is the login and logout body. The session token stays in
+// the HttpOnly cookie and is not returned here.
 type LoginResponse struct {
 	Success bool   `json:"success"`
 	Message string `json:"message"`
-	Token   string `json:"token,omitempty"`
 }
 
 // Login handles user login
@@ -190,13 +251,12 @@ func (h *AuthHandlers) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Set session cookie with secure flags
-	http.SetCookie(w, sessionCookie(token, false))
+	http.SetCookie(w, sessionCookie(r, token, false))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{
 		Success: true,
 		Message: "Login successful",
-		Token:   token,
 	})
 }
 
@@ -207,7 +267,7 @@ func (h *AuthHandlers) Logout(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Clear the session cookie
-	http.SetCookie(w, sessionCookie("", true))
+	http.SetCookie(w, sessionCookie(r, "", true))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(LoginResponse{
@@ -300,6 +360,48 @@ func isAuthenticated(r *http.Request) bool {
 	return validSession(cookie.Value)
 }
 
+// isPublicAsset reports whether path is a static file the installer or the
+// browser may fetch without a session. Provision configs are excluded even
+// when they live under /public/provision/configs/.
+func isPublicAsset(path string) bool {
+	if !strings.HasPrefix(path, "/public/") {
+		return false
+	}
+	if strings.Contains(path, "/provision/configs/") {
+		return false
+	}
+	return true
+}
+
+// isRenderedConfig reports GET /configs/{type}/{name}. The handler, not the
+// middleware, decides whether this client may see the file.
+func isRenderedConfig(r *http.Request) bool {
+	if r.Method != http.MethodGet {
+		return false
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	return len(parts) == 3 && parts[0] == "configs" && parts[1] != "" && parts[2] != ""
+}
+
+// isHostCallback reports whether the request is a per-lease provisioning
+// callback (heartbeat or state), as opposed to the session-protected admin
+// route POST /dhcp/lease/state.
+func isHostCallback(r *http.Request) bool {
+	if r.Method != http.MethodPost {
+		return false
+	}
+	parts := strings.Split(strings.Trim(r.URL.Path, "/"), "/")
+	if len(parts) != 4 || parts[0] != "dhcp" || parts[1] != "lease" || parts[2] == "" {
+		return false
+	}
+	switch parts[3] {
+	case "heartbeat", "state":
+		return true
+	default:
+		return false
+	}
+}
+
 // isAPIRequest reports whether the request expects a JSON 401 instead of a
 // login redirect: anything under /api/ or explicitly asking for JSON.
 func isAPIRequest(r *http.Request) bool {
@@ -313,17 +415,44 @@ func isAPIRequest(r *http.Request) bool {
 // API/JSON clients get a 401 JSON response; browsers get a login redirect.
 func AuthMiddleware(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Skip auth for login page and auth endpoints
-		if r.URL.Path == "/login" ||
-			r.URL.Path == "/auth/login" ||
-			r.URL.Path == "/auth/logout" {
+		// Login has no session yet, so it cannot present a CSRF token.
+		if r.URL.Path == "/login" || r.URL.Path == "/auth/login" {
 			next.ServeHTTP(w, r)
 			return
 		}
 
-		// Skip auth for static files and PXE boot files (needed for network booting)
-		if strings.HasPrefix(r.URL.Path, "/public/") ||
+		// Logout stays reachable without a session. A live session must
+		// still present its CSRF token.
+		if r.URL.Path == "/auth/logout" {
+			if isAuthenticated(r) {
+				if message := csrfFailure(r); message != "" {
+					rejectCSRF(w, r, message)
+					return
+				}
+			}
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Skip auth for static files and PXE boot files (needed for network booting).
+		// Rendered installer configs are not in that set: they carry the
+		// per-lease token and are served only by GET /configs/{type}/{name}.
+		if isPublicAsset(r.URL.Path) ||
 			strings.HasPrefix(r.URL.Path, "/tftp/serve") {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// The installer fetches its config before it has the token. The
+		// handler allows the lease IP or a presented token, and 404s the rest.
+		if isRenderedConfig(r) {
+			next.ServeHTTP(w, r)
+			return
+		}
+
+		// Host provisioning callbacks authenticate with a per-lease token
+		// inside the handler. They must not be redirected to the login page.
+		if isHostCallback(r) {
 			next.ServeHTTP(w, r)
 			return
 		}
@@ -340,6 +469,11 @@ func AuthMiddleware(next http.Handler) http.Handler {
 				return
 			}
 			http.Redirect(w, r, "/login", http.StatusFound)
+			return
+		}
+
+		if message := csrfFailure(r); message != "" {
+			rejectCSRF(w, r, message)
 			return
 		}
 

@@ -8,9 +8,12 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
+	"ignite/config"
+	"ignite/dhcp"
 	"ignite/handlers"
 	"ignite/routes"
 	"ignite/tftp"
@@ -25,6 +28,11 @@ type Application struct {
 	tftpServer       *tftp.Server
 	staticFS         embed.FS
 	staticHandler    *handlers.StaticHandlers
+
+	// rootCancel cancels the process-wide context passed to background work.
+	// Stop calls it so the lease maintainer observes cancellation.
+	rootCancel context.CancelFunc
+	maintainer *dhcp.LeaseMaintainer
 }
 
 // NewApplicationWithStatic creates a new application instance with embedded static files
@@ -45,7 +53,12 @@ func NewApplicationWithStatic(staticFS embed.FS) (*Application, error) {
 		SyslinuxService: container.SyslinuxService,
 		IPXEService:     container.IPXEService,
 		Config:          container.Config,
+		Prefs:           container.Prefs,
 	}
+	handlers.SetPreferenceStore(container.Prefs)
+	handlers.SetPageHealth(func(r *http.Request) string {
+		return handlers.NewStatusHandlers(handlerContainer).CurrentOverallStatus(r)
+	})
 
 	return &Application{
 		container:        container,
@@ -58,12 +71,56 @@ func NewApplicationWithStatic(staticFS embed.FS) (*Application, error) {
 
 // Start starts all application services including static file serving
 func (a *Application) Start() error {
-	// Start TFTP server
-	a.tftpServer = tftp.NewServer(a.container.Config.TFTP.Dir)
+	rootCtx, rootCancel := context.WithCancel(context.Background())
+	a.rootCancel = rootCancel
+	a.maintainer = dhcp.NewLeaseMaintainer(
+		a.container.LeaseService,
+		dhcp.DefaultMaintenanceInterval,
+		dhcp.DefaultOfflineThreshold,
+	)
+	a.maintainer.Start(rootCtx)
+
+	// Start TFTP server. Record the outcome so status never stays "unknown"
+	// after a start attempt, including a failed bind.
+	tftpRoot, err := config.ResolveTFTPRoot(a.container.Config.TFTP.Dir)
+	if err != nil {
+		handlers.SetTFTPRunning(false)
+		a.stopMaintenance()
+		return fmt.Errorf("failed to resolve TFTP root: %w", err)
+	}
+	for _, line := range tftpRoot.StartupLines() {
+		log.Print(line)
+	}
+	a.container.Config.TFTP.Dir = tftpRoot.Path
+	handlers.SetTFTPRoot(tftpRoot.Path)
+	handlers.SetTFTPDisplayRoot(tftpRoot.Display)
+	if a.container.SyslinuxService != nil {
+		slCfg := a.container.SyslinuxService.GetConfig()
+		slCfg.TFTPDir = tftpRoot.Path
+		_ = a.container.SyslinuxService.UpdateConfig(rootCtx, slCfg)
+		log.Printf("Syslinux cache: %s", slCfg.TempDir)
+	}
+	tftpPort, err := strconv.Atoi(a.container.Config.TFTP.Port)
+	if err != nil {
+		handlers.SetTFTPRunning(false)
+		a.stopMaintenance()
+		return fmt.Errorf("invalid TFTP port %q: %w", a.container.Config.TFTP.Port, err)
+	}
+	a.tftpServer = tftp.NewServerWithPort(tftpRoot.Path, tftpPort)
 	if err := a.tftpServer.Start(); err != nil {
+		handlers.SetTFTPRunning(false)
+		a.stopMaintenance()
 		return fmt.Errorf("failed to start TFTP server: %w", err)
 	}
-	log.Printf("TFTP server started on port 69, serving from %s", a.container.Config.TFTP.Dir)
+	handlers.SetTFTPRunning(true)
+	log.Printf("TFTP server started on port %d, serving from %s", tftpPort, a.container.Config.TFTP.Dir)
+	if a.container.Config.DHCP.Enabled {
+		dhcp.SetListenersEnabled(true)
+	} else {
+		dhcp.SetListenersEnabled(false)
+		log.Print("DHCP is disabled")
+	}
+	log.Print(config.BMCTLSModeLog(a.container.Config.BMC.TLSVerify))
 
 	// Create HTTP router with injected dependencies and static file handling
 	router := routes.SetupWithContainerAndStatic(a.handlerContainer, a.staticHandler)
@@ -90,8 +147,24 @@ func (a *Application) Start() error {
 	return nil
 }
 
-// Rest of the Application methods remain the same...
+// stopMaintenance cancels the application context and waits for the lease
+// maintainer to finish. It is safe to call more than once.
+func (a *Application) stopMaintenance() {
+	if a.rootCancel != nil {
+		a.rootCancel()
+		a.rootCancel = nil
+	}
+	if a.maintainer != nil {
+		a.maintainer.Stop()
+		a.maintainer = nil
+	}
+}
+
 func (a *Application) Stop() error {
+	// Cancel background work first and wait for the lease maintainer to
+	// leave the database alone before the rest of shutdown closes it.
+	a.stopMaintenance()
+
 	// Stop any running DHCP servers first
 	if a.container.ServerService != nil {
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
@@ -121,6 +194,7 @@ func (a *Application) Stop() error {
 
 	if a.tftpServer != nil {
 		a.tftpServer.Stop()
+		handlers.SetTFTPRunning(false)
 	}
 
 	if err := a.container.Close(); err != nil {

@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"net/http"
 
@@ -76,23 +77,19 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 	var downloads []*syslinux.DownloadStatus
 
 	data := struct {
-		Title     string
-		Versions  []*syslinux.SyslinuxVersion
-		Downloads []*syslinux.DownloadStatus
+		Title         string
+		Mode          string
+		CSRFToken     string
+		OverallStatus string
+		Versions      []*syslinux.SyslinuxVersion
+		Downloads     []*syslinux.DownloadStatus
 	}{
 		Title:     "Syslinux Boot Files",
 		Versions:  versions,
 		Downloads: downloads,
 	}
 
-	templates := LoadTemplates()
-	if tmpl, ok := templates["syslinux"]; ok {
-		if err := tmpl.Execute(w, data); err != nil {
-			HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to execute template: %v", err), "Unable to render the syslinux page"))
-		}
-	} else {
-		HandleError(w, r, NewInternalError("Syslinux template not found", "Unable to render the syslinux page"))
-	}
+	renderCachedTemplate(w, r, "syslinux", data, "Unable to render the syslinux page")
 }
 
 // ListVersions returns all available Syslinux versions
@@ -157,17 +154,49 @@ func (h *SyslinuxHandler) DownloadAndInstallVersion(w http.ResponseWriter, r *ht
 	http.Redirect(w, r, "/syslinux", http.StatusSeeOther)
 }
 
-// ActivateVersion marks an already-downloaded version as the active one.
-// The service layer exposes no standalone activation for an already
-// downloaded version (activation only happens inside the download flow),
-// so this honestly reports 501 instead of faking it.
+// ActivateVersion handles POST /api/syslinux/activate/{version}.
+//
+// It activates a version that is already downloaded. It does not download
+// the archive and it does not delete other downloaded versions.
+//
+// Success is 200 JSON:
+//
+//	{"success": true, "message": "Syslinux 6.03 is active", "version": "6.03"}
+//
+// A version that is not downloaded is 409. The user_message tells the UI
+// to offer download again. An unknown version is 404. A missing boot file
+// or install failure is 500.
 func (h *SyslinuxHandler) ActivateVersion(w http.ResponseWriter, r *http.Request) {
-	HandleError(w, r, NewAppError(
-		ErrorTypeServiceUnavail,
-		"syslinux version activation is not implemented in the service layer",
-		"Activating an already-downloaded version is not supported by this server",
-		http.StatusNotImplemented,
-	))
+	version := mux.Vars(r)["version"]
+	if version == "" {
+		HandleError(w, r, NewValidationError("Version parameter required", "A version is required"))
+		return
+	}
+
+	if err := h.service.ActivateVersion(r.Context(), version); err != nil {
+		switch {
+		case errors.Is(err, syslinux.ErrVersionNotFound):
+			HandleError(w, r, NewNotFoundError(err.Error(), "That syslinux version does not exist"))
+		case errors.Is(err, syslinux.ErrVersionNotDownloaded):
+			HandleError(w, r, NewAppError(
+				ErrorTypeConflict,
+				err.Error(),
+				"This version is not downloaded. Download it before activating.",
+				http.StatusConflict,
+			))
+		default:
+			HandleError(w, r, NewInternalError(err.Error(), "Unable to activate the syslinux version"))
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]any{
+		"success": true,
+		"message": "Syslinux " + version + " is active",
+		"version": version,
+	})
 }
 
 // DeactivateVersion deactivates and removes the currently active version

@@ -12,7 +12,7 @@
 
     <div class="text-sm breadcrumbs mb-4">
         <ul>
-            <li><a href="/tftp" class="{{if not .Breadcrumbs}}text-primary font-semibold{{end}}"><i class="fas fa-home mr-1"></i>root</a></li>
+            <li><a href="/tftp" class="{{if not .Breadcrumbs}}text-primary font-semibold{{end}}"><i class="fas fa-home mr-1"></i>{{.Root}}</a></li>
             {{range .Breadcrumbs}}
             <li><a href="/tftp/open?dir={{.Dir}}">{{.Name}}</a></li>
             {{end}}
@@ -36,7 +36,7 @@
                 <tr>
                     <td>{{.Name}}</td>
                     <td>{{if .IsDir}}--{{else}}{{.Size}}{{end}}</td>
-                    <td>{{.LastModified}}</td>
+                    <td data-modified="{{.LastModifiedAt}}">{{.LastModified}}</td>
                     <td>
                         {{if .IsDir}}
                             <button class="btn btn-xs btn-success" onclick="window.location.href='/tftp/open?dir={{.Name}}'">Open Dir</button>

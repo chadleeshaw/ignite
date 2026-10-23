@@ -2,9 +2,11 @@ package app
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestNewContainer(t *testing.T) {
@@ -30,6 +32,12 @@ func TestNewContainer(t *testing.T) {
 	assert.NotNil(t, container.ServerService)
 	assert.NotNil(t, container.LeaseService)
 	assert.NotNil(t, container.Config)
+	wantCache, err := filepath.Abs(filepath.Join(tempDir, "syslinux"))
+	require.NoError(t, err)
+	assert.Equal(t, wantCache, container.SyslinuxService.GetConfig().TempDir)
+	info, err := os.Stat(wantCache)
+	require.NoError(t, err)
+	assert.True(t, info.IsDir())
 
 	// Clean up
 	container.Close()

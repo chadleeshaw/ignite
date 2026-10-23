@@ -45,7 +45,7 @@ type SyslinuxConfig struct {
 	TFTPDir        string `json:"tftp_dir"`        // ./public/tftp
 	BiosDir        string `json:"bios_dir"`        // boot-bios
 	EfiDir         string `json:"efi_dir"`         // boot-efi
-	TempDir        string `json:"temp_dir"`        // /tmp/syslinux-downloads
+	TempDir        string `json:"temp_dir"`        // ./syslinux, or /app/data/syslinux in the image
 	AutoExtract    bool   `json:"auto_extract"`    // Automatically extract after download
 	KeepArchive    bool   `json:"keep_archive"`    // Keep downloaded tar.gz files
 	VerifyChecksum bool   `json:"verify_checksum"` // Verify downloads with checksums
@@ -71,7 +71,7 @@ func GetDefaultConfig() SyslinuxConfig {
 		TFTPDir:        "./public/tftp",
 		BiosDir:        "boot-bios",
 		EfiDir:         "boot-efi",
-		TempDir:        "/tmp/syslinux-downloads",
+		TempDir:        "./syslinux",
 		AutoExtract:    true,
 		KeepArchive:    false,
 		VerifyChecksum: true,

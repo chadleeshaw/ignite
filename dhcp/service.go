@@ -15,6 +15,10 @@ import (
 	"github.com/google/uuid"
 )
 
+// ErrDHCPDisabled is returned when a start is requested while DHCP_ENABLED
+// is off. The listener is not bound.
+var ErrDHCPDisabled = errors.New("DHCP is disabled")
+
 // sharedAllocMu serializes IP allocation across the DHCP packet path
 // (ProtocolHandler) and the service path (DHCPLeaseService). Both services
 // are constructed independently, so the shared mutex lives at package scope;
@@ -148,7 +152,7 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 		return fmt.Errorf("failed to get server: %w", err)
 	}
 
-	if server.Started {
+	if s.hasHandler(serverID) {
 		return fmt.Errorf("server is already running")
 	}
 
@@ -156,7 +160,11 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 	// path never pays for config.LoadDefault() per packet.
 	appCfg, err := config.LoadDefault()
 	if err != nil {
+		NoteServerState(serverID, ServerStateStopped)
 		return fmt.Errorf("failed to load application config: %w", err)
+	}
+	if !appCfg.DHCP.Enabled {
+		return ErrDHCPDisabled
 	}
 	bootFiles := ProtocolBootFiles{
 		BiosFile: appCfg.DHCP.BiosFile,
@@ -169,6 +177,7 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 		WithBootFiles(bootFiles),
 	)
 	if err := handler.Start(); err != nil {
+		NoteServerState(serverID, ServerStateStopped)
 		return fmt.Errorf("failed to start DHCP handler: %w", err)
 	}
 
@@ -186,10 +195,19 @@ func (s *DHCPServerService) StartServer(ctx context.Context, serverID string) er
 		s.handlersMu.Lock()
 		delete(s.handlers, serverID)
 		s.handlersMu.Unlock()
+		NoteServerState(serverID, ServerStateStopped)
 		return fmt.Errorf("failed to update server state: %w", err)
 	}
 
+	NoteServerState(serverID, ServerStateRunning)
 	return nil
+}
+
+// hasHandler reports whether this process has a live listener for serverID.
+func (s *DHCPServerService) hasHandler(serverID string) bool {
+	s.handlersMu.RLock()
+	defer s.handlersMu.RUnlock()
+	return s.handlers[serverID] != nil
 }
 
 // StopServer stops a DHCP server
@@ -199,24 +217,27 @@ func (s *DHCPServerService) StopServer(ctx context.Context, serverID string) err
 		return fmt.Errorf("failed to get server: %w", err)
 	}
 
-	if !server.Started {
-		return fmt.Errorf("server is not running")
-	}
-
-	// Stop protocol handler
 	s.handlersMu.Lock()
-	if handler, exists := s.handlers[serverID]; exists {
-		if err := handler.Stop(); err != nil {
+	handler, listening := s.handlers[serverID]
+	if listening {
+		if err := handler.Stop(); err != nil && !errors.Is(err, ErrHandlerNotRunning) {
 			log.Printf("Error stopping DHCP handler: %v", err)
 		}
 		delete(s.handlers, serverID)
 	}
 	s.handlersMu.Unlock()
 
+	if !listening && !server.Started {
+		return fmt.Errorf("server is not running")
+	}
+
 	// Update server state
 	server.Started = false
 	server.UpdatedAt = time.Now()
 
+	// The socket is already closed. Record stopped even when the row cannot
+	// be saved, so the APIs do not keep reporting running.
+	NoteServerState(serverID, ServerStateStopped)
 	if err := s.serverRepo.Save(ctx, server); err != nil {
 		return fmt.Errorf("failed to update server state: %w", err)
 	}
@@ -226,23 +247,63 @@ func (s *DHCPServerService) StopServer(ctx context.Context, serverID string) err
 
 // DeleteServer deletes a DHCP server and all its leases
 func (s *DHCPServerService) DeleteServer(ctx context.Context, serverID string) error {
-	// Stop server if running
+	// Stop server if running. The listener is down from here on, whether or
+	// not the row delete succeeds.
 	s.handlersMu.Lock()
 	if handler, exists := s.handlers[serverID]; exists {
 		_ = handler.Stop()
 		delete(s.handlers, serverID)
+		NoteServerState(serverID, ServerStateStopped)
 	}
 	s.handlersMu.Unlock()
 
-	// Delete all leases for this server
-	if err := s.leaseRepo.DeleteByServerID(ctx, serverID); err != nil {
-		return fmt.Errorf("failed to delete server leases: %w", err)
+	// The handler is stopped before taking allocMu so an in-flight packet
+	// can finish its own allocMu -> lockLease sequence. Deletes then take
+	// the same order: the pool lock, then each lease lock, with a re-read.
+	s.allocMu.Lock()
+	defer s.allocMu.Unlock()
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+
+	leases, err := s.leaseRepo.GetByServerID(ctx, serverID)
+	if err != nil {
+		return fmt.Errorf("failed to list server leases: %w", err)
+	}
+	for _, lease := range leases {
+		if err := ctx.Err(); err != nil {
+			return err
+		}
+		if lease == nil {
+			continue
+		}
+		unlock, lerr := lockLease(ctx, lease.MAC)
+		if lerr != nil {
+			return lerr
+		}
+		fresh, gerr := s.leaseRepo.Get(ctx, lease.ID)
+		if errors.Is(gerr, db.ErrNotFound) {
+			unlock()
+			continue
+		}
+		if gerr != nil {
+			unlock()
+			return fmt.Errorf("failed to read lease %s: %w", lease.ID, gerr)
+		}
+		if fresh.ServerID == serverID {
+			gerr = s.leaseRepo.Delete(ctx, fresh.ID)
+		}
+		unlock()
+		if gerr != nil {
+			return fmt.Errorf("failed to delete lease %s: %w", lease.ID, gerr)
+		}
 	}
 
 	// Delete server
 	if err := s.serverRepo.Delete(ctx, serverID); err != nil {
 		return fmt.Errorf("failed to delete server: %w", err)
 	}
+	ClearServerState(serverID)
 
 	return nil
 }

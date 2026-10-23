@@ -5,6 +5,7 @@ import (
 	"ignite/config"
 	"ignite/db"
 	"ignite/dhcp"
+	"ignite/handlers"
 	"ignite/ipxe"
 	"ignite/osimage"
 	"ignite/syslinux"
@@ -24,6 +25,7 @@ type Container struct {
 	SyslinuxRepo       syslinux.Repository
 	SyslinuxService    syslinux.Service
 	IPXEService        *ipxe.Service
+	Prefs              handlers.PreferenceStore
 }
 
 // NewContainer creates and wires up all dependencies
@@ -49,8 +51,14 @@ func NewContainer() (c *Container, err error) {
 	// Create repositories
 	serverRepo := dhcp.NewBoltServerRepository(database, cfg.DB.Bucket+"_servers")
 	leaseRepo := dhcp.NewBoltLeaseRepository(database, cfg.DB.Bucket+"_leases")
-	osImageRepo := osimage.NewOSImageRepository(database)
-	downloadStatusRepo := osimage.NewDownloadStatusRepository(database)
+	osImageRepo, err := osimage.NewOSImageRepository(database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create os image repository: %w", err)
+	}
+	downloadStatusRepo, err := osimage.NewDownloadStatusRepository(database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create download status repository: %w", err)
+	}
 	syslinuxRepo, err := syslinux.NewBoltRepository(database)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create syslinux repository: %w", err)
@@ -60,8 +68,20 @@ func NewContainer() (c *Container, err error) {
 	serverService := dhcp.NewDHCPServerService(serverRepo, leaseRepo)
 	leaseService := dhcp.NewDHCPLeaseService(leaseRepo, serverRepo)
 	osImageService := osimage.NewOSImageService(osImageRepo, downloadStatusRepo, cfg)
-	syslinuxService := syslinux.NewService(syslinuxRepo, syslinux.GetDefaultConfig())
+	cacheDir, err := config.ResolveSyslinuxCacheDir(cfg.DB.DBPath, cfg.Syslinux.CacheDir)
+	if err != nil {
+		return nil, fmt.Errorf("failed to resolve syslinux cache: %w", err)
+	}
+	cfg.Syslinux.CacheDir = cacheDir
+	slCfg := syslinux.GetDefaultConfig()
+	slCfg.TFTPDir = cfg.TFTP.Dir
+	slCfg.TempDir = cacheDir
+	syslinuxService := syslinux.NewService(syslinuxRepo, slCfg)
 	ipxeService := ipxe.NewService(cfg, osImageService)
+	prefs, err := handlers.NewBoltPreferenceStore(database, cfg.DB.Bucket+"_prefs")
+	if err != nil {
+		return nil, fmt.Errorf("failed to create preference store: %w", err)
+	}
 
 	c = &Container{
 		Config:             cfg,
@@ -76,6 +96,7 @@ func NewContainer() (c *Container, err error) {
 		SyslinuxRepo:       syslinuxRepo,
 		SyslinuxService:    syslinuxService,
 		IPXEService:        ipxeService,
+		Prefs:              prefs,
 	}
 	return c, nil
 }

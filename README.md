@@ -68,11 +68,6 @@ Advanced PXE boot menu configuration and SYSLINUX management interface.
 
 ![Syslinux Configuration](./public/http/img/syslinux_page.png)
 
-### **System Status**
-Real-time monitoring of server status, services, and system health indicators.
-
-![System Status](./public/http/img/status_page.png)
-
 ## Getting Started
 
 ### Prerequisites
@@ -152,13 +147,74 @@ Ignite can be configured via environment variables. Here are the available optio
 
 | Variable    | Description                                    | Default            |
 |-------------|------------------------------------------------|--------------------|
-| `DB_PATH`   | Path to store the database file.               | `./`               |
+| `DB_PATH`   | Path to store the database file. The Syslinux cache defaults to a `syslinux` directory under this path. | `./`               |
 | `DB_FILE`   | Name of the database file.                     | `ignite.db`        |
 | `DB_BUCKET` | Database bucket name.                          | `dhcp`             |
-| `TFTP_DIR`  | Directory for the TFTP server to serve files from. | `./public/tftp`   |
+| `TFTP_DIR`  | Directory for the TFTP server to serve files from. Created on startup. The release image sets `/app/public/tftp`. | `./public/tftp`   |
 | `HTTP_DIR`  | Directory for the HTTP server to serve files from. | `./public/http`   |
-| `HTTP_PORT` | Port for the HTTP server to listen on.         | `8080`             |
+| `HTTP_PORT` | TCP port for the HTTP server.                   | `8080`             |
+| `TFTP_PORT` | UDP port for the TFTP server. Ports below 1024 need extra privileges. Set this above 1024 to run TFTP as the unprivileged `ignite` user. | `69` |
+| `DHCP_ENABLED` | When `false`, `0`, `no`, or `off`, no DHCP listener starts. Every server stays `configured` and does not make overall health `partial` or `down`. Starting one from the UI or API returns 409. Unset and any other value leave DHCP enabled. | `true` |
+| `SYSLINUX_CACHE_DIR` | Download and extract cache for Syslinux. Created on startup. Empty uses `$DB_PATH/syslinux` (`/app/data/syslinux` in the image). | `$DB_PATH/syslinux` |
 | `PROV_DIR`  | Directory for provisioning templates.          | `./public/provision` |
+| `BMC_TLS_VERIFY` | Check the Redfish BMC certificate. Unset skips verification, which is what a self-signed homelab BMC needs. `strconv.ParseBool` values turn it on (`1`, `t`, `T`, `TRUE`, `true`, `True`) or off (`0`, `f`, `F`, `FALSE`, `false`, `False`). Any other value logs a warning and stays off. | `false` |
+| `BMC_SYSTEM_ID` | Redfish ComputerSystem `Id` when a BMC exposes more than one system. A `system_id` form field on `POST /pxe/submit_ipmi` overrides this. | first and only system |
+| `COOKIE_SECURE` | `Secure` flag on `ignite_session` and `ignite_mode`. `auto` sets it only when the request is TLS or `X-Forwarded-Proto` is `https`. `true` always sets it. `false` never does. Any other value is `auto`. The CSRF token is not a cookie. | `auto` |
+
+Startup logs the resolved TFTP root (`TFTP root: ...`), which is the absolute directory the server reads and writes. `TFTP_DIR` overrides the default. The directory is created if it is missing. When that directory cannot be created, Ignite falls back to a temporary directory named `ignite-tftp.*` under the system temp dir and logs a warning that boot files, OS images, and per-MAC configs will not survive a restart. The same warning is logged when `TFTP_DIR` itself points at a temp directory; the override is still used. The TFTP page shows the configured `TFTP_DIR` as given (`./public/tftp`, or `/app/public/tftp` in the image). When startup had to serve a temporary directory, the page shows that temporary path instead.
+
+Both container images declare `VOLUME /app/public/tftp` after `./public` is copied in, and `VOLUME /app/data` after that directory is created and given to the `ignite` user (uid 1001). A fresh TFTP volume starts with the files shipped in the image (`boot.ipxe` and the OS directories). A fresh data volume starts empty and owned by uid 1001, which is who writes `/app/data/ignite.db` and `/app/data/syslinux`. Mount both by name so the database, the Syslinux cache, boot files, downloaded OS images, and per-MAC configs survive a container recreate:
+
+```bash
+docker run -d \
+  --name ignite \
+  -p 8080:8080 \
+  -p 69:69/udp \
+  -v ignite-data:/app/data \
+  -v ignite-tftp:/app/public/tftp \
+  ghcr.io/chadleeshaw/ignite:v3.0.0
+```
+
+Compose and a Swarm stack use the same syntax (`docker stack deploy -c docker-compose.yml ignite`):
+
+```yaml
+services:
+  ignite:
+    image: ghcr.io/chadleeshaw/ignite:v3.0.0
+    ports:
+      - "8080:8080"
+      - "69:69/udp"
+    volumes:
+      - ignite-data:/app/data
+      - ignite-tftp:/app/public/tftp
+volumes:
+  ignite-data:
+  ignite-tftp:
+```
+
+Startup logs the Syslinux cache (`Syslinux cache: ...`). `SYSLINUX_CACHE_DIR` overrides the default. Versions downloaded before this change lived in `/tmp/syslinux-downloads`, which is not copied. Download those versions again.
+
+A bind mount of an empty host directory (`-v /path/on/host:/app/public/tftp` when `/path/on/host` is empty) hides those shipped files. Seed the host directory from the image, give it to the `ignite` user (uid 1001), then start Ignite with the bind mount. `docker cp` onto the host writes the files as root, and the app cannot create boot files in a directory it does not own. A named volume keeps the `ignite` ownership on its own.
+
+```bash
+mkdir -p /path/on/host
+docker create --name ignite-seed ghcr.io/chadleeshaw/ignite:v3.0.0
+docker cp ignite-seed:/app/public/tftp/. /path/on/host
+docker rm ignite-seed
+sudo chown -R 1001:1001 /path/on/host
+```
+
+Upgrading a v2.x container that was started without these mounts: copy the database and the TFTP directory out before removing the container, recreate it with both named volumes, and restore the files. `docker cp` into the new container writes as root, so return ownership to the `ignite` user (uid 1001) afterward. Syslinux archives extracted under `/tmp/syslinux-downloads` are not in either copy. Download those versions again after the upgrade. Redfish skips BMC certificate checks unless `BMC_TLS_VERIFY=true`.
+
+```bash
+docker cp <container>:/app/data/ignite.db ./ignite.db
+docker cp <container>:/app/public/tftp ./tftp-backup
+# remove the old container, then start the new one with
+# -v ignite-data:/app/data -v ignite-tftp:/app/public/tftp
+docker cp ./ignite.db <container>:/app/data/ignite.db
+docker cp ./tftp-backup/. <container>:/app/public/tftp
+docker exec -u root <container> chown -R ignite:ignite /app/data /app/public/tftp
+```
 
 ## API Reference
 
@@ -169,11 +225,12 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | Endpoint                | Description                              |
 |-------------------------|------------------------------------------|
 | `/`                     | Serves the main index page.              |
+| `/status`               | Redirects to Overview (`/`).             |
+| `/status/content`       | Status fragment Overview polls.          |
 | `/open_modal`           | Opens a modal dialog.                    |
 | `/close_modal`          | Closes a modal dialog.                   |
 | `/dhcp`                 | Serves the DHCP management page.         |
-| `/dhcp/servers`         | Retrieves a list of DHCP servers.        |
-| `/status`               | Serves the server status page.           |
+| `/dhcp/servers`         | DHCP server list. HTML fragment for htmx; JSON when `?format=json` or `Accept` is `application/json` without `text/html`. |
 | `/provision`            | Serves the provisioning page.            |
 | `/tftp`                 | Serves the TFTP management page.         |
 | `/tftp/open`            | Opens a file in the TFTP directory.      |
@@ -187,6 +244,58 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/prov/getfilename`     | Updates the filename for a template.     |
 | `/provision/load-file`  | Loads file content via API.              |
 | `/provision/gallery`    | Retrieves template gallery items.        |
+
+`GET /dhcp/servers` returns an HTML fragment (`text/html`) for browsers and
+htmx. Add `?format=json`, or send `Accept: application/json` without
+`text/html`, for JSON:
+
+```json
+{
+  "servers": [
+    {
+      "id": "server-id",
+      "tftpip": "192.168.1.1",
+      "status": "running",
+      "lease_range": 50,
+      "used": 1,
+      "free": 49,
+      "in_flight": 0,
+      "failed": 0,
+      "leases": [
+        {
+          "mac": "aa:bb:cc:dd:ee:ff",
+          "ip": "192.168.1.100",
+          "static": false,
+          "state": "assigned",
+          "state_badge_class": "badge-info",
+          "state_display_name": "Assigned"
+        }
+      ]
+    }
+  ]
+}
+```
+
+`status` is the listener state, and the same value on `/status/content`,
+`/dashboard/summary` (`pools[].status`), and the DHCP page:
+
+| Value | Meaning |
+|-------|---------|
+| `running` | The listener is bound and serving. |
+| `stopped` | It was started and then stopped, or the last start failed. |
+| `configured` | It is defined and has not been started since this process booted. |
+
+A `configured` server does not make overall health `partial`. `used` and
+`free` follow `dhcp.PoolOccupancy` (reserved or unexpired). `in_flight` and
+`failed` are separate from that partition, so a lease can be active,
+reserved, or expired and also in flight or failed. `in_flight` counts
+`pxe_requested`, `booting`, `imaging`, `imaged`, and `configuring`.
+`failed` counts `failed`. Both are on `GET /dashboard/summary` (the totals
+next to `active`, `expired`, and `reserved`, and each `pools[]` entry) and
+on each server from `GET /dhcp/servers`. Each lease
+includes `menu_name` (a friendly label such as `ubuntu 24.04`, or `""`
+when no menu is assigned) plus `menu`, `ipmi`, and `last_seen`. `menu`
+does not include a filesystem path.
 
 ### POST Routes
 
@@ -203,11 +312,73 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/tftp/delete_file`       | Deletes a file from the TFTP directory.       |
 | `/tftp/upload_file`       | Uploads a file to the TFTP directory.         |
 | `/pxe/submit_menu`        | Submits a new PXE boot menu.                  |
-| `/pxe/submit_ipmi`        | Submits an IPMI command.                      |
+| `/pxe/submit_ipmi`        | Redfish power and one-time PXE boot. Skips TLS verification unless `BMC_TLS_VERIFY=true`. Powers On when the host is off and ForceRestart only when it is on. With more than one system and no `system_id` / `BMC_SYSTEM_ID`, responds `409`. |
 | `/prov/newtemplate`       | Creates a new provisioning template.          |
 | `/prov/save`              | Saves a provisioning file.                    |
 | `/provision/save-file`    | Saves file content via API.                   |
 | `/provision/delete-file`  | Deletes a file from provision directories.    |
+| `/api/syslinux/activate/{version}` | Activates an already-downloaded SYSLINUX version. |
+
+`POST /api/syslinux/activate/{version}` does not download the archive. The
+version must already be downloaded. Activation removes the boot files
+currently in the TFTP directories and installs that version's extracted
+BIOS and EFI files. Other downloaded versions stay downloaded.
+
+Success is `200` with:
+
+```json
+{"success": true, "message": "Syslinux 6.03 is active", "version": "6.03"}
+```
+
+| Status | When |
+|--------|------|
+| `409`  | The version exists but has not been downloaded. `error.user_message` is `This version is not downloaded. Download it before activating.` |
+| `404`  | No stored version has that number. |
+| `500`  | Boot files are missing or activation failed. |
+
+## CSRF
+
+Session-authenticated `POST`, `PUT`, and `DELETE` requests must send the
+per-session token and a same-host `Origin`. This includes logout,
+change-password, and every htmx POST. A missing or wrong token is `403`
+with `error.user_message` `CSRF token mismatch`. A missing `Origin`, a
+foreign `Origin`, or `Sec-Fetch-Site: cross-site` is `403` with
+`Cross-site requests are not allowed`. `POST /auth/login` and the
+per-lease host callbacks (`POST /dhcp/lease/{mac}/heartbeat` and
+`POST /dhcp/lease/{mac}/state`) are exempt. `GET` does not require a token.
+
+`ignite_mode` is an HttpOnly cookie. Page theme comes from `.Mode` in the
+HTML, not from reading that cookie in JavaScript.
+
+Every HTML render that uses the base page data includes `.CSRFToken`. The
+frontend sends it in either place:
+
+- Header `X-CSRF-Token` (htmx and fetch)
+- Form field `csrf_token`
+
+Add this to the base document, without storing the token in a cookie:
+
+```html
+<meta name="csrf-token" content="{{.CSRFToken}}">
+```
+
+```html
+<body hx-headers='{"X-CSRF-Token": "{{.CSRFToken}}"}'>
+```
+
+State-changing forms also need:
+
+```html
+<input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+```
+
+Fetch clients that do not use htmx read the meta tag:
+
+```js
+headers: { "X-CSRF-Token": document.querySelector('meta[name="csrf-token"]').content }
+```
+
+`POST /auth/logout` needs the token when a session cookie is still present.
 
 ## Architecture
 
@@ -274,10 +445,29 @@ docker run -d \
   --name ignite \
   -p 8080:8080 \
   -p 69:69/udp \
-  -v $(pwd)/data:/app/data \
-  -v $(pwd)/public:/app/public \
-  ghcr.io/chadleeshaw/ignite:v2.0.0
+  -v ignite-data:/app/data \
+  -v ignite-tftp:/app/public/tftp \
+  ghcr.io/chadleeshaw/ignite:v3.0.0
 ```
+
+Compose and a Swarm stack (`docker stack deploy -c docker-compose.yml ignite`) mount the same named volumes. `ignite-data` is `/app/data` (`ignite.db` and the Syslinux cache). `ignite-tftp` is `/app/public/tftp`. Generated provisioning files stay in `/app/public/provision`. The image does not declare a volume for that path.
+
+```yaml
+services:
+  ignite:
+    image: ghcr.io/chadleeshaw/ignite:v3.0.0
+    ports:
+      - "8080:8080"
+      - "69:69/udp"
+    volumes:
+      - ignite-data:/app/data
+      - ignite-tftp:/app/public/tftp
+volumes:
+  ignite-data:
+  ignite-tftp:
+```
+
+A bind mount of an empty host directory onto `/app/public/tftp` hides the boot files shipped in the image. Seed that directory from the image first, as described next to `TFTP_DIR` above. The same section has the v2.x upgrade steps: copy `ignite.db` and the TFTP directory out, recreate with `ignite-data` and `ignite-tftp`, copy them back, and `chown` both to uid 1001.
 
 #### **Option 2: Build from Source**
 ```bash
@@ -286,18 +476,18 @@ docker build -t ignite:local .
 
 # Quick build using release binary (faster, smaller image)
 docker build -f Dockerfile.release -t ignite:release .
-docker run -d --name ignite -p 8080:8080 -p 69:69/udp ignite:release
+docker run -d --name ignite -p 8080:8080 -p 69:69/udp -v ignite-data:/app/data -v ignite-tftp:/app/public/tftp ignite:release
 ```
 
 ### **Binary Installation**
 ```bash
 # Download for your platform
-wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-linux-amd64
+wget https://github.com/chadleeshaw/ignite/releases/download/v3.0.0/ignite-linux-amd64
 chmod +x ignite-linux-amd64
 ./ignite-linux-amd64
 
 # Or use the x86_64 variant
-wget https://github.com/chadleeshaw/ignite/releases/download/v2.0.0/ignite-x86_64
+wget https://github.com/chadleeshaw/ignite/releases/download/v3.0.0/ignite-x86_64
 chmod +x ignite-x86_64
 ./ignite-x86_64
 ```
