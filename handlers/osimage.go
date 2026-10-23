@@ -76,6 +76,7 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
 		SupportedOS   []string
+		Catalog       catalog.Listing
 		KernelBytes   int64
 		InitrdBytes   int64
 		ArchLabel     string
@@ -87,6 +88,7 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Downloads:     downloads,
 		Architectures: supportedArchs,
 		SupportedOS:   h.container.Config.OSImages.SupportedNames(),
+		Catalog:       h.currentListing(ctx),
 		KernelBytes:   kernelBytes,
 		InitrdBytes:   initrdBytes,
 		ArchLabel:     archLabel,

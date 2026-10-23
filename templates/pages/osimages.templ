@@ -151,12 +151,9 @@
                 <label for="os">Operating system</label>
                 <select id="os" name="os" class="select select-bordered w-full" required onchange="updateVersions(this.value)">
                     <option value="">Select OS</option>
-                    <option value="ubuntu">Ubuntu</option>
-                    <option value="debian">Debian</option>
-                    <option value="fedora">Fedora</option>
-                    <option value="centos">CentOS</option>
-                    <option value="opensuse">openSUSE</option>
-                    <option value="nixos">NixOS</option>
+                    {{range .Catalog.OSes}}
+                    <option value="{{.OS}}">{{.DisplayName}}</option>
+                    {{end}}
                 </select>
             </div>
             <div class="fld">
@@ -174,7 +171,7 @@
                 </select>
             </div>
             <div class="fld">
-                <span class="mu">Supported: {{range $i, $name := .SupportedOS}}{{if $i}} · {{end}}{{$name}}{{end}}</span>
+                {{template "catalog-status.templ" .}}
             </div>
             <div class="ipxe-note">
                 <b>iPXE boot menu</b>

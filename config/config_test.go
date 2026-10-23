@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -179,4 +180,28 @@ func TestLoadDefault_ServerIPEnv(t *testing.T) {
 	cfg, err = LoadDefault()
 	assert.NoError(t, err)
 	assert.Empty(t, cfg.ServerIP)
+}
+
+func TestOSCatalogEnv(t *testing.T) {
+	t.Setenv("OS_CATALOG_REFRESH", "12h")
+	t.Setenv("OS_CATALOG_OFFLINE", "true")
+	t.Setenv("GITHUB_TOKEN", "ghp-secret")
+	cfg, err := LoadDefault()
+	assert.NoError(t, err)
+	assert.Equal(t, 12*time.Hour, cfg.OSCatalog.Refresh)
+	assert.True(t, cfg.OSCatalog.Offline)
+	assert.Equal(t, "ghp-secret", cfg.OSCatalog.GitHubToken)
+
+	var buf bytes.Buffer
+	log.SetOutput(&buf)
+	t.Cleanup(func() { log.SetOutput(os.Stderr) })
+	t.Setenv("OS_CATALOG_REFRESH", "0s")
+	t.Setenv("OS_CATALOG_OFFLINE", "maybe")
+	cfg, err = LoadDefault()
+	assert.NoError(t, err)
+	assert.Equal(t, 24*time.Hour, cfg.OSCatalog.Refresh)
+	assert.False(t, cfg.OSCatalog.Offline)
+	assert.NotContains(t, buf.String(), "ghp-secret")
+	assert.Contains(t, buf.String(), "OS_CATALOG_REFRESH")
+	assert.Contains(t, buf.String(), "OS_CATALOG_OFFLINE")
 }

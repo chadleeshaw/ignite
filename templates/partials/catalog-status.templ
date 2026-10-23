@@ -1,0 +1,7 @@
+<div id="catalog-status" data-catalog-source="{{.Catalog.Source}}" data-refreshed="{{.Catalog.RefreshedAt}}">
+    <span>Catalog: {{.Catalog.Source}} · refreshed {{if .Catalog.RefreshedAt}}{{.Catalog.RefreshedAt}}{{else}}—{{end}}</span>
+    <button class="b sm" type="button" hx-post="/osimages/catalog/refresh" hx-target="#catalog-status" hx-swap="outerHTML">Refresh catalog</button>
+    {{if or (ne .Catalog.Source "live") (gt (len .Catalog.Errors) 0)}}
+    <span class="chip st wa">{{if ne .Catalog.Source "live"}}Showing the last saved catalog{{else}}Some release sources failed{{end}}</span>
+    {{end}}
+</div>

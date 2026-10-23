@@ -7,6 +7,7 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 )
 
 // Config represents the application configuration with immutable design
@@ -18,6 +19,8 @@ type Config struct {
 	Provision ProvisionConfig
 	Syslinux  Syslinux
 	OSImages  OSImageConfig
+	// OSCatalog controls discovery of bootable OS releases.
+	OSCatalog OSCatalogConfig
 	// ServerIP overrides the IP address advertised to network-boot clients.
 	// Empty means auto-detect; can also be set via the SERVER_IP environment
 	// variable, which takes precedence.
@@ -77,6 +80,18 @@ type OSImageConfig struct {
 	Sources map[string]OSDefinition `json:"sources"`
 }
 
+// OSCatalogConfig is how often the release catalog refreshes, whether it
+// stays on the bundled list, and the optional GitHub token for NixOS.
+type OSCatalogConfig struct {
+	// Refresh is OS_CATALOG_REFRESH. Invalid or non-positive values become 24h.
+	Refresh time.Duration
+	// Offline is OS_CATALOG_OFFLINE. True never calls release sources.
+	Offline bool
+	// GitHubToken is GITHUB_TOKEN. It is sent only to the NixOS releases API.
+	// It is never logged.
+	GitHubToken string
+}
+
 // OSDefinition is the per-OS boot facts that do not change between releases.
 // Versions, download URLs, and end-of-life dates live in osimage/catalog.
 // Kernel arguments stay in the iPXE service because they include the server address.
@@ -133,6 +148,11 @@ func NewConfigBuilder() *ConfigBuilder {
 				CacheDir: getEnv("SYSLINUX_CACHE_DIR", ""),
 			},
 			OSImages: getDefaultOSImageConfig(),
+			OSCatalog: OSCatalogConfig{
+				Refresh:     catalogRefreshInterval(),
+				Offline:     catalogOffline(),
+				GitHubToken: getEnv("GITHUB_TOKEN", ""),
+			},
 			ServerIP: getEnv("SERVER_IP", ""),
 			BMC: BMCConfig{
 				TLSVerify: bmcTLSVerify(),
@@ -264,6 +284,37 @@ func BMCTLSModeLog(verify bool) string {
 		return "BMC TLS verification: enabled"
 	}
 	return "BMC TLS verification: disabled (set BMC_TLS_VERIFY=true to enable)"
+}
+
+// catalogRefreshInterval reads OS_CATALOG_REFRESH. Empty, invalid, and
+// non-positive values use 24h.
+func catalogRefreshInterval() time.Duration {
+	const fallback = 24 * time.Hour
+	raw, ok := os.LookupEnv("OS_CATALOG_REFRESH")
+	if !ok || strings.TrimSpace(raw) == "" {
+		return fallback
+	}
+	interval, err := time.ParseDuration(strings.TrimSpace(raw))
+	if err != nil || interval <= 0 {
+		log.Printf("OS_CATALOG_REFRESH=%q is not a positive duration; using 24h", raw)
+		return fallback
+	}
+	return interval
+}
+
+// catalogOffline reads OS_CATALOG_OFFLINE with strconv.ParseBool.
+// Unset stays online. An invalid value logs a warning and stays online.
+func catalogOffline() bool {
+	raw, ok := os.LookupEnv("OS_CATALOG_OFFLINE")
+	if !ok || strings.TrimSpace(raw) == "" {
+		return false
+	}
+	offline, err := strconv.ParseBool(strings.TrimSpace(raw))
+	if err != nil {
+		log.Printf("OS_CATALOG_OFFLINE=%q is not a boolean; catalog refresh stays enabled", raw)
+		return false
+	}
+	return offline
 }
 
 // getDefaultOSImageConfig returns per-OS boot file names. Release URLs live

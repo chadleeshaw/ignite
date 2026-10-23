@@ -4,11 +4,11 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
-	"strings"
 	"testing"
 
 	"ignite/config"
 	"ignite/osimage"
+	"ignite/osimage/catalog"
 
 	"github.com/stretchr/testify/require"
 )
@@ -21,6 +21,13 @@ func TestOSImagesPageSupportedLineMatchesCatalog(t *testing.T) {
 	h := NewOSImageHandlers(&Container{
 		Config:         cfg,
 		OSImageService: emptyOSImages{},
+		Catalog: &catalog.Fixed{Snap: catalog.Snapshot{
+			Origin: catalog.OriginLive,
+			Releases: []catalog.Release{
+				{OS: "opensuse", Version: "16.0", DisplayName: "16.0", Arch: "x86_64"},
+				{OS: "ubuntu", Version: "24.04", DisplayName: "24.04 LTS", Arch: "x86_64"},
+			},
+		}},
 	})
 	rec := httptest.NewRecorder()
 	req := httptest.NewRequest(http.MethodGet, "/osimages", nil)
@@ -28,10 +35,12 @@ func TestOSImagesPageSupportedLineMatchesCatalog(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	want := "Supported: " + strings.Join(cfg.OSImages.SupportedNames(), " · ")
-	require.Contains(t, body, want)
-	require.NotContains(t, body, "Supported: Ubuntu · Debian · Fedora · CentOS · NixOS")
+	require.Contains(t, body, `id="catalog-status"`)
+	require.Contains(t, body, `data-catalog-source="live"`)
+	require.Contains(t, body, `value="opensuse"`)
+	require.Contains(t, body, "openSUSE")
 	require.Contains(t, cfg.OSImages.SupportedNames(), "openSUSE")
+	require.NotContains(t, body, "Supported:")
 }
 
 type emptyOSImages struct{}

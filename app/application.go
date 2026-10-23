@@ -150,6 +150,10 @@ func (a *Application) Start() error {
 		}
 	}()
 
+	if a.container.Catalog != nil {
+		a.container.Catalog.Start(rootCtx)
+	}
+
 	return nil
 }
 

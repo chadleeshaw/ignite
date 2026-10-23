@@ -190,8 +190,10 @@ func setupOSImageRoutes(router *mux.Router, handlers *handlers.OSImageHandlers) 
 	router.HandleFunc("/osimages/download/status/{id}", handlers.GetDownloadStatus).Methods("GET").Name("GetDownloadStatus")
 	router.HandleFunc("/osimages/info/{id}", handlers.GetOSImageInfo).Methods("GET").Name("GetOSImageInfo")
 	router.HandleFunc("/osimages/available-versions", handlers.GetAvailableVersions).Methods("GET").Name("GetAvailableVersions")
+	router.HandleFunc("/osimages/catalog", handlers.GetCatalog).Methods("GET").Name("GetOSImageCatalog")
 
 	// POST routes
+	router.HandleFunc("/osimages/catalog/refresh", handlers.RefreshCatalog).Methods("POST").Name("RefreshOSImageCatalog")
 	router.HandleFunc("/osimages/download", handlers.DownloadOSImage).Methods("POST").Name("DownloadOSImage")
 	router.HandleFunc("/osimages/set-default/{id}", handlers.SetDefaultVersion).Methods("POST").Name("SetDefaultVersion")
 	router.HandleFunc("/osimages/cancel/{id}", handlers.CancelDownload).Methods("POST").Name("CancelDownload")
