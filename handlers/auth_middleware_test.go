@@ -16,6 +16,8 @@ func TestAuthMiddleware_PublicPaths(t *testing.T) {
 		"/public/http/css/tailwind.css",
 		"/public/http/img/logo.png",
 		"/public/http/js/app.js",
+		"/os-images/debian/12/vmlinuz",
+		"/os-images/debian/12/initrd.img",
 	}
 
 	// Create a simple handler that returns 200 OK

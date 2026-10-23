@@ -63,12 +63,20 @@ func (s *Service) GenerateConfig(ctx context.Context) (string, error) {
 	// Convert to iPXE menu entries
 	var entries []OSImageEntry
 	for _, img := range osImages {
+		kernelRel, err := osimage.RelPath(img.OS, img.Version, osimage.KernelName)
+		if err != nil {
+			return "", fmt.Errorf("os image %s %s: %w", img.OS, img.Version, err)
+		}
+		initrdRel, err := osimage.RelPath(img.OS, img.Version, osimage.InitrdName)
+		if err != nil {
+			return "", fmt.Errorf("os image %s %s: %w", img.OS, img.Version, err)
+		}
 		entry := OSImageEntry{
 			ID:          menuID(img.OS, img.Version),
 			Name:        strings.ToLower(img.OS),
 			DisplayName: s.getDisplayName(img.OS, img.Version),
-			KernelPath:  fmt.Sprintf("%s/%s/%s", img.OS, img.Version, s.getKernelFilename(img.OS)),
-			InitrdPath:  fmt.Sprintf("%s/%s/%s", img.OS, img.Version, s.getInitrdFilename(img.OS)),
+			KernelPath:  kernelRel,
+			InitrdPath:  initrdRel,
 			KernelArgs:  s.getKernelArgs(img.OS, serverIP),
 		}
 		entries = append(entries, entry)
@@ -171,22 +179,6 @@ func (s *Service) getDisplayName(os, version string) string {
 	default:
 		return fmt.Sprintf("%s %s", strings.ToUpper(string(os[0]))+os[1:], version)
 	}
-}
-
-// getKernelFilename returns the kernel filename for an OS
-func (s *Service) getKernelFilename(os string) string {
-	if osDef, exists := s.config.OSImages.Sources[os]; exists {
-		return osDef.KernelFile
-	}
-	return "vmlinuz" // fallback
-}
-
-// getInitrdFilename returns the initrd filename for an OS
-func (s *Service) getInitrdFilename(os string) string {
-	if osDef, exists := s.config.OSImages.Sources[os]; exists {
-		return osDef.InitrdFile
-	}
-	return "initrd.img" // fallback
 }
 
 // getKernelArgs returns appropriate kernel arguments for an OS.

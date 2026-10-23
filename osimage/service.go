@@ -309,15 +309,22 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		return
 	}
 
-	tftpDir := s.config.TFTP.Dir
-	downloadDir := filepath.Join(tftpDir, "os-images", osConfig.OS, osConfig.Version)
-	if err := os.MkdirAll(downloadDir, 0755); err != nil {
+	kernelRel, err := RelPath(osConfig.OS, osConfig.Version, KernelName)
+	if err != nil {
+		s.failDownload(ctx, status, err)
+		return
+	}
+	initrdRel, err := RelPath(osConfig.OS, osConfig.Version, InitrdName)
+	if err != nil {
+		s.failDownload(ctx, status, err)
+		return
+	}
+	kernelPath := filepath.Join(s.config.TFTP.Dir, filepath.FromSlash(kernelRel))
+	initrdPath := filepath.Join(s.config.TFTP.Dir, filepath.FromSlash(initrdRel))
+	if err := os.MkdirAll(filepath.Dir(kernelPath), 0755); err != nil {
 		s.failDownload(ctx, status, fmt.Errorf("failed to create download directory: %w", err))
 		return
 	}
-
-	kernelPath := filepath.Join(downloadDir, "vmlinuz")
-	initrdPath := filepath.Join(downloadDir, "initrd.img")
 
 	if err := ctx.Err(); err != nil {
 		return // cancelled; CancelDownload already marked the row

@@ -2,6 +2,7 @@ package routes
 
 import (
 	"ignite/handlers"
+	"ignite/osimage"
 	"net/http"
 
 	"github.com/gorilla/mux"
@@ -13,6 +14,7 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 
 	// Setup static file serving
 	setupStaticRoutes(router, staticHandler)
+	setupBootFileRoute(router, container)
 
 	// Create handler instances with dependencies
 	authHandlers := handlers.NewAuthHandlers(container)
@@ -53,6 +55,18 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	router.MethodNotAllowedHandler = http.HandlerFunc(handlers.MethodNotAllowed)
 
 	return router
+}
+
+// setupBootFileRoute serves downloaded kernels and initrds at the same
+// relative URL the iPXE menu emits. PXE clients have no session.
+func setupBootFileRoute(router *mux.Router, container *handlers.Container) {
+	if container == nil || container.Config == nil || container.Config.TFTP.Dir == "" {
+		return
+	}
+	prefix := "/" + osimage.DirName + "/"
+	router.PathPrefix(prefix).
+		Handler(handlers.NewBootFileHandler(container.Config.TFTP.Dir)).
+		Methods(http.MethodGet, http.MethodHead)
 }
 
 func setupStaticRoutes(router *mux.Router, staticHandler *handlers.StaticHandlers) {

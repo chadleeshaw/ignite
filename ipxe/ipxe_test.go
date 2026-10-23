@@ -185,13 +185,17 @@ func TestGenerateConfig_Success(t *testing.T) {
 	assert.Contains(t, config, "CentOS Stream stream-9")
 	assert.Contains(t, config, "NixOS 23.11")
 
-	// Check for kernel and initrd paths
-	assert.Contains(t, config, "ubuntu/22.04/vmlinuz")
-	assert.Contains(t, config, "ubuntu/22.04/initrd")
-	assert.Contains(t, config, "centos/stream-9/vmlinuz")
-	assert.Contains(t, config, "centos/stream-9/initrd.img")
-	assert.Contains(t, config, "nixos/23.11/bzImage-x86_64-linux")
-	assert.Contains(t, config, "nixos/23.11/initrd-x86_64-linux")
+	// Menu URLs use the stored names, not the upstream KernelFile names.
+	for _, img := range osImages {
+		kernel, err := osimage.RelPath(img.OS, img.Version, osimage.KernelName)
+		assert.NoError(t, err)
+		initrd, err := osimage.RelPath(img.OS, img.Version, osimage.InitrdName)
+		assert.NoError(t, err)
+		assert.Contains(t, config, "kernel ${base-url}/"+kernel)
+		assert.Contains(t, config, "initrd ${base-url}/"+initrd)
+	}
+	assert.Contains(t, config, "os-images/nixos/23.11/vmlinuz")
+	assert.NotContains(t, config, "bzImage")
 
 	// Check for menu structure
 	assert.Contains(t, config, ":menu")
@@ -266,48 +270,6 @@ func TestGetDisplayName(t *testing.T) {
 	for _, test := range tests {
 		result := service.getDisplayName(test.os, test.version)
 		assert.Equal(t, test.expected, result, "OS: %s, Version: %s", test.os, test.version)
-	}
-}
-
-// Test getKernelFilename
-func TestGetKernelFilename(t *testing.T) {
-	cfg := createTestConfig()
-	service := NewService(cfg, nil)
-
-	tests := []struct {
-		os       string
-		expected string
-	}{
-		{"ubuntu", "vmlinuz"},
-		{"centos", "vmlinuz"},
-		{"nixos", "bzImage-x86_64-linux"},
-		{"unknown", "vmlinuz"}, // fallback
-	}
-
-	for _, test := range tests {
-		result := service.getKernelFilename(test.os)
-		assert.Equal(t, test.expected, result, "OS: %s", test.os)
-	}
-}
-
-// Test getInitrdFilename
-func TestGetInitrdFilename(t *testing.T) {
-	cfg := createTestConfig()
-	service := NewService(cfg, nil)
-
-	tests := []struct {
-		os       string
-		expected string
-	}{
-		{"ubuntu", "initrd"},
-		{"centos", "initrd.img"},
-		{"nixos", "initrd-x86_64-linux"},
-		{"unknown", "initrd.img"}, // fallback
-	}
-
-	for _, test := range tests {
-		result := service.getInitrdFilename(test.os)
-		assert.Equal(t, test.expected, result, "OS: %s", test.os)
 	}
 }
 

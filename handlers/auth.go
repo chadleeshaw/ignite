@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"ignite/osimage"
 )
 
 // Admin credentials. Guarded by credentialMu so concurrent logins and password
@@ -368,6 +370,15 @@ func isAuthenticated(r *http.Request) bool {
 // isPublicAsset reports whether path is a static file the installer or the
 // browser may fetch without a session. Provision configs are excluded even
 // when they live under /public/provision/configs/.
+// isBootImage reports a kernel or initrd fetch. The path matches
+// osimage.RelPath, which is where the downloader stores the files.
+func isBootImage(r *http.Request) bool {
+	if r.Method != http.MethodGet && r.Method != http.MethodHead {
+		return false
+	}
+	return strings.HasPrefix(r.URL.Path, "/"+osimage.DirName+"/")
+}
+
 func isPublicAsset(path string) bool {
 	if !strings.HasPrefix(path, "/public/") {
 		return false
@@ -442,7 +453,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Skip auth for static files and PXE boot files (needed for network booting).
 		// Rendered installer configs are not in that set: they carry the
 		// per-lease token and are served only by GET /configs/{type}/{name}.
-		if isPublicAsset(r.URL.Path) ||
+		if isPublicAsset(r.URL.Path) || isBootImage(r) ||
 			strings.HasPrefix(r.URL.Path, "/tftp/serve") {
 			next.ServeHTTP(w, r)
 			return
