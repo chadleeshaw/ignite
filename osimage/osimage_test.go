@@ -8,6 +8,7 @@ import (
 
 	"ignite/config"
 	"ignite/dlstatus"
+	"ignite/osimage/catalog"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -112,34 +113,31 @@ func createTestConfig() *config.Config {
 		},
 		OSImages: config.OSImageConfig{
 			Sources: map[string]config.OSDefinition{
-				"ubuntu": {
-					DisplayName: "Ubuntu",
-					Versions: map[string]config.OSVersion{
-						"22.04": {
-							DisplayName:   "Ubuntu 22.04 LTS",
-							BaseURL:       "http://releases.ubuntu.com/22.04/",
-							Architectures: []string{"x86_64"},
-						},
-						"20.04": {
-							DisplayName:   "Ubuntu 20.04 LTS",
-							BaseURL:       "http://releases.ubuntu.com/20.04/",
-							Architectures: []string{"x86_64"},
-						},
-					},
-				},
-				"centos": {
-					DisplayName: "CentOS",
-					Versions: map[string]config.OSVersion{
-						"8": {
-							DisplayName:   "CentOS 8",
-							BaseURL:       "http://mirror.centos.org/centos/8/",
-							Architectures: []string{"x86_64"},
-						},
-					},
-				},
+				"ubuntu": {DisplayName: "Ubuntu", KernelFile: "vmlinuz", InitrdFile: "initrd"},
+				"centos": {DisplayName: "CentOS", KernelFile: "vmlinuz", InitrdFile: "initrd.img"},
 			},
 		},
 	}
+}
+
+func testCatalog() catalog.Catalog {
+	return &catalog.Fixed{Snap: catalog.Snapshot{
+		Origin: catalog.OriginBundled,
+		Releases: []catalog.Release{
+			{
+				OS: "ubuntu", Version: "22.04", DisplayName: "Ubuntu 22.04 LTS", Arch: "x86_64",
+				KernelURL: "http://releases.ubuntu.com/22.04/vmlinuz", InitrdURL: "http://releases.ubuntu.com/22.04/initrd",
+			},
+			{
+				OS: "ubuntu", Version: "20.04", DisplayName: "Ubuntu 20.04 LTS", Arch: "x86_64",
+				KernelURL: "http://releases.ubuntu.com/20.04/vmlinuz", InitrdURL: "http://releases.ubuntu.com/20.04/initrd",
+			},
+			{
+				OS: "centos", Version: "8", DisplayName: "CentOS 8", Arch: "x86_64",
+				KernelURL: "http://mirror.centos.org/centos/8/vmlinuz", InitrdURL: "http://mirror.centos.org/centos/8/initrd.img",
+			},
+		},
+	}}
 }
 
 // Helper function to create a service without starting the background worker
@@ -148,6 +146,7 @@ func createTestService(mockRepo *MockOSImageRepository, mockDownloadRepo *MockDo
 		repo:         mockRepo,
 		downloadRepo: mockDownloadRepo,
 		config:       config,
+		catalog:      testCatalog(),
 		downloadChan: make(chan downloadRequest, 10),
 		cancels:      make(map[string]context.CancelFunc),
 	}
@@ -165,7 +164,7 @@ func TestNewOSImageService(t *testing.T) {
 	// but we need to mock the calls it will make
 	mockDownloadRepo.On("GetActive", mock.Anything).Return([]*DownloadStatus{}, nil).Maybe()
 
-	service := NewOSImageService(mockRepo, mockDownloadRepo, config)
+	service := NewOSImageService(mockRepo, mockDownloadRepo, config, testCatalog())
 
 	assert.NotNil(t, service)
 
@@ -175,6 +174,7 @@ func TestNewOSImageService(t *testing.T) {
 	assert.Equal(t, mockRepo, impl.repo)
 	assert.Equal(t, mockDownloadRepo, impl.downloadRepo)
 	assert.Equal(t, config, impl.config)
+	assert.NotNil(t, impl.catalog)
 	assert.NotNil(t, impl.downloadChan)
 	assert.NotNil(t, impl.cancels)
 	assert.NotNil(t, impl.httpClient)
@@ -723,14 +723,3 @@ func TestCancelDownload_SignalsWorker(t *testing.T) {
 	mockDownloadRepo.AssertExpectations(t)
 }
 
-// Test numeric version comparison
-func TestCompareVersions(t *testing.T) {
-	assert.Equal(t, -1, compareVersions("9", "10"))
-	assert.Equal(t, 1, compareVersions("10", "9"))
-	assert.Equal(t, 0, compareVersions("22.04", "22.04"))
-	assert.Equal(t, -1, compareVersions("20.04", "22.04"))
-	assert.Equal(t, 1, compareVersions("22.04", "20.04"))
-	assert.Equal(t, -1, compareVersions("6.03", "6.10"))
-	assert.Equal(t, 1, compareVersions("6.10", "6.03"))
-	assert.Equal(t, -1, compareVersions("6.03", "6.03.1"))
-}

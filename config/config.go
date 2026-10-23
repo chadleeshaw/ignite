@@ -77,20 +77,13 @@ type OSImageConfig struct {
 	Sources map[string]OSDefinition `json:"sources"`
 }
 
+// OSDefinition is the per-OS boot facts that do not change between releases.
+// Versions, download URLs, and end-of-life dates live in osimage/catalog.
+// Kernel arguments stay in the iPXE service because they include the server address.
 type OSDefinition struct {
-	DisplayName string               `json:"display_name"`
-	KernelFile  string               `json:"kernel_file"`
-	InitrdFile  string               `json:"initrd_file"`
-	Versions    map[string]OSVersion `json:"versions"`
-}
-
-type OSVersion struct {
-	DisplayName   string   `json:"display_name"`
-	BaseURL       string   `json:"base_url"`
-	Architectures []string `json:"architectures"`
-	// ExpectedChecksum is unused. One digest cannot describe both the kernel
-	// and the initrd, so applying it to each file could never succeed.
-	ExpectedChecksum string `json:"expected_checksum,omitempty"`
+	DisplayName string `json:"display_name"`
+	KernelFile  string `json:"kernel_file"`
+	InitrdFile  string `json:"initrd_file"`
 }
 
 // SupportedNames returns each source's display name in case-insensitive order.
@@ -173,34 +166,20 @@ func (cb *ConfigBuilder) Build() (*Config, error) {
 		return nil, fmt.Errorf("invalid configuration: %w", err)
 	}
 
-	// Return a copy to maintain immutability. The OS image catalog holds
-	// nested maps and slices, so it needs a deep copy.
+	// Return a copy to maintain immutability. The OS map is copied so a caller
+	// cannot replace a definition in the builder's catalog.
 	config := cb.config
 	config.OSImages = deepCopyOSImageConfig(cb.config.OSImages)
 	return &config, nil
 }
 
-// deepCopyOSImageConfig deep-copies the OS image catalog: sources, nested
-// version maps, and architecture slices.
+// deepCopyOSImageConfig copies the OS map. Definitions are plain strings.
 func deepCopyOSImageConfig(src OSImageConfig) OSImageConfig {
 	dst := OSImageConfig{
 		Sources: make(map[string]OSDefinition, len(src.Sources)),
 	}
 	for osName, def := range src.Sources {
-		defCopy := OSDefinition{
-			DisplayName: def.DisplayName,
-			KernelFile:  def.KernelFile,
-			InitrdFile:  def.InitrdFile,
-			Versions:    make(map[string]OSVersion, len(def.Versions)),
-		}
-		for ver, v := range def.Versions {
-			vCopy := v
-			if v.Architectures != nil {
-				vCopy.Architectures = append([]string(nil), v.Architectures...)
-			}
-			defCopy.Versions[ver] = vCopy
-		}
-		dst.Sources[osName] = defCopy
+		dst.Sources[osName] = def
 	}
 	return dst
 }
@@ -287,9 +266,9 @@ func BMCTLSModeLog(verify bool) string {
 	return "BMC TLS verification: disabled (set BMC_TLS_VERIFY=true to enable)"
 }
 
-// getDefaultOSImageConfig returns the bundled OS image catalog.
-// KernelFile and InitrdFile are per OS, so every version of an OS uses those
-// two upstream names. BaseURL is the directory that contains them.
+// getDefaultOSImageConfig returns per-OS boot file names. Release URLs live
+// in the dynamic catalog; these names are the upstream files that catalog
+// was generated from.
 func getDefaultOSImageConfig() OSImageConfig {
 	return OSImageConfig{
 		Sources: map[string]OSDefinition{
@@ -297,103 +276,31 @@ func getDefaultOSImageConfig() OSImageConfig {
 				DisplayName: "Ubuntu",
 				KernelFile:  "vmlinuz",
 				InitrdFile:  "initrd",
-				Versions: map[string]OSVersion{
-					"22.04": {
-						DisplayName:   "22.04 LTS",
-						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-3b4b797c/",
-						Architectures: []string{"x86_64"},
-					},
-					"24.04": {
-						DisplayName:   "24.04 LTS",
-						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.4-494663bf/",
-						Architectures: []string{"x86_64"},
-					},
-					"26.04": {
-						DisplayName:   "26.04 LTS",
-						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/26.04.1-c43af979/",
-						Architectures: []string{"x86_64"},
-					},
-				},
 			},
 			"centos": {
 				DisplayName: "CentOS",
 				KernelFile:  "vmlinuz",
 				InitrdFile:  "initrd.img",
-				Versions: map[string]OSVersion{
-					"9": {
-						DisplayName:   "9 Stream",
-						BaseURL:       "http://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/images/pxeboot/",
-						Architectures: []string{"x86_64"},
-					},
-					"10": {
-						DisplayName:   "10 Stream",
-						BaseURL:       "http://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/images/pxeboot/",
-						Architectures: []string{"x86_64"},
-					},
-				},
 			},
 			"nixos": {
 				DisplayName: "NixOS",
 				KernelFile:  "bzImage-x86_64-linux",
 				InitrdFile:  "initrd-x86_64-linux",
-				Versions: map[string]OSVersion{
-					"26.05": {
-						DisplayName:   "26.05",
-						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-26.05/",
-						Architectures: []string{"x86_64"},
-					},
-				},
 			},
 			"debian": {
 				DisplayName: "Debian",
 				KernelFile:  "linux",
 				InitrdFile:  "initrd.gz",
-				Versions: map[string]OSVersion{
-					"12": {
-						DisplayName:   "12 (Bookworm)",
-						BaseURL:       "http://deb.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
-						Architectures: []string{"x86_64"},
-					},
-					"13": {
-						DisplayName:   "13 (Trixie)",
-						BaseURL:       "http://deb.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
-						Architectures: []string{"x86_64"},
-					},
-				},
 			},
 			"opensuse": {
 				DisplayName: "openSUSE",
 				KernelFile:  "linux",
 				InitrdFile:  "initrd",
-				Versions: map[string]OSVersion{
-					"16.0": {
-						DisplayName:   "Leap 16.0",
-						BaseURL:       "http://download.opensuse.org/distribution/leap/16.0/repo/oss/boot/x86_64/loader/",
-						Architectures: []string{"x86_64"},
-					},
-					"tumbleweed": {
-						DisplayName:   "Tumbleweed (Rolling)",
-						BaseURL:       "http://download.opensuse.org/tumbleweed/repo/oss/boot/x86_64/loader/",
-						Architectures: []string{"x86_64"},
-					},
-				},
 			},
 			"fedora": {
 				DisplayName: "Fedora",
 				KernelFile:  "vmlinuz",
 				InitrdFile:  "initrd.img",
-				Versions: map[string]OSVersion{
-					"43": {
-						DisplayName:   "43",
-						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/images/pxeboot/",
-						Architectures: []string{"x86_64"},
-					},
-					"44": {
-						DisplayName:   "44",
-						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/images/pxeboot/",
-						Architectures: []string{"x86_64"},
-					},
-				},
 			},
 		},
 	}

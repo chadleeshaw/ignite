@@ -11,6 +11,7 @@ import (
 
 	"ignite/config"
 	"ignite/dlstatus"
+	"ignite/osimage/catalog"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,13 +66,11 @@ func TestProcessDownloadIgnoresSharedExpectedChecksum(t *testing.T) {
 			Version:      "12",
 			Architecture: "x86_64",
 		},
-		versionInfo: config.OSVersion{
-			BaseURL:          srv.URL + "/netboot/",
-			Architectures:    []string{"x86_64"},
-			ExpectedChecksum: kernelHex,
+		release: catalog.Release{
+			OS: "debian", Version: "12", Arch: "x86_64",
+			KernelURL: srv.URL + "/netboot/linux",
+			InitrdURL: srv.URL + "/netboot/initrd.gz",
 		},
-		kernelFile: "linux",
-		initrdFile: "initrd.gz",
 	})
 
 	status, err := statuses.Get(context.Background(), id)

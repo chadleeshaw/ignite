@@ -11,6 +11,7 @@ import (
 
 	"ignite/config"
 	"ignite/dlstatus"
+	"ignite/osimage/catalog"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -41,93 +42,6 @@ func TestBootFileURLCollapsesSlashes(t *testing.T) {
 	assert.Error(t, err)
 }
 
-// TestCatalogBootFileURLs asserts the download URL of every bundled release.
-func TestCatalogBootFileURLs(t *testing.T) {
-	cfg, err := config.NewConfigBuilder().Build()
-	require.NoError(t, err)
-
-	want := map[string]map[string][2]string{
-		"ubuntu": {
-			"22.04": {
-				"https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-3b4b797c/vmlinuz",
-				"https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-3b4b797c/initrd",
-			},
-			"24.04": {
-				"https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.4-494663bf/vmlinuz",
-				"https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.4-494663bf/initrd",
-			},
-			"26.04": {
-				"https://github.com/netbootxyz/ubuntu-squash/releases/download/26.04.1-c43af979/vmlinuz",
-				"https://github.com/netbootxyz/ubuntu-squash/releases/download/26.04.1-c43af979/initrd",
-			},
-		},
-		"debian": {
-			"12": {
-				"http://deb.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux",
-				"http://deb.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz",
-			},
-			"13": {
-				"http://deb.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux",
-				"http://deb.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz",
-			},
-		},
-		"fedora": {
-			"43": {
-				"https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/images/pxeboot/vmlinuz",
-				"https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/images/pxeboot/initrd.img",
-			},
-			"44": {
-				"https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/images/pxeboot/vmlinuz",
-				"https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/images/pxeboot/initrd.img",
-			},
-		},
-		"centos": {
-			"9": {
-				"http://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/images/pxeboot/vmlinuz",
-				"http://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/images/pxeboot/initrd.img",
-			},
-			"10": {
-				"http://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/images/pxeboot/vmlinuz",
-				"http://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/images/pxeboot/initrd.img",
-			},
-		},
-		"nixos": {
-			"26.05": {
-				"https://github.com/nix-community/nixos-images/releases/download/nixos-26.05/bzImage-x86_64-linux",
-				"https://github.com/nix-community/nixos-images/releases/download/nixos-26.05/initrd-x86_64-linux",
-			},
-		},
-		"opensuse": {
-			"16.0": {
-				"http://download.opensuse.org/distribution/leap/16.0/repo/oss/boot/x86_64/loader/linux",
-				"http://download.opensuse.org/distribution/leap/16.0/repo/oss/boot/x86_64/loader/initrd",
-			},
-			"tumbleweed": {
-				"http://download.opensuse.org/tumbleweed/repo/oss/boot/x86_64/loader/linux",
-				"http://download.opensuse.org/tumbleweed/repo/oss/boot/x86_64/loader/initrd",
-			},
-		},
-	}
-
-	require.Len(t, cfg.OSImages.Sources, len(want))
-	for osName, def := range cfg.OSImages.Sources {
-		versions, ok := want[osName]
-		require.True(t, ok, "unexpected OS %s", osName)
-		require.Len(t, def.Versions, len(versions), osName)
-		for version, info := range def.Versions {
-			urls, ok := versions[version]
-			require.True(t, ok, "unexpected %s %s", osName, version)
-			kernel, err := bootFileURL(info.BaseURL, def.KernelFile)
-			require.NoError(t, err)
-			initrd, err := bootFileURL(info.BaseURL, def.InitrdFile)
-			require.NoError(t, err)
-			assert.Equal(t, urls[0], kernel, "%s %s kernel", osName, version)
-			assert.Equal(t, urls[1], initrd, "%s %s initrd", osName, version)
-			assert.NotContains(t, kernel, "/x86_64/vmlinuz")
-			assert.NotContains(t, initrd, "/x86_64/initrd.img")
-		}
-	}
-}
 
 func TestProcessDownloadUsesCatalogFileNames(t *testing.T) {
 	var mu sync.Mutex
@@ -158,6 +72,7 @@ func TestProcessDownloadUsesCatalogFileNames(t *testing.T) {
 		Status:  dlstatus.StatusQueued,
 	}))
 
+	base := srv.URL + "/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64"
 	svc.processDownload(downloadRequest{
 		ctx: context.Background(),
 		id:  id,
@@ -166,12 +81,11 @@ func TestProcessDownloadUsesCatalogFileNames(t *testing.T) {
 			Version:      "12",
 			Architecture: "x86_64",
 		},
-		versionInfo: config.OSVersion{
-			BaseURL:       srv.URL + "/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
-			Architectures: []string{"x86_64"},
+		release: catalog.Release{
+			OS: "debian", Version: "12", Arch: "x86_64",
+			KernelURL: base + "/linux",
+			InitrdURL: base + "/initrd.gz",
 		},
-		kernelFile: "linux",
-		initrdFile: "initrd.gz",
 	})
 
 	mu.Lock()

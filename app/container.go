@@ -8,6 +8,7 @@ import (
 	"ignite/handlers"
 	"ignite/ipxe"
 	"ignite/osimage"
+	"ignite/osimage/catalog"
 	"ignite/syslinux"
 )
 
@@ -22,6 +23,7 @@ type Container struct {
 	OSImageRepo        osimage.OSImageRepository
 	DownloadStatusRepo osimage.DownloadStatusRepository
 	OSImageService     osimage.OSImageService
+	Catalog            catalog.Catalog
 	SyslinuxRepo       syslinux.Repository
 	SyslinuxService    syslinux.Service
 	IPXEService        *ipxe.Service
@@ -67,7 +69,20 @@ func NewContainer() (c *Container, err error) {
 	// Create services
 	serverService := dhcp.NewDHCPServerService(serverRepo, leaseRepo)
 	leaseService := dhcp.NewDHCPLeaseService(leaseRepo, serverRepo)
-	osImageService := osimage.NewOSImageService(osImageRepo, downloadStatusRepo, cfg)
+	httpClient := catalog.NewClient()
+	store, err := catalog.NewBoltStore(database)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create OS catalog store: %w", err)
+	}
+	cat, err := catalog.New(catalog.Options{
+		Sources:   catalog.DefaultSources(httpClient),
+		Lifecycle: catalog.EndOfLife{Client: httpClient},
+		Store:     store,
+	})
+	if err != nil {
+		return nil, fmt.Errorf("failed to load OS catalog: %w", err)
+	}
+	osImageService := osimage.NewOSImageService(osImageRepo, downloadStatusRepo, cfg, cat)
 	cacheDir, err := config.ResolveSyslinuxCacheDir(cfg.DB.DBPath, cfg.Syslinux.CacheDir)
 	if err != nil {
 		return nil, fmt.Errorf("failed to resolve syslinux cache: %w", err)
@@ -78,6 +93,7 @@ func NewContainer() (c *Container, err error) {
 	slCfg.TempDir = cacheDir
 	syslinuxService := syslinux.NewService(syslinuxRepo, slCfg)
 	ipxeService := ipxe.NewService(cfg, osImageService)
+	ipxeService.UseCatalog(cat)
 	prefs, err := handlers.NewBoltPreferenceStore(database, cfg.DB.Bucket+"_prefs")
 	if err != nil {
 		return nil, fmt.Errorf("failed to create preference store: %w", err)
@@ -93,6 +109,7 @@ func NewContainer() (c *Container, err error) {
 		OSImageRepo:        osImageRepo,
 		DownloadStatusRepo: downloadStatusRepo,
 		OSImageService:     osImageService,
+		Catalog:            cat,
 		SyslinuxRepo:       syslinuxRepo,
 		SyslinuxService:    syslinuxService,
 		IPXEService:        ipxeService,

@@ -5,6 +5,7 @@ import (
 	"ignite/dhcp"
 	"ignite/ipxe"
 	"ignite/osimage"
+	"ignite/osimage/catalog"
 	"ignite/syslinux"
 )
 
@@ -13,6 +14,7 @@ type Container struct {
 	ServerService   dhcp.ServerService
 	LeaseService    dhcp.LeaseService
 	OSImageService  osimage.OSImageService
+	Catalog         catalog.Catalog
 	SyslinuxService syslinux.Service
 	IPXEService     *ipxe.Service
 	Config          *config.Config

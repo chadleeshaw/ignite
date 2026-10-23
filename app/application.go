@@ -50,6 +50,7 @@ func NewApplicationWithStatic(staticFS embed.FS) (*Application, error) {
 		ServerService:   container.ServerService,
 		LeaseService:    container.LeaseService,
 		OSImageService:  container.OSImageService,
+		Catalog:         container.Catalog,
 		SyslinuxService: container.SyslinuxService,
 		IPXEService:     container.IPXEService,
 		Config:          container.Config,

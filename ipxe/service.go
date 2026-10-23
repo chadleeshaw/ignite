@@ -6,17 +6,29 @@ import (
 	"fmt"
 	"ignite/config"
 	"ignite/osimage"
+	"ignite/osimage/catalog"
 	"net"
 	"os"
 	"path/filepath"
 	"strings"
 	"text/template"
+	"time"
 )
 
 // Service handles iPXE configuration generation
 type Service struct {
 	config         *config.Config
 	osImageService osimage.OSImageService
+	catalog        catalog.Catalog
+}
+
+// UseCatalog supplies release names for the boot menu. A nil catalog keeps
+// the built-in names.
+func (s *Service) UseCatalog(cat catalog.Catalog) {
+	if s == nil {
+		return
+	}
+	s.catalog = cat
 }
 
 // NewService creates a new iPXE service
@@ -74,7 +86,7 @@ func (s *Service) GenerateConfig(ctx context.Context) (string, error) {
 		entry := OSImageEntry{
 			ID:          menuID(img.OS, img.Version),
 			Name:        strings.ToLower(img.OS),
-			DisplayName: s.getDisplayName(img.OS, img.Version),
+			DisplayName: s.menuLabel(ctx, img.OS, img.Version),
 			KernelPath:  kernelRel,
 			InitrdPath:  initrdRel,
 			KernelArgs:  s.getKernelArgs(img.OS, serverIP),
@@ -159,6 +171,37 @@ func (s *Service) getServerIP() (string, error) {
 	}
 
 	return "", fmt.Errorf("no suitable network interface found")
+}
+
+// menuLabel prefers the catalog display name. The OS name is prefixed when
+// the release name does not already include it, and past-EOL releases gain
+// an (EOL) suffix. A miss falls back to the built-in names.
+func (s *Service) menuLabel(ctx context.Context, osName, version string) string {
+	fallback := s.getDisplayName(osName, version)
+	if s == nil || s.catalog == nil {
+		return fallback
+	}
+	rel, ok := s.catalog.Lookup(ctx, osName, version, "")
+	if !ok {
+		return fallback
+	}
+	name := rel.DisplayName
+	if name == "" {
+		name = version
+	}
+	osDisplay := ""
+	if s.config != nil {
+		if def, ok := s.config.OSImages.Sources[osName]; ok {
+			osDisplay = def.DisplayName
+		}
+	}
+	if osDisplay != "" && !strings.Contains(name, osDisplay) {
+		name = osDisplay + " " + name
+	}
+	if rel.EOL(time.Now()) {
+		name += " (EOL)"
+	}
+	return name
 }
 
 // getDisplayName returns a user-friendly display name for OS/version

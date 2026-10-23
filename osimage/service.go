@@ -8,14 +8,13 @@ import (
 	"fmt"
 	"ignite/config"
 	"ignite/dlstatus"
+	"ignite/osimage/catalog"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
 	"sort"
-	"strconv"
-	"strings"
 	"sync"
 	"time"
 
@@ -28,12 +27,10 @@ var errDownloadTerminal = errors.New("download already in terminal state")
 
 // downloadRequest is a unit of work for the background download worker.
 type downloadRequest struct {
-	ctx         context.Context
-	id          string
-	osConfig    OSImageConfig
-	versionInfo config.OSVersion
-	kernelFile  string
-	initrdFile  string
+	ctx      context.Context
+	id       string
+	osConfig OSImageConfig
+	release  catalog.Release
 }
 
 // osImageServiceImpl provides business logic for OS image management.
@@ -42,6 +39,7 @@ type osImageServiceImpl struct {
 	repo         OSImageRepository
 	downloadRepo DownloadStatusRepository
 	config       *config.Config
+	catalog      catalog.Catalog
 	httpClient   *http.Client
 	downloadChan chan downloadRequest
 
@@ -49,12 +47,15 @@ type osImageServiceImpl struct {
 	cancels map[string]context.CancelFunc // download ID -> cancel func
 }
 
-// NewOSImageService creates a new OS image service
-func NewOSImageService(repo OSImageRepository, downloadRepo DownloadStatusRepository, cfg *config.Config) OSImageService {
+// NewOSImageService creates a new OS image service. cat supplies release
+// URLs and the versions a download is allowed to request, including releases
+// that are past end of life so an existing image can still be resolved.
+func NewOSImageService(repo OSImageRepository, downloadRepo DownloadStatusRepository, cfg *config.Config, cat catalog.Catalog) OSImageService {
 	service := &osImageServiceImpl{
 		repo:         repo,
 		downloadRepo: downloadRepo,
 		config:       cfg,
+		catalog:      cat,
 		httpClient: &http.Client{
 			Timeout: 30 * time.Minute,
 		},
@@ -126,8 +127,8 @@ func (s *osImageServiceImpl) removeCancel(id string) {
 // It returns a copy of the queued status; the worker mutates only its own
 // re-read copy afterwards.
 func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSImageConfig) (*DownloadStatus, error) {
-	// Validate OS/version combination
-	if !s.isValidOSVersion(osConfig.OS, osConfig.Version) {
+	release, ok := s.lookupRelease(ctx, osConfig)
+	if !ok {
 		return nil, fmt.Errorf("unsupported OS/version combination: %s %s", osConfig.OS, osConfig.Version)
 	}
 
@@ -136,9 +137,6 @@ func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSIma
 	if err == nil && existing != nil {
 		return nil, fmt.Errorf("OS image already exists: %s %s", osConfig.OS, osConfig.Version)
 	}
-
-	def := s.config.OSImages.Sources[osConfig.OS]
-	versionInfo := def.Versions[osConfig.Version]
 
 	status := &DownloadStatus{
 		ID:        uuid.New().String(),
@@ -156,12 +154,10 @@ func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSIma
 	s.mu.Unlock()
 
 	req := downloadRequest{
-		ctx:         dlCtx,
-		id:          status.ID,
-		osConfig:    osConfig,
-		versionInfo: versionInfo,
-		kernelFile:  def.KernelFile,
-		initrdFile:  def.InitrdFile,
+		ctx:      dlCtx,
+		id:       status.ID,
+		osConfig: osConfig,
+		release:  release,
 	}
 
 	// Persist the queued status BEFORE enqueueing so the worker can never
@@ -287,25 +283,19 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 	}
 
 	osConfig := req.osConfig
-	versionInfo := req.versionInfo
+	release := req.release
 
 	arch := osConfig.Architecture
 	if arch == "" {
-		if len(versionInfo.Architectures) > 0 {
-			arch = versionInfo.Architectures[0]
-		} else {
-			arch = "x86_64"
-		}
+		arch = release.Arch
 	}
-
-	kernelURL, err := bootFileURL(versionInfo.BaseURL, req.kernelFile)
-	if err != nil {
-		s.failDownload(ctx, status, fmt.Errorf("kernel URL: %w", err))
-		return
+	if arch == "" {
+		arch = "x86_64"
 	}
-	initrdURL, err := bootFileURL(versionInfo.BaseURL, req.initrdFile)
-	if err != nil {
-		s.failDownload(ctx, status, fmt.Errorf("initrd URL: %w", err))
+	kernelURL := release.KernelURL
+	initrdURL := release.InitrdURL
+	if kernelURL == "" || initrdURL == "" {
+		s.failDownload(ctx, status, fmt.Errorf("release %s %s is missing a boot file URL", osConfig.OS, osConfig.Version))
 		return
 	}
 
@@ -373,7 +363,7 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		InitrdSize:   initrdSize,
 		Checksum:     kernelChecksum + ":" + initrdChecksum,
 		Active:       false,
-		DownloadURL:  versionInfo.BaseURL,
+		DownloadURL:  kernelURL,
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -459,58 +449,31 @@ func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath str
 	return size, checksum, nil
 }
 
-// GetAvailableVersions returns available versions for an OS
+// GetAvailableVersions returns non-EOL versions for an OS, newest first.
 func (s *osImageServiceImpl) GetAvailableVersions(ctx context.Context, osName string) ([]string, error) {
-	osDef, exists := s.config.OSImages.Sources[osName]
-	if !exists {
+	if s.catalog == nil {
 		return nil, fmt.Errorf("unsupported OS: %s", osName)
 	}
-
-	var versions []string
-	for version := range osDef.Versions {
-		versions = append(versions, version)
+	snap, err := s.catalog.Current(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("unsupported OS: %s", osName)
 	}
-
-	sort.Slice(versions, func(i, j int) bool {
-		return compareVersions(versions[i], versions[j]) < 0
-	})
-	return versions, nil
-}
-
-// compareVersions compares dot-separated version strings numerically,
-// segment by segment, falling back to lexical comparison for non-numeric
-// segments ("9" < "10", "6.03" < "6.10").
-func compareVersions(a, b string) int {
-	as := strings.Split(a, ".")
-	bs := strings.Split(b, ".")
-	for i := 0; i < len(as) && i < len(bs); i++ {
-		ai, aerr := strconv.Atoi(as[i])
-		bi, berr := strconv.Atoi(bs[i])
-		switch {
-		case aerr == nil && berr == nil:
-			if ai != bi {
-				if ai < bi {
-					return -1
-				}
-				return 1
-			}
-		default:
-			if as[i] != bs[i] {
-				if as[i] < bs[i] {
-					return -1
-				}
-				return 1
-			}
+	known := false
+	for _, rel := range snap.Releases {
+		if rel.OS == osName {
+			known = true
+			break
 		}
 	}
-	switch {
-	case len(as) < len(bs):
-		return -1
-	case len(as) > len(bs):
-		return 1
-	default:
-		return 0
+	if !known {
+		return nil, fmt.Errorf("unsupported OS: %s", osName)
 	}
+	views := catalog.Versions(osName, snap.Releases, time.Now(), false)
+	versions := make([]string, len(views))
+	for i, view := range views {
+		versions[i] = view.Value
+	}
+	return versions, nil
 }
 
 // GetSupportedOSes returns list of supported operating systems
@@ -523,13 +486,15 @@ func (s *osImageServiceImpl) GetSupportedOSes() []string {
 	return oses
 }
 
-// isValidOSVersion checks if the OS/version combination is valid
-func (s *osImageServiceImpl) isValidOSVersion(osName, version string) bool {
-	osDef, exists := s.config.OSImages.Sources[osName]
-	if !exists {
-		return false
+// lookupRelease resolves a download against the catalog, including releases
+// past end of life. An empty architecture matches the catalog's arch.
+func (s *osImageServiceImpl) lookupRelease(ctx context.Context, osConfig OSImageConfig) (catalog.Release, bool) {
+	if s.catalog == nil {
+		return catalog.Release{}, false
 	}
-
-	_, exists = osDef.Versions[version]
-	return exists
+	arch := osConfig.Architecture
+	if arch == "" {
+		arch = "x86_64"
+	}
+	return s.catalog.Lookup(ctx, osConfig.OS, osConfig.Version, arch)
 }
