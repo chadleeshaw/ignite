@@ -32,6 +32,8 @@ type downloadRequest struct {
 	id          string
 	osConfig    OSImageConfig
 	versionInfo config.OSVersion
+	kernelFile  string
+	initrdFile  string
 }
 
 // osImageServiceImpl provides business logic for OS image management.
@@ -135,7 +137,8 @@ func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSIma
 		return nil, fmt.Errorf("OS image already exists: %s %s", osConfig.OS, osConfig.Version)
 	}
 
-	versionInfo := s.config.OSImages.Sources[osConfig.OS].Versions[osConfig.Version]
+	def := s.config.OSImages.Sources[osConfig.OS]
+	versionInfo := def.Versions[osConfig.Version]
 
 	status := &DownloadStatus{
 		ID:        uuid.New().String(),
@@ -157,6 +160,8 @@ func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSIma
 		id:          status.ID,
 		osConfig:    osConfig,
 		versionInfo: versionInfo,
+		kernelFile:  def.KernelFile,
+		initrdFile:  def.InitrdFile,
 	}
 
 	// Persist the queued status BEFORE enqueueing so the worker can never
@@ -293,9 +298,16 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		}
 	}
 
-	baseURL := strings.TrimSuffix(versionInfo.BaseURL, "/")
-	kernelURL := fmt.Sprintf("%s/%s/vmlinuz", baseURL, arch)
-	initrdURL := fmt.Sprintf("%s/%s/initrd.img", baseURL, arch)
+	kernelURL, err := bootFileURL(versionInfo.BaseURL, req.kernelFile)
+	if err != nil {
+		s.failDownload(ctx, status, fmt.Errorf("kernel URL: %w", err))
+		return
+	}
+	initrdURL, err := bootFileURL(versionInfo.BaseURL, req.initrdFile)
+	if err != nil {
+		s.failDownload(ctx, status, fmt.Errorf("initrd URL: %w", err))
+		return
+	}
 
 	tftpDir := s.config.TFTP.Dir
 	downloadDir := filepath.Join(tftpDir, "os-images", osConfig.OS, osConfig.Version)
