@@ -76,10 +76,10 @@
         {{if .OSImages}}
         <div class="cozy-view cards">
             {{range .OSImages}}
-            <article class="cd" style="cursor: default;">
+            <article class="cd" data-eol="{{if .EOL}}true{{else}}false{{end}}" style="cursor: default;">
                 <div class="r">
                     <span><span class="ico {{.OS}}">{{initial .OS}}</span><b>{{.OS}} {{.Version}}</b></span>
-                    <span class="st ok">Ready</span>
+                    {{if .EOL}}{{template "eol-badge" .}}{{else}}<span class="st ok">Ready</span>{{end}}
                 </div>
                 <div class="kv">
                     <span>Arch</span><span>{{.Architecture}}</span>
@@ -109,9 +109,9 @@
                 </thead>
                 <tbody>
                     {{range .OSImages}}
-                    <tr>
+                    <tr data-eol="{{if .EOL}}true{{else}}false{{end}}">
                         <td><span class="ico {{.OS}}">{{initial .OS}}</span>{{.OS}}</td>
-                        <td class="mono">{{.Version}}</td>
+                        <td class="mono">{{.Version}}{{if .EOL}} {{template "eol-badge" .}}{{end}}</td>
                         <td>{{.Architecture}}</td>
                         <td>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</td>
                         <td>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</td>
@@ -147,34 +147,47 @@
         </div>
         <form id="download-form" hx-post="/osimages/download" hx-swap="none" hx-on::after-request="handleDownloadResponse(event)">
             <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            {{$chosenOS := ""}}
+            {{$chosenArch := ""}}
+            {{if .Catalog.OSes}}{{$chosenOS = (index .Catalog.OSes 0).OS}}{{end}}
+            {{if .Architectures}}{{$chosenArch = index .Architectures 0}}{{end}}
             <div class="fld">
                 <label for="os">Operating system</label>
-                <select id="os" name="os" class="select select-bordered w-full" required onchange="updateVersions(this.value)">
+                <select id="os" name="os" class="select select-bordered w-full" required onchange="updateVersions()">
                     <option value="">Select OS</option>
-                    <option value="ubuntu">Ubuntu</option>
-                    <option value="debian">Debian</option>
-                    <option value="fedora">Fedora</option>
-                    <option value="centos">CentOS</option>
-                    <option value="opensuse">openSUSE</option>
-                    <option value="nixos">NixOS</option>
+                    {{range .Catalog.OSes}}
+                    <option value="{{.OS}}" {{if eq .OS $chosenOS}}selected{{end}}>{{.DisplayName}}</option>
+                    {{end}}
                 </select>
             </div>
             <div class="fld">
                 <label for="versionSelect">Version</label>
                 <select name="version" id="versionSelect" class="select select-bordered w-full" required>
                     <option value="">Select version</option>
+                    {{range .Catalog.OSes}}
+                    {{$os := .}}
+                    <optgroup label="{{$os.DisplayName}}" data-os="{{$os.OS}}">
+                        {{range $os.Versions}}
+                        <option value="{{.Value}}" data-os="{{$os.OS}}" data-arch="{{.Arch}}" data-latest="{{if .Latest}}true{{else}}false{{end}}" data-eol="{{if .EOL}}true{{else}}false{{end}}"{{if .EOLDate}} data-eol-date="{{.EOLDate}}"{{end}}{{if and .Latest (eq $os.OS $chosenOS) (eq .Arch $chosenArch)}} selected{{end}}>{{.DisplayName}}{{if .Latest}} · latest{{end}}{{if .EOL}} · EOL{{if .EOLDate}} {{.EOLDate}}{{end}}{{end}}</option>
+                        {{end}}
+                    </optgroup>
+                    {{end}}
                 </select>
+                <label class="checkline" for="include-eol">
+                    <input type="checkbox" id="include-eol" onchange="updateVersions()">
+                    <span>Show end-of-life versions</span>
+                </label>
             </div>
             <div class="fld">
                 <label for="architecture">Architecture</label>
-                <select id="architecture" name="architecture" class="select select-bordered w-full">
+                <select id="architecture" name="architecture" class="select select-bordered w-full" onchange="updateVersions()">
                     {{range .Architectures}}
                     <option value="{{.}}">{{.}}</option>
                     {{end}}
                 </select>
             </div>
             <div class="fld">
-                <span class="mu">Supported: {{range $i, $name := .SupportedOS}}{{if $i}} · {{end}}{{$name}}{{end}}</span>
+                {{template "catalog-status.templ" .}}
             </div>
             <div class="ipxe-note">
                 <b>iPXE boot menu</b>
@@ -202,35 +215,112 @@
 </dialog>
 
 <script>
-function updateVersions(os) {
-    const versionSelect = document.getElementById('versionSelect');
-    versionSelect.replaceChildren();
-    const placeholder = document.createElement('option');
-    placeholder.value = '';
-    placeholder.textContent = 'Select version';
-    versionSelect.appendChild(placeholder);
-    if (!os) return;
-    fetch('/osimages/available-versions?os=' + encodeURIComponent(os))
-        .then(function (response) {
-            if (!response.ok) throw new Error('Failed to fetch versions');
-            return response.json();
-        })
-        .then(function (versions) {
-            versions.forEach(function (versionInfo) {
-                const option = document.createElement('option');
-                option.value = versionInfo.value;
-                option.textContent = versionInfo.display_name;
-                versionSelect.appendChild(option);
+function selectedArch() {
+    var arch = document.getElementById('architecture');
+    return arch ? arch.value : '';
+}
+
+function versionLabel(info) {
+    var label = info.display_name || info.value || '';
+    if (info.latest) label += ' · latest';
+    if (info.eol) {
+        label += ' · EOL';
+        if (info.eol_date) label += ' ' + info.eol_date;
+    }
+    return label;
+}
+
+function syncVersionOptions() {
+    var osSelect = document.getElementById('os');
+    var versionSelect = document.getElementById('versionSelect');
+    if (!osSelect || !versionSelect) return;
+    var os = osSelect.value;
+    var arch = selectedArch();
+    var includeEOL = document.getElementById('include-eol');
+    var wantEOL = includeEOL ? includeEOL.checked : false;
+    var latest = null;
+    var first = null;
+    versionSelect.querySelectorAll('optgroup').forEach(function (group) {
+        var matchOS = group.getAttribute('data-os') === os;
+        group.hidden = !matchOS;
+        group.disabled = !matchOS;
+        group.querySelectorAll('option').forEach(function (option) {
+            var optionArch = option.getAttribute('data-arch') || '';
+            var matchArch = !arch || optionArch === arch;
+            var eol = option.getAttribute('data-eol') === 'true';
+            var show = matchOS && matchArch && (wantEOL || !eol);
+            option.hidden = !show;
+            option.disabled = !show;
+            if (!show) return;
+            if (!first) first = option;
+            if (option.getAttribute('data-latest') === 'true') latest = option;
+        });
+    });
+    var pick = latest || first;
+    versionSelect.value = pick ? pick.value : '';
+}
+
+function loadEOLVersions(os) {
+    return fetch('/osimages/available-versions?os=' + encodeURIComponent(os) + '&include_eol=true', {
+        headers: { 'Accept': 'application/json' }
+    }).then(function (response) {
+        if (!response.ok) throw new Error('Failed to fetch versions');
+        return response.json();
+    }).then(function (versions) {
+        if (!Array.isArray(versions) || document.getElementById('os').value !== os) return;
+        var versionSelect = document.getElementById('versionSelect');
+        var group = null;
+        versionSelect.querySelectorAll('optgroup').forEach(function (candidate) {
+            if (candidate.getAttribute('data-os') === os) group = candidate;
+        });
+        if (!group) return;
+        versions.forEach(function (info) {
+            if (!info || !info.eol) return;
+            var arch = info.arch || '';
+            var exists = false;
+            group.querySelectorAll('option').forEach(function (option) {
+                if (option.value === info.value && (option.getAttribute('data-arch') || '') === arch) exists = true;
             });
-        })
-        .catch(function (error) { console.error('Error fetching versions:', error); });
+            if (exists) {
+                group.querySelectorAll('option').forEach(function (option) {
+                    if (option.value === info.value && (option.getAttribute('data-arch') || '') === arch) {
+                        option.textContent = versionLabel(info);
+                        option.setAttribute('data-eol', 'true');
+                        if (info.eol_date) option.setAttribute('data-eol-date', info.eol_date);
+                    }
+                });
+                return;
+            }
+            var option = document.createElement('option');
+            option.value = info.value || '';
+            option.textContent = versionLabel(info);
+            option.setAttribute('data-os', os);
+            option.setAttribute('data-arch', arch);
+            option.setAttribute('data-latest', info.latest ? 'true' : 'false');
+            option.setAttribute('data-eol', 'true');
+            if (info.eol_date) option.setAttribute('data-eol-date', info.eol_date);
+            option.setAttribute('data-injected', 'true');
+            group.appendChild(option);
+        });
+    });
+}
+
+function updateVersions() {
+    var osSelect = document.getElementById('os');
+    var os = osSelect ? osSelect.value : '';
+    var includeEOL = document.getElementById('include-eol');
+    if (includeEOL && includeEOL.checked && os) {
+        loadEOLVersions(os).then(syncVersionOptions).catch(function () { syncVersionOptions(); });
+        return;
+    }
+    syncVersionOptions();
 }
 
 function showOSImageInfo(imageId) {
     fetch('/osimages/info/' + encodeURIComponent(imageId))
         .then(function (response) { return response.json(); })
         .then(function (data) {
-            fillFacts(document.getElementById('osImageInfo'), [
+            var rows = [
                 ['ID', data.id, 'mono'],
                 ['OS', data.os, ''],
                 ['Version', data.version, ''],
@@ -239,7 +329,9 @@ function showOSImageInfo(imageId) {
                 ['Initrd', data.initrd_path, 'mono'],
                 ['Kernel size', formatBytes(data.kernel_size), ''],
                 ['Initrd size', formatBytes(data.initrd_size), '']
-            ]);
+            ];
+            if (data.eol) rows.push(['End of life', data.eol_date ? String(data.eol_date) : 'Yes', '']);
+            fillFacts(document.getElementById('osImageInfo'), rows);
             document.getElementById('infoModal').showModal();
         })
         .catch(function () { alert('Failed to load OS image information'); });
@@ -269,6 +361,8 @@ function formatBytes(bytes) {
     return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
 }
 
+updateVersions();
+
 function handleDownloadResponse(event) {
     const xhr = event.detail.xhr;
     if (!xhr || xhr.status !== 200) return;
@@ -283,3 +377,5 @@ function handleDownloadResponse(event) {
 }
 </script>
 {{ end }}
+
+{{define "eol-badge"}}<span class="st wa eol-badge" title="{{if .EOLDate}}End of life {{.EOLDate}}{{else}}End of life{{end}}">EOL{{if .EOLDate}} {{.EOLDate}}{{end}}</span>{{end}}

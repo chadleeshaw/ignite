@@ -11,6 +11,7 @@ import (
 
 	"ignite/config"
 	"ignite/dlstatus"
+	"ignite/osimage/catalog"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -65,13 +66,11 @@ func TestProcessDownloadIgnoresSharedExpectedChecksum(t *testing.T) {
 			Version:      "12",
 			Architecture: "x86_64",
 		},
-		versionInfo: config.OSVersion{
-			BaseURL:          srv.URL + "/netboot/",
-			Architectures:    []string{"x86_64"},
-			ExpectedChecksum: kernelHex,
+		release: catalog.Release{
+			OS: "debian", Version: "12", Arch: "x86_64",
+			KernelURL: srv.URL + "/netboot/linux",
+			InitrdURL: srv.URL + "/netboot/initrd.gz",
 		},
-		kernelFile: "linux",
-		initrdFile: "initrd.gz",
 	})
 
 	status, err := statuses.Get(context.Background(), id)
@@ -81,4 +80,42 @@ func TestProcessDownloadIgnoresSharedExpectedChecksum(t *testing.T) {
 	assert.Equal(t, kernelHex+":"+initrdHex, images.saved.Checksum)
 	assert.Equal(t, int64(len(kernelBody)), images.saved.KernelSize)
 	assert.Equal(t, int64(len(initrdBody)), images.saved.InitrdSize)
+}
+
+func TestProcessDownloadRejectsChecksumMismatch(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte("kernel-bytes"))
+	}))
+	t.Cleanup(srv.Close)
+
+	images := &memImages{}
+	statuses := newMemStatus()
+	id := "dl-mismatch"
+	require.NoError(t, statuses.Save(context.Background(), &DownloadStatus{
+		ID: id, Status: dlstatus.StatusQueued, OS: "debian", Version: "12",
+	}))
+	svc := &osImageServiceImpl{
+		repo:         images,
+		downloadRepo: statuses,
+		config:       &config.Config{TFTP: config.TFTPConfig{Dir: t.TempDir()}},
+		httpClient:   srv.Client(),
+		cancels:      map[string]context.CancelFunc{},
+	}
+	svc.processDownload(downloadRequest{
+		ctx:      context.Background(),
+		id:       id,
+		osConfig: OSImageConfig{OS: "debian", Version: "12", Architecture: "x86_64"},
+		release: catalog.Release{
+			OS: "debian", Version: "12", Arch: "x86_64",
+			KernelURL:    srv.URL + "/linux",
+			InitrdURL:    srv.URL + "/initrd.gz",
+			KernelSHA256: "deadbeef",
+		},
+	})
+
+	status, err := statuses.Get(context.Background(), id)
+	require.NoError(t, err)
+	assert.Equal(t, dlstatus.StatusFailed, status.Status)
+	assert.Contains(t, status.ErrorMessage, "checksum mismatch")
+	assert.Nil(t, images.saved)
 }

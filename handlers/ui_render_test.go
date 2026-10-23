@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"ignite/osimage"
+	"ignite/osimage/catalog"
 	"ignite/syslinux"
 )
 
@@ -368,19 +369,25 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
 		SupportedOS   []string
+		Catalog       catalog.Listing
 		KernelBytes   int64
 		InitrdBytes   int64
 		ArchLabel     string
 		DownloadCount int
 	}{
 		Title: "OS Images", Page: "osimages", Architectures: []string{"x86_64"},
+		Catalog: catalog.Listing{
+			Source: "live", RefreshedAt: "2026-10-23T00:00:00Z",
+			Errors: map[string]string{},
+			OSes:   []catalog.OSListing{{OS: "ubuntu", DisplayName: "Ubuntu"}},
+		},
 		ArchLabel: "x86_64", KernelBytes: 1000,
 		OSImages: []*osimage.OSImage{{
 			ID: "img1", OS: "ubuntu", Version: "24.04", Architecture: "x86_64",
 			KernelSize: 1000, CreatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		}},
 	})
-	if !strings.Contains(osOut, "24.04") || !strings.Contains(osOut, `id="versionSelect"`) || !strings.Contains(osOut, `class="ico ubuntu"`) {
+	if !strings.Contains(osOut, "24.04") || !strings.Contains(osOut, `id="versionSelect"`) || !strings.Contains(osOut, `class="ico ubuntu"`) || !strings.Contains(osOut, `data-eol="false"`) {
 		t.Error("os images list or download form missing")
 	}
 	if !strings.Contains(osOut, "1 image") || !strings.Contains(osOut, `<kbd>1</kbd>–<kbd>6</kbd> pages`) || !strings.Contains(osOut, "Ready") {

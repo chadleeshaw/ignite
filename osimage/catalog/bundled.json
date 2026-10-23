@@ -1,0 +1,101 @@
+{
+  "source": "bundled",
+  "releases": [
+    {
+      "os": "ubuntu",
+      "version": "22.04",
+      "display_name": "22.04 LTS",
+      "arch": "x86_64",
+      "kernel_url": "https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-3b4b797c/vmlinuz",
+      "initrd_url": "https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-3b4b797c/initrd"
+    },
+    {
+      "os": "ubuntu",
+      "version": "24.04",
+      "display_name": "24.04 LTS",
+      "arch": "x86_64",
+      "kernel_url": "https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.4-494663bf/vmlinuz",
+      "initrd_url": "https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.4-494663bf/initrd"
+    },
+    {
+      "os": "ubuntu",
+      "version": "26.04",
+      "display_name": "26.04 LTS",
+      "arch": "x86_64",
+      "kernel_url": "https://github.com/netbootxyz/ubuntu-squash/releases/download/26.04.1-c43af979/vmlinuz",
+      "initrd_url": "https://github.com/netbootxyz/ubuntu-squash/releases/download/26.04.1-c43af979/initrd"
+    },
+    {
+      "os": "debian",
+      "version": "12",
+      "display_name": "12 (Bookworm)",
+      "arch": "x86_64",
+      "kernel_url": "http://deb.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux",
+      "initrd_url": "http://deb.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz"
+    },
+    {
+      "os": "debian",
+      "version": "13",
+      "display_name": "13 (Trixie)",
+      "arch": "x86_64",
+      "kernel_url": "http://deb.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux",
+      "initrd_url": "http://deb.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/initrd.gz"
+    },
+    {
+      "os": "fedora",
+      "version": "43",
+      "display_name": "43",
+      "arch": "x86_64",
+      "kernel_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/images/pxeboot/vmlinuz",
+      "initrd_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/images/pxeboot/initrd.img"
+    },
+    {
+      "os": "fedora",
+      "version": "44",
+      "display_name": "44",
+      "arch": "x86_64",
+      "kernel_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/images/pxeboot/vmlinuz",
+      "initrd_url": "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/images/pxeboot/initrd.img"
+    },
+    {
+      "os": "centos",
+      "version": "9",
+      "display_name": "9 Stream",
+      "arch": "x86_64",
+      "kernel_url": "http://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/images/pxeboot/vmlinuz",
+      "initrd_url": "http://mirror.stream.centos.org/9-stream/BaseOS/x86_64/os/images/pxeboot/initrd.img"
+    },
+    {
+      "os": "centos",
+      "version": "10",
+      "display_name": "10 Stream",
+      "arch": "x86_64",
+      "kernel_url": "http://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/images/pxeboot/vmlinuz",
+      "initrd_url": "http://mirror.stream.centos.org/10-stream/BaseOS/x86_64/os/images/pxeboot/initrd.img"
+    },
+    {
+      "os": "nixos",
+      "version": "26.05",
+      "display_name": "26.05",
+      "arch": "x86_64",
+      "kernel_url": "https://github.com/nix-community/nixos-images/releases/download/nixos-26.05/bzImage-x86_64-linux",
+      "initrd_url": "https://github.com/nix-community/nixos-images/releases/download/nixos-26.05/initrd-x86_64-linux"
+    },
+    {
+      "os": "opensuse",
+      "version": "16.0",
+      "display_name": "Leap 16.0",
+      "arch": "x86_64",
+      "kernel_url": "http://download.opensuse.org/distribution/leap/16.0/repo/oss/boot/x86_64/loader/linux",
+      "initrd_url": "http://download.opensuse.org/distribution/leap/16.0/repo/oss/boot/x86_64/loader/initrd"
+    },
+    {
+      "os": "opensuse",
+      "version": "tumbleweed",
+      "display_name": "Tumbleweed (Rolling)",
+      "arch": "x86_64",
+      "kernel_url": "http://download.opensuse.org/tumbleweed/repo/oss/boot/x86_64/loader/linux",
+      "initrd_url": "http://download.opensuse.org/tumbleweed/repo/oss/boot/x86_64/loader/initrd"
+    }
+  ]
+}

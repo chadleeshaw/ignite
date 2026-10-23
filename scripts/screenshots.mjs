@@ -150,6 +150,11 @@ try {
     if (path === "/dhcp") {
       await page.setViewport({ width: 1280, height: 1280, deviceScaleFactor: 1 });
     }
+    // The download column is taller than an 800px stage once the catalog
+    // status, version list, and end-of-life toggle are on the form.
+    if (path === "/osimages") {
+      await page.setViewport({ width: 1280, height: 900, deviceScaleFactor: 1 });
+    }
     await page.goto(base + path, { waitUntil: "networkidle0" });
     await settle(page);
     // Mode is stored on the server, so a navigation keeps the last choice.
@@ -169,6 +174,9 @@ try {
       await setMode(page, "console");
       await selectHost(page);
       await save(page, "dhcp_detail_console.png");
+      await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
+    }
+    if (path === "/osimages") {
       await page.setViewport({ width: 1280, height: 800, deviceScaleFactor: 1 });
     }
   }

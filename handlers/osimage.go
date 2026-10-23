@@ -1,11 +1,14 @@
 package handlers
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
-	"ignite/config"
 	"ignite/osimage"
+	"ignite/osimage/catalog"
 	"net/http"
+	"sort"
+	"time"
 
 	"github.com/gorilla/mux"
 )
@@ -40,25 +43,7 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		downloads = []*osimage.DownloadStatus{} // Continue with empty downloads
 	}
 
-	// Get supported architectures from config (collect unique architectures from all versions)
-	archMap := make(map[string]bool)
-	for _, osSource := range h.container.Config.OSImages.Sources {
-		for _, version := range osSource.Versions {
-			for _, arch := range version.Architectures {
-				archMap[arch] = true
-			}
-		}
-	}
-
-	var supportedArchs []string
-	for arch := range archMap {
-		supportedArchs = append(supportedArchs, arch)
-	}
-
-	// Fallback if no architectures found
-	if len(supportedArchs) == 0 {
-		supportedArchs = []string{"x86_64"}
-	}
+	supportedArchs := h.architectures(ctx)
 
 	var kernelBytes, initrdBytes int64
 	arches := map[string]struct{}{}
@@ -91,6 +76,7 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
 		SupportedOS   []string
+		Catalog       catalog.Listing
 		KernelBytes   int64
 		InitrdBytes   int64
 		ArchLabel     string
@@ -102,6 +88,7 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		Downloads:     downloads,
 		Architectures: supportedArchs,
 		SupportedOS:   h.container.Config.OSImages.SupportedNames(),
+		Catalog:       h.currentListing(ctx),
 		KernelBytes:   kernelBytes,
 		InitrdBytes:   initrdBytes,
 		ArchLabel:     archLabel,
@@ -137,9 +124,7 @@ func (h *OSImageHandlers) DownloadOSImage(w http.ResponseWriter, r *http.Request
 		architecture = "x86_64" // Default architecture
 	}
 
-	// Validate the OS, version, and architecture against the configured
-	// sources before starting any download.
-	if err := validateOSImageRequest(h.container.Config.OSImages.Sources, os, version, architecture); err != nil {
+	if err := h.validateOSImageRequest(ctx, os, version, architecture); err != nil {
 		HandleError(w, r, NewValidationError(
 			fmt.Sprintf("Invalid OS image request: %v", err),
 			err.Error(),
@@ -170,23 +155,74 @@ func (h *OSImageHandlers) DownloadOSImage(w http.ResponseWriter, r *http.Request
 	})
 }
 
-// validateOSImageRequest checks that the requested OS, version, and
-// architecture exist in the configured OS image sources.
-func validateOSImageRequest(sources map[string]config.OSDefinition, os, version, architecture string) error {
-	osDef, ok := sources[os]
-	if !ok {
-		return fmt.Errorf("unknown OS %q", os)
+// validateOSImageRequest checks the catalog, including releases past EOL.
+// An unknown OS, an unknown version, and a wrong architecture are distinct.
+func (h *OSImageHandlers) validateOSImageRequest(ctx context.Context, osName, version, architecture string) error {
+	cat := h.container.Catalog
+	if cat == nil {
+		return fmt.Errorf("unknown OS %q", osName)
 	}
-	versionDef, ok := osDef.Versions[version]
-	if !ok {
-		return fmt.Errorf("unknown version %q for OS %q", version, os)
+	if _, ok := cat.Lookup(ctx, osName, version, architecture); ok {
+		return nil
 	}
-	for _, arch := range versionDef.Architectures {
-		if arch == architecture {
-			return nil
+	snap, err := cat.Current(ctx)
+	if err != nil {
+		return fmt.Errorf("unknown OS %q", osName)
+	}
+	knownOS := osKnown(h.container, snap, osName)
+	knownVersion := false
+	for _, rel := range snap.Releases {
+		if rel.OS == osName && rel.Version == version {
+			knownVersion = true
+			break
 		}
 	}
-	return fmt.Errorf("unsupported architecture %q for %s %s", architecture, os, version)
+	if !knownOS {
+		return fmt.Errorf("unknown OS %q", osName)
+	}
+	if !knownVersion {
+		return fmt.Errorf("unknown version %q for OS %q", version, osName)
+	}
+	return fmt.Errorf("unsupported architecture %q for %s %s", architecture, osName, version)
+}
+
+func (h *OSImageHandlers) architectures(ctx context.Context) []string {
+	seen := map[string]struct{}{}
+	var out []string
+	if h.container.Catalog != nil {
+		snap, err := h.container.Catalog.Offerable(ctx)
+		if err == nil {
+			for _, rel := range snap.Releases {
+				if rel.Arch == "" {
+					continue
+				}
+				if _, ok := seen[rel.Arch]; ok {
+					continue
+				}
+				seen[rel.Arch] = struct{}{}
+				out = append(out, rel.Arch)
+			}
+		}
+	}
+	if len(out) == 0 {
+		return []string{"x86_64"}
+	}
+	sort.Strings(out)
+	return out
+}
+
+func osKnown(container *Container, snap catalog.Snapshot, osName string) bool {
+	if container != nil && container.Config != nil {
+		if _, ok := container.Config.OSImages.Sources[osName]; ok {
+			return true
+		}
+	}
+	for _, rel := range snap.Releases {
+		if rel.OS == osName {
+			return true
+		}
+	}
+	return false
 }
 
 // GetDownloadStatus returns the status of a download
@@ -268,41 +304,27 @@ func (h *OSImageHandlers) GetAvailableVersions(w http.ResponseWriter, r *http.Re
 		return
 	}
 
-	// Use the service to get available versions
-	versions, err := h.container.OSImageService.GetAvailableVersions(ctx, os)
+	cat := h.container.Catalog
+	if cat == nil {
+		HandleError(w, r, NewNotFoundError("catalog is not configured", "The requested OS is not configured"))
+		return
+	}
+	snap, err := cat.Current(ctx)
 	if err != nil {
 		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to get versions: %v", err), "Unable to load available versions"))
 		return
 	}
-
-	// Create a more detailed response with display names from config
-	osDef, exists := h.container.Config.OSImages.Sources[os]
-	if !exists {
+	if !osKnown(h.container, snap, os) {
 		HandleError(w, r, NewNotFoundError(fmt.Sprintf("OS configuration not found: %s", os), "The requested OS is not configured"))
 		return
 	}
-
-	type versionInfo struct {
-		Value       string `json:"value"`
-		DisplayName string `json:"display_name"`
+	includeEOL := r.URL.Query().Get("include_eol") == "true"
+	versions := catalog.Versions(os, snap.Releases, time.Now(), includeEOL)
+	if versions == nil {
+		versions = []catalog.Version{}
 	}
-
-	var versionList []versionInfo
-	for _, version := range versions {
-		displayName := version // Default to version number
-		if versionDef, ok := osDef.Versions[version]; ok {
-			if versionDef.DisplayName != "" {
-				displayName = versionDef.DisplayName
-			}
-		}
-		versionList = append(versionList, versionInfo{
-			Value:       version,
-			DisplayName: displayName,
-		})
-	}
-
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(versionList)
+	json.NewEncoder(w).Encode(versions)
 }
 
 // GetOSImageInfo returns detailed information about an OS image

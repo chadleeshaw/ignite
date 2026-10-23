@@ -9,8 +9,10 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"sync"
+	"time"
 
 	"ignite/config"
 	"ignite/dhcp"
@@ -89,6 +91,40 @@ var templateFuncs = template.FuncMap{
 		}
 		return strings.ToUpper(string(r[0]))
 	},
+	"refreshedKnown":    refreshedKnown,
+	"catalogErrorTitle": catalogErrorTitle,
+}
+
+// refreshedKnown reports whether a catalog timestamp should be formatted.
+// An empty string and the zero RFC3339 instant both read as Never.
+func refreshedKnown(value string) bool {
+	value = strings.TrimSpace(value)
+	if value == "" || strings.HasPrefix(value, "0001-01-01") {
+		return false
+	}
+	parsed, err := time.Parse(time.RFC3339, value)
+	if err != nil {
+		return true
+	}
+	return !parsed.IsZero()
+}
+
+// catalogErrorTitle is the hover text for the catalog warning chip.
+// Keys are sorted so the sentence is stable.
+func catalogErrorTitle(errors map[string]string) string {
+	if len(errors) == 0 {
+		return ""
+	}
+	keys := make([]string, 0, len(errors))
+	for key := range errors {
+		keys = append(keys, key)
+	}
+	sort.Strings(keys)
+	parts := make([]string, len(keys))
+	for i, key := range keys {
+		parts[i] = key + ": " + errors[key]
+	}
+	return strings.Join(parts, " · ")
 }
 
 // formatBytes renders a byte count as a human-readable string (e.g. "117.7 MB").
@@ -145,7 +181,8 @@ func parseTemplates() map[string]*template.Template {
 		"dashboard-summary":  {"templates/partials/dashboard-summary.templ"},
 		"dhcp-servers":       {"templates/partials/dhcp-servers.templ"},
 		"provision":          {baseTemplate, "templates/pages/provision.templ"},
-		"osimages":           {baseTemplate, "templates/pages/osimages.templ"},
+		"osimages":           {baseTemplate, "templates/pages/osimages.templ", "templates/partials/catalog-status.templ"},
+		"catalog-status":     {"templates/partials/catalog-status.templ"},
 		"syslinux":           {baseTemplate, "templates/pages/syslinux.templ"},
 		"error":              {baseTemplate, "templates/pages/error.templ"},
 		"error-public":       {"templates/pages/error-public.templ"},

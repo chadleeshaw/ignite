@@ -8,9 +8,11 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"ignite/config"
 	"ignite/osimage"
+	"ignite/osimage/catalog"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
@@ -624,4 +626,19 @@ func TestGetServerIP_EnvBeatsConfig(t *testing.T) {
 	ip, err := service.getServerIP()
 	assert.NoError(t, err)
 	assert.Equal(t, "10.20.30.40", ip)
+}
+
+func TestMenuLabelUsesCatalogAndMarksEOL(t *testing.T) {
+	cfg := createTestConfig()
+	cfg.OSImages.Sources["ubuntu"] = config.OSDefinition{DisplayName: "Ubuntu"}
+	cfg.OSImages.Sources["fedora"] = config.OSDefinition{DisplayName: "Fedora"}
+	service := NewService(cfg, nil)
+	service.UseCatalog(&catalog.Fixed{Snap: catalog.Snapshot{Releases: []catalog.Release{
+		{OS: "ubuntu", Version: "22.04", DisplayName: "22.04 LTS", Arch: "x86_64"},
+		{OS: "fedora", Version: "42", DisplayName: "42", Arch: "x86_64", EOLDate: time.Date(2020, 1, 1, 0, 0, 0, 0, time.UTC)},
+	}}})
+
+	assert.Equal(t, "Ubuntu 22.04 LTS", service.menuLabel(context.Background(), "ubuntu", "22.04"))
+	assert.Equal(t, "Fedora 42 (EOL)", service.menuLabel(context.Background(), "fedora", "42"))
+	assert.Equal(t, "NixOS 23.11", service.menuLabel(context.Background(), "nixos", "23.11"))
 }
