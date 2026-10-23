@@ -71,6 +71,7 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 		HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to get versions: %v", err), "Unable to load syslinux versions"))
 		return
 	}
+	markMissingSyslinuxCache(h.service, versions)
 
 	// For now, we don't have active downloads in the service interface
 	// This will need to be implemented when the service layer is complete
@@ -79,12 +80,14 @@ func (h *SyslinuxHandler) SyslinuxPage(w http.ResponseWriter, r *http.Request) {
 	data := struct {
 		Title         string
 		Mode          string
+		Page          string
 		CSRFToken     string
 		OverallStatus string
 		Versions      []*syslinux.SyslinuxVersion
 		Downloads     []*syslinux.DownloadStatus
 	}{
-		Title:     "Syslinux Boot Files",
+		Title:     "Syslinux",
+		Page:      "syslinux",
 		Versions:  versions,
 		Downloads: downloads,
 	}

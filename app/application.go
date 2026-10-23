@@ -122,6 +122,11 @@ func (a *Application) Start() error {
 	}
 	log.Print(config.BMCTLSModeLog(a.container.Config.BMC.TLSVerify))
 
+	// Every page gets the same overall service word as the Overview pill.
+	handlers.SetPageHealth(func(r *http.Request) string {
+		return handlers.NewStatusHandlers(a.handlerContainer).CurrentOverallStatus(r)
+	})
+
 	// Create HTTP router with injected dependencies and static file handling
 	router := routes.SetupWithContainerAndStatic(a.handlerContainer, a.staticHandler)
 	log.Printf("Embedded HTTP server configured")

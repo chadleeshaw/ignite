@@ -64,7 +64,31 @@ func LoadTemplates() map[string]*template.Template {
 
 // templateFuncs exposes formatting helpers to every parsed template.
 var templateFuncs = template.FuncMap{
-	"formatBytes": formatBytes,
+	"formatBytes":       formatBytes,
+	"relTime":           relTime,
+	"rfc3339":           rfc3339,
+	"formatRFC3339":     formatRFC3339,
+	"utcLabel":          utcLabel,
+	"zoneName":          zoneName,
+	"countPhrase":       countPhrase,
+	"dhcpStateLabel":    dhcpStateLabel,
+	"dhcpStateClass":    dhcpStateClass,
+	"menuName":          cleanMenuName,
+	"uiMode":            uiMode,
+	"pageID":            pageID,
+	"fieldString":       fieldString,
+	"statusBar":         statusBar,
+	"allConfigured":     allConfigured,
+	"csrfHeaders":       csrfHeaders,
+	"modePreferenceURL": func() string { return ModePreferenceURL },
+	"summaryURL":        func() string { return OverviewSummaryURL },
+	"initial": func(s string) string {
+		r := []rune(s)
+		if len(r) == 0 {
+			return "?"
+		}
+		return strings.ToUpper(string(r[0]))
+	},
 }
 
 // formatBytes renders a byte count as a human-readable string (e.g. "117.7 MB").
@@ -113,11 +137,10 @@ func parseTemplates() map[string]*template.Template {
 	const baseTemplate = "templates/base.templ"
 
 	files := map[string][]string{
-		"index":              {baseTemplate, "templates/pages/index.templ"},
+		"index":              {baseTemplate, "templates/pages/index.templ", "templates/partials/status-content.templ"},
 		"login":              {"templates/base-login.templ", "templates/pages/login.templ"},
 		"dhcp":               {baseTemplate, "templates/pages/dhcp.templ"},
 		"tftp":               {baseTemplate, "templates/pages/tftp.templ", "templates/modals/uploadmodal.templ"},
-		"status":             {baseTemplate, "templates/pages/status.templ"},
 		"status-content":     {"templates/partials/status-content.templ"},
 		"dashboard-summary":  {"templates/partials/dashboard-summary.templ"},
 		"dhcp-servers":       {"templates/partials/dhcp-servers.templ"},

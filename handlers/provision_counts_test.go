@@ -61,9 +61,8 @@ func TestInFlightAndFailedOnOverviewAndDHCP(t *testing.T) {
 		page := htmlRec.Body.String()
 		require.Contains(t, page, "In flight")
 		require.Contains(t, page, "Failed")
-		require.Contains(t, page, `class="stat-value">2`)
-		require.Contains(t, page, "2 in flight")
-		require.Contains(t, page, "1 failed")
+		require.Contains(t, page, `class="stat-value warn">2`)
+		require.Contains(t, page, `class="stat-value bad"><a href="/dhcp">1`)
 	})
 
 	t.Run("dhcp servers json and html", func(t *testing.T) {
@@ -103,7 +102,7 @@ func TestInFlightAndFailedOnOverviewAndDHCP(t *testing.T) {
 		page := rec.Body.String()
 		require.Contains(t, page, "In flight")
 		require.Contains(t, page, "Failed")
-		require.Contains(t, page, `class="stat-value">2`)
-		require.Contains(t, page, `class="stat-value">1`)
+		require.Contains(t, page, `class="stat-value warn">2`)
+		require.Contains(t, page, `class="stat-value bad">1`)
 	})
 }

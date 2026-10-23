@@ -5,9 +5,9 @@
 <article class="bg-base-200 p-4 rounded-lg shadow">
     <div class="flex items-center justify-between mb-2">
         <h3 class="font-semibold">{{.TFTPIP}}</h3>
-        <span class="badge {{if eq .Status "running"}}badge-success{{else if eq .Status "configured"}}badge-warning{{else}}badge-error{{end}}">{{.Status}}</span>
+        <span class="st {{dhcpStateClass .Status}}" data-status="{{.Status}}">{{dhcpStateLabel .Status}}</span>
     </div>
-    <p class="text-sm text-base-content/80">{{.Used}} used / {{.Free}} free / {{.LeaseRange}} total · {{.InFlight}} in flight · {{.Failed}} failed</p>
+    <p class="text-sm text-base-content/80">{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total · {{.InFlight}} in flight · {{.Failed}} failed</p>
     <ul class="mt-2 text-sm">
     {{range .Leases}}
         <li>{{.MAC}} {{.IP}} <span class="badge {{.StateBadgeClass}}">{{.StateDisplayName}}</span></li>

@@ -7,6 +7,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 
@@ -297,6 +298,8 @@ func TestDHCPHandlers_GetDHCPServers_JSON(t *testing.T) {
 	assert.Equal(t, "server-1", body.Servers[0].ID)
 	assert.Equal(t, "192.168.1.1", body.Servers[0].TFTPIP)
 	assert.Equal(t, "configured", body.Servers[0].Status)
+	assert.Equal(t, "Configured", body.Servers[0].StatusWord)
+	assert.NotContains(t, w.Body.String(), `"running"`)
 	assert.Equal(t, 50, body.Servers[0].LeaseRange)
 	assert.Equal(t, 0, body.Servers[0].Used)
 	assert.Equal(t, 50, body.Servers[0].Free)
@@ -547,4 +550,56 @@ func TestDHCPHandlers_GetLeaseStateHistory_Success(t *testing.T) {
 	assert.Contains(t, w.Header().Get("Content-Type"), "application/json")
 
 	mockLeaseService.AssertExpectations(t)
+}
+
+func TestDHCPStatePill(t *testing.T) {
+	label, class := dhcpStatePill("running")
+	if label != "Running" || class != "ok" {
+		t.Fatalf("running pill: %q %q", label, class)
+	}
+	label, class = dhcpStatePill("stopped")
+	if label != "Stopped" || class != "er" {
+		t.Fatalf("stopped pill: %q %q", label, class)
+	}
+	label, class = dhcpStatePill(dhcp.ServerStateConfigured)
+	if label != "Configured" || class != "cf" {
+		t.Fatalf("configured pill: %q %q", label, class)
+	}
+}
+
+func TestMenuNameIgnoresFilename(t *testing.T) {
+	if got := dhcp.MenuName(dhcp.BootMenu{
+		Filename: "/tmp/ignite-tftp.UPoTst/pxelinux.cfg/01-00-11-22-33-44-55",
+		OS:       "ubuntu",
+		Version:  "24.04",
+	}); got != "ubuntu 24.04" {
+		t.Fatalf("menu_name: %q", got)
+	}
+	if got := dhcp.MenuName(dhcp.BootMenu{Filename: "lab-menu"}); got != "" {
+		t.Fatalf("filename is not menu_name: %q", got)
+	}
+	if got := cleanMenuName("ubuntu 24.04"); got != "ubuntu 24.04" {
+		t.Fatalf("friendly: %q", got)
+	}
+	if got := cleanMenuName("/tmp/ignite-tftp.UPoTst/menu"); got != "" {
+		t.Fatalf("path: %q", got)
+	}
+}
+
+func TestOrderTFTPFiles(t *testing.T) {
+	files := []FileInfo{
+		{Name: "boot.ipxe", Base: "boot.ipxe"},
+		{Name: "pxelinux.cfg", Base: "pxelinux.cfg", IsDir: true},
+		{Name: "os-images", Base: "os-images", IsDir: true},
+		{Name: "a.txt", Base: "a.txt"},
+	}
+	orderTFTPFiles(files)
+	got := make([]string, len(files))
+	for i, f := range files {
+		got[i] = f.Base
+	}
+	want := []string{"os-images", "pxelinux.cfg", "a.txt", "boot.ipxe"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Fatalf("order: %v", got)
+	}
 }

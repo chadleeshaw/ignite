@@ -1,7 +1,8 @@
 <div id="bootMenuModal" class="modal modal-open">
     <div class="modal-box bg-base-100 w-11/12 max-w-4xl">
         <h3 class="font-bold text-2xl text-primary mb-4">Build PXE Boot Menu</h3>
-        <form id="bootMenuForm" hx-post="/pxe/submit_menu" hx-target="body" hx-swap="innerHTML">
+        <form id="bootMenuForm" hx-post="/pxe/submit_menu" hx-target="body">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <div class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4">
                 <!-- Column 1 -->
                 <div>
@@ -103,7 +104,7 @@
 
             <div class="modal-action mt-6">
                 <button type="submit" class="btn btn-primary">Write Files</button>
-                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content">Cancel</button>
             </div>
         </form>
     </div>
@@ -115,7 +116,11 @@ const osImagesData = {{ .osImages }};
 
 function updateVersions(selectedOS) {
     const versionSelect = document.getElementById('versionSelect');
-    versionSelect.innerHTML = '<option value="">Select version</option>';
+    versionSelect.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select version';
+    versionSelect.appendChild(placeholder);
     
     if (selectedOS && osImagesData && osImagesData[selectedOS]) {
         osImagesData[selectedOS].forEach(image => {

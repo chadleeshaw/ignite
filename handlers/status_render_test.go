@@ -89,15 +89,25 @@ func renderStatusTemplate(t *testing.T, name string, data *StatusPageData) strin
 }
 
 func TestStatusPageRendersFully(t *testing.T) {
-	out := renderStatusTemplate(t, "status", mockStatusPageData(true))
+	// The standalone status document is gone. Overview is the full page that
+	// still embeds the status partial, and it has to finish with </html>.
+	status := mockStatusPageData(true)
+	out := renderNamed(t, "index", OverviewPage{
+		Title:         "Overview",
+		Page:          "overview",
+		CozySubtitle:  "All services are up",
+		Status:        status,
+		HTTPStatus:    status.HTTPServer.Status,
+		TFTPStatus:    status.TFTPServer.Status,
+		OverallStatus: status.OverallStatus,
+	})
 
 	for _, want := range []string{
-		"System Healthy",   // OverallStatus badge
-		"192.168.1.1",      // DHCP server IP
-		"Active Leases: 3", // DHCP lease count
-		"Last Updated:",    // string LastUpdated, not .Format on it
-		`data-updated="`,
-		"Port 8080 - responding",
+		"All services up", // sentence-case health pill
+		"192.168.1.1",     // DHCP server IP
+		"3 leases",        // lease count when the pool size is unset
+		"last updated",    // string LastUpdated, not .Format on it
+		"port 8080",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status page missing %q", want)
@@ -114,10 +124,10 @@ func TestStatusContentRendersFully(t *testing.T) {
 	out := renderStatusTemplate(t, "status-content", mockStatusPageData(true))
 
 	for _, want := range []string{
-		"System Healthy",
+		"All services up",
 		"192.168.1.1",
-		"Active Leases: 3",
-		"Status automatically refreshes every 10 seconds",
+		"3 leases",
+		"Refreshes every 10 seconds",
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("status-content missing %q", want)

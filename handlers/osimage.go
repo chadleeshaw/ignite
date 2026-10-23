@@ -60,19 +60,50 @@ func (h *OSImageHandlers) OSImagesPage(w http.ResponseWriter, r *http.Request) {
 		supportedArchs = []string{"x86_64"}
 	}
 
+	var kernelBytes, initrdBytes int64
+	arches := map[string]struct{}{}
+	for _, image := range images {
+		if image == nil {
+			continue
+		}
+		kernelBytes += image.KernelSize
+		initrdBytes += image.InitrdSize
+		if image.Architecture != "" {
+			arches[image.Architecture] = struct{}{}
+		}
+	}
+	archLabel := "—"
+	if len(arches) == 1 {
+		for arch := range arches {
+			archLabel = arch
+		}
+	} else if len(arches) > 1 {
+		archLabel = "mixed"
+	}
+
 	data := struct {
 		Title         string
 		Mode          string
+		Page          string
 		CSRFToken     string
 		OverallStatus string
 		OSImages      []*osimage.OSImage
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
+		KernelBytes   int64
+		InitrdBytes   int64
+		ArchLabel     string
+		DownloadCount int
 	}{
 		Title:         "OS Images",
+		Page:          "osimages",
 		OSImages:      images,
 		Downloads:     downloads,
 		Architectures: supportedArchs,
+		KernelBytes:   kernelBytes,
+		InitrdBytes:   initrdBytes,
+		ArchLabel:     archLabel,
+		DownloadCount: len(downloads),
 	}
 
 	renderCachedTemplate(w, r, "osimages", data, "Unable to render the OS images page")

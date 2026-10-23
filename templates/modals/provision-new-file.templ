@@ -3,6 +3,7 @@
         <h3 class="font-bold text-lg mb-4">Create New File</h3>
         
         <form id="new-file-form">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <div class="form-control w-full mb-4">
                 <label class="label">
                     <span class="label-text">File Name</span>
@@ -54,7 +55,7 @@
                 <button type="submit" class="btn btn-primary">
                     <i class="fas fa-plus mr-2"></i>Create File
                 </button>
-                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content">Cancel</button>
             </div>
         </form>
     </div>

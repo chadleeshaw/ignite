@@ -70,3 +70,16 @@ func TestLeaseLastSeenAtIsRFC3339(t *testing.T) {
 	}})
 	require.Empty(t, unset[0].LastSeenAt)
 }
+
+func TestUTCLabelUsesTheValuesZone(t *testing.T) {
+	utc := time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC)
+	require.Equal(t, "2026-01-02 03:04:05 UTC", utcLabel(utc, "2006-01-02 15:04:05"))
+	require.Equal(t, "UTC", zoneName(utc))
+
+	ist := time.Date(2026, 10, 19, 22, 30, 54, 0, time.FixedZone("IST", 5*3600+30*60))
+	got := utcLabel(ist, "2006-01-02 15:04:05")
+	require.Equal(t, "2026-10-19 22:30:54 IST", got)
+	require.NotContains(t, got, "UTC")
+	require.Equal(t, "IST", zoneName(ist))
+	require.Empty(t, utcLabel(time.Time{}, ""))
+}

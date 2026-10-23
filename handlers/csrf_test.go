@@ -1,6 +1,7 @@
 package handlers
 
 import (
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -123,6 +124,13 @@ func TestCSRFLogoutRequiresTokenWhenSessionExists(t *testing.T) {
 	rec = httptest.NewRecorder()
 	wrapped.ServeHTTP(rec, req)
 	require.Equal(t, http.StatusOK, rec.Code)
+}
+
+func TestCSRFHeadersIsJSON(t *testing.T) {
+	raw := csrfHeaders("a\"b<c&")
+	var got map[string]string
+	require.NoError(t, json.Unmarshal([]byte(raw), &got))
+	require.Equal(t, "a\"b<c&", got["X-CSRF-Token"])
 }
 
 func TestApplyUIModeSetsCSRFToken(t *testing.T) {

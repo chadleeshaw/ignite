@@ -1,10 +1,13 @@
 package handlers
 
 import (
+	"bytes"
 	"fmt"
 	"net"
 	"net/http"
+	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -54,6 +57,41 @@ func TFTPStatus() string {
 	return "stopped"
 }
 
+// dhcpStateWord is the raw listener word. ServerState and plain strings
+// both arrive here from templates.
+func dhcpStateWord(state any) string {
+	if state == nil {
+		return ""
+	}
+	return strings.ToLower(strings.TrimSpace(fmt.Sprint(state)))
+}
+
+// dhcpStatePill maps the three DHCP states to the label and pill class
+// Overview, the DHCP page, and the status bar share.
+func dhcpStatePill(state any) (label, class string) {
+	switch dhcpStateWord(state) {
+	case "running":
+		return "Running", "ok"
+	case "stopped":
+		return "Stopped", "er"
+	case "configured", "", "<nil>":
+		return "Configured", "cf"
+	default:
+		word := strings.TrimSpace(fmt.Sprint(state))
+		return word, "of"
+	}
+}
+
+func dhcpStateLabel(state any) string {
+	label, _ := dhcpStatePill(state)
+	return label
+}
+
+func dhcpStateClass(state any) string {
+	_, class := dhcpStatePill(state)
+	return class
+}
+
 // StatusHandlers handles status-related requests
 type StatusHandlers struct {
 	container *Container
@@ -81,22 +119,31 @@ type DHCPServerStatus struct {
 	Status      string    `json:"status"`
 	Description string    `json:"description"`
 	LeaseCount  int       `json:"lease_count"`
+	Free        int       `json:"free"`
+	Used        int       `json:"used"`
+	Total       int       `json:"total"`
 	LastCheck   time.Time `json:"last_check"`
 }
 
-// StatusPageData represents data for the status page
+// StatusPageData represents data for the status page.
+// Mode is the server UI preference. Empty means cozy until the preference
+// layer sets it. Page highlights Overview, where this content lives.
 type StatusPageData struct {
-	Title         string             `json:"title"`
-	Mode          string             `json:"-"`
-	CSRFToken     string             `json:"-"`
-	HTTPServer    ServiceStatus      `json:"http_server"`
-	TFTPServer    ServiceStatus      `json:"tftp_server"`
-	DHCPServers   []DHCPServerStatus `json:"dhcp_servers"`
-	LastUpdated   string             `json:"last_updated"`
-	LastUpdatedAt string             `json:"last_updated_at"`
-	OverallStatus string             `json:"overall_status"`
-	AutoRefresh   bool               `json:"auto_refresh"`
-	RefreshSecs   int                `json:"refresh_secs"`
+	Title            string             `json:"title"`
+	Mode             string             `json:"-"`
+	Page             string             `json:"-"`
+	CSRFToken        string             `json:"-"`
+	HTTPServer       ServiceStatus      `json:"http_server"`
+	TFTPServer       ServiceStatus      `json:"tftp_server"`
+	DHCPServers      []DHCPServerStatus `json:"dhcp_servers"`
+	LastUpdated      string             `json:"last_updated"`
+	LastUpdatedAt    string             `json:"last_updated_at"`
+	UpdatedAt        string             `json:"updated_at"`
+	OverallStatus    string             `json:"overall_status"`
+	AttentionCozy    string             `json:"-"`
+	AttentionConsole string             `json:"-"`
+	AutoRefresh      bool               `json:"auto_refresh"`
+	RefreshSecs      int                `json:"refresh_secs"`
 }
 
 // getStatusData builds the status page data from tracked runtime state.
@@ -127,11 +174,15 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 	}
 
 	var dhcpServers []DHCPServerStatus
-	var dhcpStates []dhcp.ServerState
 	for _, server := range servers {
 		leases, _ := h.container.LeaseService.GetLeasesByServer(ctx, server.ID)
 		state := dhcp.CurrentServerState(server.ID)
-		dhcpStates = append(dhcpStates, state)
+		used := dhcp.PoolOccupancy(leases, now)
+		total := server.LeaseRange
+		free := total - used
+		if free < 0 {
+			free = 0
+		}
 
 		dhcpServers = append(dhcpServers, DHCPServerStatus{
 			ID:          server.ID,
@@ -139,23 +190,49 @@ func (h *StatusHandlers) getStatusData(r *http.Request) (*StatusPageData, error)
 			Status:      string(state),
 			Description: "Dynamic IP assignment for network boot clients",
 			LeaseCount:  len(leases),
+			Free:        free,
+			Used:        used,
+			Total:       total,
 			LastCheck:   now,
 		})
 	}
+	sort.Slice(dhcpServers, func(i, j int) bool {
+		return lessIP(dhcpServers[i].IP, dhcpServers[j].IP)
+	})
 
-	overallStatus := overallServiceStatus(httpStatus.Status, tftpStatus.Status, dhcpStates)
-
-	return &StatusPageData{
+	// Overall status and the subtitle share statusIssues. HTTP not running
+	// is "down". A stopped DHCP listener or TFTP is "partial". A configured
+	// DHCP server has not been started this boot and is not an issue.
+	data := &StatusPageData{
 		Title:         "System Status",
+		Page:          "overview",
 		HTTPServer:    httpStatus,
 		TFTPServer:    tftpStatus,
 		DHCPServers:   dhcpServers,
-		LastUpdated:   now.Format("2006-01-02 15:04:05"),
+		LastUpdated:   now.UTC().Format("2006-01-02 15:04:05") + " UTC",
 		LastUpdatedAt: formatRFC3339(now),
-		OverallStatus: overallStatus,
+		UpdatedAt:     formatRFC3339(now),
 		AutoRefresh:   true,
 		RefreshSecs:   5,
-	}, nil
+	}
+	annotateStatus(data)
+	return data, nil
+}
+
+// lessIP orders dotted IPv4 addresses numerically. Unparseable values sort last.
+func lessIP(a, b string) bool {
+	ipa := net.ParseIP(a).To4()
+	ipb := net.ParseIP(b).To4()
+	switch {
+	case ipa == nil && ipb == nil:
+		return a < b
+	case ipa == nil:
+		return false
+	case ipb == nil:
+		return true
+	default:
+		return bytes.Compare(ipa, ipb) < 0
+	}
 }
 
 // tftpListenPort is the configured TFTP UDP port. An empty or invalid value
@@ -211,6 +288,7 @@ func (h *StatusHandlers) HandleStatusPage(w http.ResponseWriter, r *http.Request
 }
 
 // HandleStatusContent serves status content for HTMX updates.
+// There is no /status page; Overview polls this fragment.
 func (h *StatusHandlers) HandleStatusContent(w http.ResponseWriter, r *http.Request) {
 	if !requireConfig(w, r, h.container) {
 		return

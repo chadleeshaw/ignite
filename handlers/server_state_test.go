@@ -84,9 +84,12 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		dhcpHandlers.GetDHCPServers(rec, req)
 		require.Equal(t, http.StatusOK, rec.Code)
 		body := rec.Body.String()
-		require.Contains(t, body, ">running<")
-		require.Contains(t, body, ">stopped<")
-		require.Contains(t, body, ">configured<")
+		require.Contains(t, body, `data-status="running"`)
+		require.Contains(t, body, `data-status="stopped"`)
+		require.Contains(t, body, `data-status="configured"`)
+		require.Contains(t, body, ">Running<")
+		require.Contains(t, body, ">Stopped<")
+		require.Contains(t, body, ">Configured<")
 		require.NotContains(t, body, "badge-success\">stopped")
 	})
 
@@ -96,9 +99,12 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		dhcpHandlers.HandleDHCPPage(rec, req)
 		require.Equal(t, http.StatusOK, rec.Code)
 		body := rec.Body.String()
-		require.Contains(t, body, ">running<")
-		require.Contains(t, body, ">stopped<")
-		require.Contains(t, body, ">configured<")
+		require.Contains(t, body, `data-status="running"`)
+		require.Contains(t, body, `data-status="stopped"`)
+		require.Contains(t, body, `data-status="configured"`)
+		require.Contains(t, body, ">Running<")
+		require.Contains(t, body, ">Stopped<")
+		require.Contains(t, body, ">Configured<")
 	})
 
 	t.Run("status content", func(t *testing.T) {
@@ -107,10 +113,14 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		NewStatusHandlers(container).HandleStatusContent(rec, req)
 		require.Equal(t, http.StatusOK, rec.Code)
 		body := rec.Body.String()
-		require.Contains(t, body, ">running<")
-		require.Contains(t, body, ">stopped<")
-		require.Contains(t, body, ">configured<")
-		require.Contains(t, body, "Partial Service")
+		require.Contains(t, body, `data-status="running"`)
+		require.Contains(t, body, `data-status="stopped"`)
+		require.Contains(t, body, `data-status="configured"`)
+		require.Contains(t, body, ">Running<")
+		require.Contains(t, body, ">Stopped<")
+		require.Contains(t, body, ">Configured<")
+		require.Contains(t, body, "Partial service")
+		require.Contains(t, body, `data-attention-cozy="1 thing needs attention: DHCP 10.0.0.2 is stopped"`)
 	})
 
 	t.Run("dashboard summary", func(t *testing.T) {
@@ -133,9 +143,11 @@ func TestEveryDHCPViewReportsTheSameListenerState(t *testing.T) {
 		htmlRec := httptest.NewRecorder()
 		NewDashboardHandlers(container).Summary(htmlRec, htmlReq)
 		require.Equal(t, http.StatusOK, htmlRec.Code)
-		require.Contains(t, htmlRec.Body.String(), "running ·")
-		require.Contains(t, htmlRec.Body.String(), "stopped ·")
-		require.Contains(t, htmlRec.Body.String(), "configured ·")
+		htmlBody := htmlRec.Body.String()
+		for _, title := range []string{"Active leases", "Reserved", "Expired", "In flight", "Failed", "Free addresses"} {
+			require.Contains(t, htmlBody, title)
+		}
+		require.Contains(t, htmlBody, "0 used / 30 total")
 	})
 }
 

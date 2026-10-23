@@ -63,7 +63,8 @@ func (h *DashboardHandlers) summary(r *http.Request) (dhcp.DashboardSummary, err
 		}
 		byServer[server.ID] = leases
 	}
-	return dhcp.BuildDashboardSummary(servers, byServer, time.Now()), nil
+	summary := dhcp.BuildDashboardSummary(servers, byServer, time.Now())
+	return summary, nil
 }
 
 // wantsDashboardJSON reports whether the summary should be JSON.

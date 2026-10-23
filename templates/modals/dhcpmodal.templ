@@ -1,7 +1,8 @@
 <div id="new-dhcp-server-modal" class="modal modal-open">
     <div class="modal-box bg-base-100">
         <h3 class="font-bold text-2xl text-primary mb-4">{{.title}}</h3>
-        <form hx-post="/dhcp/submit_dhcp" hx-target="body" hx-swap="innerHTML">
+        <form hx-post="/dhcp/submit_dhcp" hx-target="body">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             {{if .IsEdit}}
             <input type="hidden" name="server_id" value="{{.server_id}}" />
             {{end}}
@@ -59,7 +60,7 @@
 
             <div class="modal-action mt-6">
                 <button type="submit" class="btn btn-primary">{{if .IsEdit}}Update{{else}}Create{{end}}</button>
-                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+                <button type="button" class="btn btn-ghost" hx-get="/close_modal" hx-target="#modal-content">Cancel</button>
             </div>
         </form>
     </div>

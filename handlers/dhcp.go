@@ -39,56 +39,76 @@ func NewDHCPHandlers(container *Container) *DHCPHandlers {
 // convertServerToView converts a DHCP server model to its template view,
 // loading the server's leases. It is the single server-to-view conversion
 // used by every handler that lists servers.
-func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Server) (DHCPServerView, error) {
+func (h *DHCPHandlers) convertServerToView(ctx context.Context, server *dhcp.Server) (DHCPServerView, leaseStrip, error) {
 	leases, err := h.leaseService.GetLeasesByServer(ctx, server.ID)
 	if err != nil {
-		return DHCPServerView{}, fmt.Errorf("failed to get leases for server %s: %w", server.ID, err)
+		return DHCPServerView{}, leaseStrip{}, fmt.Errorf("failed to get leases for server %s: %w", server.ID, err)
 	}
 
+	now := time.Now()
+	state := string(dhcp.CurrentServerState(server.ID))
 	// Free addresses use the same occupancy rule as /dashboard/summary:
 	// a lease counts only when it is reserved or not yet expired.
 	// In-flight and failed totals use CountProvision and are independent
 	// of that occupancy rule.
-	used := 0
+	used := dhcp.PoolOccupancy(leases, now)
 	free := 0
-	if server != nil {
-		used = dhcp.PoolOccupancy(leases, time.Now())
-		if server.LeaseRange > 0 {
-			free = server.LeaseRange - used
-			if free < 0 {
-				free = 0
-			}
+	if server.LeaseRange > 0 {
+		free = server.LeaseRange - used
+		if free < 0 {
+			free = 0
 		}
 	}
+	counts := dhcp.CountLeases(leases, now)
 	provision := dhcp.CountProvision(leases)
 
-	return DHCPServerView{
+	view := DHCPServerView{
 		ID:         server.ID,
 		TFTPIP:     server.IP.String(),
-		Status:     string(dhcp.CurrentServerState(server.ID)),
+		Status:     state,
+		StatusWord: dhcpStateLabel(state),
 		Leases:     h.convertLeasesToViews(leases),
 		LeaseRange: server.LeaseRange,
 		Used:       used,
 		Free:       free,
 		InFlight:   provision.InFlight,
 		Failed:     provision.Failed,
+	}
+	return view, leaseStrip{
+		Free:     free,
+		Used:     used,
+		Total:    server.LeaseRange,
+		Reserved: counts.Reserved,
+		Expired:  counts.Expired,
+		InFlight: provision.InFlight,
+		Failed:   provision.Failed,
 	}, nil
 }
 
 // serverViews builds sorted view models for a list of DHCP servers.
-func (h *DHCPHandlers) serverViews(ctx context.Context, servers []*dhcp.Server) ([]DHCPServerView, error) {
+// The strip sums the same install outcomes the overview uses.
+func (h *DHCPHandlers) serverViews(ctx context.Context, servers []*dhcp.Server) ([]DHCPServerView, leaseStrip, error) {
 	serverViews := make([]DHCPServerView, 0, len(servers))
+	var strip leaseStrip
+	strip.Refreshed = time.Now().UTC()
 	for _, server := range servers {
-		view, err := h.convertServerToView(ctx, server)
+		view, part, err := h.convertServerToView(ctx, server)
 		if err != nil {
-			return nil, err
+			return nil, leaseStrip{}, err
 		}
 		serverViews = append(serverViews, view)
+		strip.Free += part.Free
+		strip.Used += part.Used
+		strip.Total += part.Total
+		strip.Reserved += part.Reserved
+		strip.Expired += part.Expired
+		strip.InFlight += part.InFlight
+		strip.Failed += part.Failed
 	}
 
 	// Sort servers by IP address for consistent ordering
 	h.sortServerViewsByIP(serverViews)
-	return serverViews, nil
+	return serverViews, strip, nil
 }
 
 // HandleDHCPPage serves the DHCP management page
@@ -104,7 +124,7 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serverViews, err := h.serverViews(ctx, servers)
+	serverViews, strip, err := h.serverViews(ctx, servers)
 	if err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Failed to load DHCP server details: %v", err),
@@ -113,15 +133,28 @@ func (h *DHCPHandlers) HandleDHCPPage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	allConfigured := len(serverViews) > 0
+	for _, view := range serverViews {
+		if view.Status != "configured" {
+			allConfigured = false
+			break
+		}
+	}
 	data := struct {
 		Title         string
 		Mode          string
+		Page          string
 		CSRFToken     string
 		OverallStatus string
+		AllConfigured bool
 		Servers       []DHCPServerView
+		Strip         leaseStrip
 	}{
-		Title:   "DHCP Management",
-		Servers: serverViews,
+		Title:         "DHCP",
+		Page:          "dhcp",
+		AllConfigured: allConfigured,
+		Servers:       serverViews,
+		Strip:         strip,
 	}
 
 	renderCachedTemplate(w, r, "dhcp", data, "Unable to render the DHCP page")
@@ -140,7 +173,7 @@ func (h *DHCPHandlers) GetDHCPServers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	serverViews, err := h.serverViews(ctx, servers)
+	serverViews, _, err := h.serverViews(ctx, servers)
 	if err != nil {
 		HandleError(w, r, NewInternalError(
 			fmt.Sprintf("Failed to load DHCP server details: %v", err),
@@ -185,6 +218,8 @@ func (h *DHCPHandlers) StartDHCPServer(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := h.serverService.StartServer(ctx, serverID); err != nil {
+		// StartServer records stopped when the listener fails to bind.
+		// DHCP_ENABLED=false is a conflict: the listener is not bound.
 		if errors.Is(err, dhcp.ErrDHCPDisabled) {
 			HandleError(w, r, dhcpDisabledError())
 			return
@@ -794,7 +829,7 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 			IP:               lease.IP.String(),
 			Static:           lease.Reserved,
 			Menu:             menu,
-			MenuName:         name,
+			MenuName:         cleanMenuName(name),
 			IPMI:             lease.IPMI,
 			State:            string(lease.State),
 			StateBadgeClass:  getStateBadgeClass(lease.State),
@@ -810,6 +845,17 @@ func (h *DHCPHandlers) convertLeasesToViews(leases []*dhcp.Lease) []LeaseView {
 	})
 
 	return views
+}
+
+// cleanMenuName keeps a friendly menu name. A path is not a name: menu_name
+// is empty when the backend has none, and a value that still looks like a
+// path is treated as missing so the page shows an em dash.
+func cleanMenuName(name string) string {
+	name = strings.TrimSpace(name)
+	if name == "" || strings.ContainsAny(name, `/\`) {
+		return ""
+	}
+	return name
 }
 
 // getStateBadgeClass returns the CSS class for a lease state badge.
@@ -839,11 +885,27 @@ func getStateBadgeClass(state dhcp.LeaseState) string {
 	}
 }
 
+// leaseStrip is the DHCP page stat row. InFlight and Failed are the
+// CountProvision totals, summed across servers. Reserved and Expired stay
+// the ClassifyLease partition, so one lease can sit in both a partition
+// cell and an in-flight or failed cell.
+type leaseStrip struct {
+	Free      int
+	Used      int
+	Total     int
+	Reserved  int
+	Expired   int
+	InFlight  int
+	Failed    int
+	Refreshed time.Time
+}
+
 // View models for templates
 type DHCPServerView struct {
 	ID         string      `json:"id"`
 	TFTPIP     string      `json:"tftpip"`
 	Status     string      `json:"status"`
+	StatusWord string      `json:"status_word"`
 	Leases     []LeaseView `json:"leases"`
 	LeaseRange int         `json:"lease_range"`
 	Used       int         `json:"used"`

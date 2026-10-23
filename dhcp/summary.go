@@ -57,7 +57,8 @@ type PoolStat struct {
 	Used   int    `json:"used"`
 	Free   int    `json:"free"`
 	Total  int    `json:"total"`
-	// Status is the listener state from CurrentServerState.
+	// Status is the listener state from CurrentServerState:
+	// running, stopped, or configured.
 	Status ServerState `json:"status"`
 	// InFlight and Failed follow CountProvision. They are independent of
 	// Used, so a lease can occupy an address and also be in flight or failed.
@@ -78,6 +79,11 @@ type DashboardSummary struct {
 	InFlight int        `json:"in_flight"`
 	Failed   int        `json:"failed"`
 	Pools    []PoolStat `json:"pools"`
+	// Free, Used, and PoolTotal sum the pool rows for the Overview strip.
+	// They are presentation totals, not part of the JSON summary.
+	Free      int `json:"-"`
+	Used      int `json:"-"`
+	PoolTotal int `json:"-"`
 	// Mode is the signed-in user's UI density. Page render fills it.
 	// It is not part of the JSON summary.
 	Mode string `json:"-"`
@@ -210,7 +216,18 @@ func BuildDashboardSummary(servers []*Server, leasesByServer map[string][]*Lease
 	provision := CountProvision(all)
 	summary.InFlight = provision.InFlight
 	summary.Failed = provision.Failed
+	for _, pool := range summary.Pools {
+		summary.Free += pool.Free
+		summary.Used += pool.Used
+		summary.PoolTotal += pool.Total
+	}
 	return summary
+}
+
+// ServerIPLabel is the address shown for a server on the dashboard.
+// An unaddressed server falls back to its ID.
+func ServerIPLabel(server *Server) string {
+	return serverLabel(server)
 }
 
 func serverLabel(server *Server) string {

@@ -23,7 +23,7 @@ func TestErrorPageIncludesUIMode(t *testing.T) {
 
 		require.Equal(t, http.StatusNotFound, rec.Code)
 		body := rec.Body.String()
-		require.Contains(t, body, `data-theme="ignite"`)
+		require.Contains(t, body, `data-theme="cozy"`)
 		require.Contains(t, body, "The page you requested was not found.")
 		require.Contains(t, body, "Not Found")
 		require.NotContains(t, body, "secret-internal-detail")
@@ -31,7 +31,7 @@ func TestErrorPageIncludesUIMode(t *testing.T) {
 		require.NotContains(t, body, `{{.Mode}}`)
 	})
 
-	t.Run("signed in keeps the admin shell and the ignite theme", func(t *testing.T) {
+	t.Run("signed in keeps the admin shell and the stored theme", func(t *testing.T) {
 		SetPreferenceStore(&memoryPrefs{mode: ConsoleUIMode})
 		rec := httptest.NewRecorder()
 		req := httptest.NewRequest(http.MethodGet, "/broken", nil)
@@ -41,7 +41,7 @@ func TestErrorPageIncludesUIMode(t *testing.T) {
 
 		require.Equal(t, http.StatusInternalServerError, rec.Code)
 		body := rec.Body.String()
-		require.Contains(t, body, `data-theme="ignite"`)
+		require.Contains(t, body, `data-theme="console"`)
 		require.Contains(t, body, `href="/dhcp"`)
 		require.Contains(t, body, "Something went wrong.")
 		require.Contains(t, body, "Internal Server Error")
@@ -64,7 +64,7 @@ func TestErrorPageIncludesUIMode(t *testing.T) {
 
 		rec := httptest.NewRecorder()
 		HandleError(rec, req, NewInternalError("lookup exploded", "Something went wrong."))
-		require.Contains(t, rec.Body.String(), `data-theme="ignite"`)
+		require.Contains(t, rec.Body.String(), `data-theme="cozy"`)
 	})
 
 	t.Run("unknown stored mode falls back to cozy in the template data", func(t *testing.T) {
@@ -90,8 +90,8 @@ func TestLoginPageKeepsIgniteThemeAndStoredMode(t *testing.T) {
 
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
-	require.Contains(t, body, `data-theme="ignite"`)
-	require.NotContains(t, body, `data-theme="console"`)
+	require.Contains(t, body, `data-theme="console"`)
+	require.NotContains(t, body, `data-theme="ignite"`)
 	require.NotContains(t, body, `{{.Mode}}`)
 	require.Equal(t, ConsoleUIMode, modeOf(applyUIMode(req, struct {
 		Title string

@@ -15,11 +15,11 @@ func TestDescribeStatusGrammar(t *testing.T) {
 			TFTPServer:  up,
 			DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "running"}},
 		})
-		require.Equal(t, "1 thing needs attention: HTTP stopped", cozy)
-		require.Equal(t, "HTTP stopped", console)
+		require.Equal(t, "1 thing needs attention: HTTP is stopped", cozy)
+		require.Equal(t, "1 issue · http stopped", console)
 	})
 
-	t.Run("three stopped servers are three things", func(t *testing.T) {
+	t.Run("stopped servers share one clause", func(t *testing.T) {
 		cozy, console := describeStatus(&StatusPageData{
 			HTTPServer: up,
 			TFTPServer: up,
@@ -29,8 +29,18 @@ func TestDescribeStatusGrammar(t *testing.T) {
 				{IP: "10.0.0.3", Status: "stopped"},
 			},
 		})
-		require.Equal(t, "3 things need attention: DHCP 10.0.0.1 · DHCP 10.0.0.2 · DHCP 10.0.0.3", cozy)
-		require.Equal(t, "DHCP 10.0.0.1 · DHCP 10.0.0.2 · DHCP 10.0.0.3", console)
+		require.Equal(t, "1 thing needs attention: DHCP 10.0.0.1, 10.0.0.2, 10.0.0.3 are stopped", cozy)
+		require.Equal(t, "1 issue · dhcp 10.0.0.1, 10.0.0.2, 10.0.0.3 stopped", console)
+	})
+
+	t.Run("configured servers are not an issue", func(t *testing.T) {
+		cozy, console := describeStatus(&StatusPageData{
+			HTTPServer:  up,
+			TFTPServer:  up,
+			DHCPServers: []DHCPServerStatus{{IP: "10.0.0.1", Status: "configured"}},
+		})
+		require.Equal(t, "No DHCP server is running", cozy)
+		require.Equal(t, "no dhcp server running", console)
 	})
 
 	t.Run("all running", func(t *testing.T) {

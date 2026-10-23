@@ -1,7 +1,8 @@
 <div class="modal modal-open">
     <div class="modal-box bg-base-100">
         <h3 class="font-bold text-2xl text-primary mb-4">Add Manual DHCP Entry</h3>
-        <form hx-post="/dhcp/add_manual_lease" hx-target="body" hx-swap="innerHTML">
+        <form hx-post="/dhcp/add_manual_lease" hx-target="body">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
             <input type="hidden" name="network" value="{{.Network}}">
             
             <div class="form-control mb-4">
@@ -34,7 +35,7 @@
             </div>
             
             <div class="modal-action">
-                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content" hx-swap="innerHTML">Cancel</button>
+                <button type="button" class="btn" hx-get="/close_modal" hx-target="#modal-content">Cancel</button>
                 <button type="submit" class="btn btn-primary">Add Entry</button>
             </div>
         </form>

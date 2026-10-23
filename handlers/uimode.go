@@ -79,13 +79,13 @@ func pageHealth(r *http.Request) string {
 // applyUIMode returns data with Mode set to the signed-in user's density,
 // CSRFToken set to that session's token, and OverallStatus set from
 // SetPageHealth when that value is non-empty. An empty value leaves a
-// status the handler already stored. A request with no session (except GET /login), a failed
-// lookup, or an unknown stored value gets DefaultUIMode. Maps gain "Mode",
-// "CSRFToken", and "OverallStatus" keys. Structs with those exported string
-// fields are updated (a non-pointer struct is copied first). Nil data
-// becomes a small struct carrying Title, Mode, CSRFToken, and OverallStatus
-// so base templates can render. The HTML data-theme attribute stays
-// "ignite" until the per-mode themes exist; Mode is still passed through.
+// status the handler already stored. A request with no session (except
+// GET /login), a failed lookup, or an unknown stored value gets
+// DefaultUIMode. Maps gain "Mode", "CSRFToken", and "OverallStatus" keys.
+// Structs with those exported string fields are updated (a non-pointer
+// struct is copied first). Nil data becomes a small struct carrying Title,
+// Mode, CSRFToken, and OverallStatus so base templates can render. Shells
+// paint data-theme from Mode and fall back to cozy when it is empty.
 func applyUIMode(r *http.Request, data any) any {
 	mode := currentUIMode(r)
 	csrf := currentCSRFToken(r)

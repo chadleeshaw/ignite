@@ -1,241 +1,471 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="ignite">
+<html lang="en" data-theme="{{or .Mode "cozy"}}">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no">
-    <title>{{.Title}}</title>
-    <link rel="stylesheet" href="/public/http/css/tailwind.css"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="csrf-token" content="{{.CSRFToken}}">
+    <title>{{with fieldString . "Title"}}{{.}}{{else}}Ignite{{end}}</title>
+    <link rel="icon" type="image/png" sizes="32x32" href="/public/http/img/favicon-32.png">
+    <link rel="icon" type="image/png" sizes="512x512" href="/public/http/img/flame-512.png">
+    <link rel="apple-touch-icon" sizes="180x180" href="/public/http/img/apple-touch-icon.png">
+    <link rel="stylesheet" href="/public/http/css/tailwind.css">
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;700&display=swap" rel="stylesheet">
-    <link rel="stylesheet" type="text/css" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
-    <style>
-        body {
-            font-family: 'Roboto', sans-serif;
-        }
-    </style>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/toastify-js/src/toastify.min.css">
 </head>
-<body class="bg-base-100" data-overall-status="{{.OverallStatus}}">
-    <header class="sticky top-0 z-50 shadow-lg bg-neutral text-white">
-        <div class="container mx-auto px-4 py-2">
-            <nav class="flex justify-between items-center">
-                <div class="flex items-center space-x-4">
-                    <img src="/public/http/img/Ignite_small.png" alt="Ignite Logo" class="h-10 -mr-4">
-                    <div class="text-2xl font-bold text-primary">ignite</div>
+<body class="bg-base-100" data-overall-status="{{fieldString . "OverallStatus"}}" hx-headers="{{csrfHeaders .CSRFToken}}">
+    <div class="sparks" aria-hidden="true">
+        <span class="sp" style="left:8%;bottom:12%;width:3px;height:3px"></span>
+        <span class="sp" style="left:22%;bottom:6%;width:2px;height:2px"></span>
+        <span class="sp" style="left:41%;bottom:18%;width:4px;height:4px"></span>
+        <span class="sp" style="left:63%;bottom:9%;width:2px;height:2px"></span>
+        <span class="sp" style="left:78%;bottom:15%;width:3px;height:3px"></span>
+        <span class="sp" style="left:91%;bottom:7%;width:2px;height:2px"></span>
+    </div>
+    <div class="app">
+        <nav class="ignite-nav" aria-label="Primary">
+            <a class="br" href="/"><picture><source type="image/webp" srcset="/public/http/img/flame-nav.webp 1x, /public/http/img/flame-nav@2x.webp 2x"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="25" height="32" alt=""></picture>Ignite</a>
+            <a class="n {{if eq (pageID .) "overview"}}on{{end}}" href="/" {{if eq (pageID .) "overview"}}aria-current="page"{{end}}>Overview<kbd class="only-console">1</kbd></a>
+            <a class="n {{if eq (pageID .) "dhcp"}}on{{end}}" href="/dhcp" {{if eq (pageID .) "dhcp"}}aria-current="page"{{end}}>DHCP<kbd class="only-console">2</kbd></a>
+            <a class="n {{if eq (pageID .) "tftp"}}on{{end}}" href="/tftp" {{if eq (pageID .) "tftp"}}aria-current="page"{{end}}>TFTP<kbd class="only-console">3</kbd></a>
+            <a class="n {{if eq (pageID .) "osimages"}}on{{end}}" href="/osimages" {{if eq (pageID .) "osimages"}}aria-current="page"{{end}}>OS Images<kbd class="only-console">4</kbd></a>
+            <a class="n {{if eq (pageID .) "syslinux"}}on{{end}}" href="/syslinux" {{if eq (pageID .) "syslinux"}}aria-current="page"{{end}}>Syslinux<kbd class="only-console">5</kbd></a>
+            <a class="n {{if eq (pageID .) "provision"}}on{{end}}" href="/provision" {{if eq (pageID .) "provision"}}aria-current="page"{{end}}>Provision<kbd class="only-console">6</kbd></a>
+            <div class="nav-end">
+                <form class="tog" method="post" action="{{modePreferenceURL}}" role="group" aria-label="Display mode">
+                    <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                    <button type="submit" name="mode" value="cozy" class="mode-btn" data-mode="cozy" aria-pressed="{{if eq (uiMode .) "console"}}false{{else}}true{{end}}">Cozy</button>
+                    <button type="submit" name="mode" value="console" class="mode-btn" data-mode="console" aria-pressed="{{if eq (uiMode .) "console"}}true{{else}}false{{end}}">&gt;_ Console <kbd>\</kbd></button>
+                </form>
+                <div class="dropdown dropdown-end">
+                    <button type="button" tabindex="0" class="acct">Account</button>
+                    <ul tabindex="0" class="dropdown-content menu menu-sm mt-2 z-[20] p-2 shadow rounded-box w-52">
+                        <li><button type="button" onclick="openChangePasswordModal()">Change password</button></li>
+                        <li>
+                            <form id="logout-form" method="post" action="/auth/logout">
+                                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+                                <button type="submit">Log out</button>
+                            </form>
+                        </li>
+                    </ul>
                 </div>
-                <div class="hidden md:flex items-center space-x-4">
-                    <a href="/" class="hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
-                    <a href="/dhcp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
-                    <a href="/provision" class="hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
-                    <a href="/tftp" class="hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
-                    <a href="/osimages" class="hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
-                    <a href="/syslinux" class="hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
-                    <a href="/status" class="hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
-
-                    <!-- User Menu -->
-                    <div class="dropdown dropdown-end">
-                        <label tabindex="0" class="btn btn-ghost btn-circle">
-                            <i class="fas fa-user"></i>
-                        </label>
-                        <ul tabindex="0" class="menu menu-sm dropdown-content mt-3 z-[1] p-2 shadow bg-neutral rounded-box w-52">
-                            <li><a onclick="openChangePasswordModal()"><i class="fas fa-key mr-2"></i>Change Password</a></li>
-                            <li><a onclick="logout()"><i class="fas fa-sign-out-alt mr-2"></i>Logout</a></li>
-                        </ul>
-                    </div>
-                </div>
-                <div class="md:hidden">
-                    <button id="menu-btn" class="focus:outline-none">
-                        <svg class="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16m-7 6h7" />
-                        </svg>
-                    </button>
-                </div>
-            </nav>
+            </div>
+        </nav>
+        <div class="stage">
+            {{template "content" .}}
         </div>
-    </header>
-
-    <main class="container mx-auto px-4 py-8">
-        {{ template "content" . }}
-    </main>
-
-    <div id="mobile-menu" class="hidden md:hidden fixed top-0 left-0 right-0 z-40 bg-neutral shadow-lg pt-16">
-        <div class="container mx-auto px-4 py-2">
-            <a href="/" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-home mr-2"></i>Home</a>
-            <a href="/dhcp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-network-wired mr-2"></i>DHCP</a>
-            <a href="/provision" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-cogs mr-2"></i>Provision</a>
-            <a href="/tftp" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-server mr-2"></i>TFTP</a>
-            <a href="/osimages" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-compact-disc mr-2"></i>OS Images</a>
-            <a href="/syslinux" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-microchip mr-2"></i>Syslinux</a>
-            <a href="/status" class="block py-3 text-white hover:text-primary transition-colors duration-300"><i class="fas fa-info-circle mr-2"></i>Status</a>
-        </div>
+        {{$bar := statusBar .}}
+        <footer class="sb">
+            <span class="only-cozy">{{$bar.Health}}{{if and $bar.Detail (ne (pageID .) "overview")}} · {{$bar.Detail}}{{end}}</span>
+            <span class="only-console">CONSOLE</span>
+            {{if $bar.ConsoleLine}}<span class="only-console">{{$bar.ConsoleLine}}</span>{{end}}
+            {{if and $bar.Detail (eq (pageID .) "overview")}}<span class="only-cozy">{{$bar.Detail}}</span>{{end}}
+            {{if and $bar.Counts (ne (pageID .) "overview")}}<span class="only-cozy">{{$bar.Counts}}</span>{{end}}
+            <span class="grow"></span>
+            {{if $bar.Tip}}
+            <span class="only-cozy">{{$bar.Tip}}</span>
+            {{else}}
+            <span class="only-cozy">Tip: <kbd>\</kbd> switches to Console</span>
+            {{end}}
+            <span class="only-console sb-keys"><kbd>1</kbd>–<kbd>6</kbd> pages · <kbd>\</kbd> cozy</span>
+        </footer>
     </div>
 
-    <!-- Change Password Modal -->
+    <div id="modal-content"></div>
+
     <div id="change-password-modal" class="modal">
         <div class="modal-box">
-            <h3 class="font-bold text-lg mb-4">Change Password</h3>
-            <form id="change-password-form">
+            <h3 class="font-bold text-lg mb-4">Change password</h3>
+            <form id="change-password-form" method="post" action="/auth/change-password">
+                <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
                 <div class="form-control mb-4">
-                    <label class="label">
-                        <span class="label-text">Current Password</span>
-                    </label>
+                    <label class="label" for="current-password"><span class="label-text">Current password</span></label>
                     <input type="password" id="current-password" class="input input-bordered" required>
                 </div>
                 <div class="form-control mb-4">
-                    <label class="label">
-                        <span class="label-text">New Password</span>
-                    </label>
+                    <label class="label" for="new-password"><span class="label-text">New password</span></label>
                     <input type="password" id="new-password" class="input input-bordered" required>
                 </div>
                 <div class="form-control mb-4">
-                    <label class="label">
-                        <span class="label-text">Confirm New Password</span>
-                    </label>
+                    <label class="label" for="confirm-password"><span class="label-text">Confirm new password</span></label>
                     <input type="password" id="confirm-password" class="input input-bordered" required>
                 </div>
                 <div class="modal-action">
                     <button type="button" class="btn" onclick="closeChangePasswordModal()">Cancel</button>
-                    <button type="submit" class="btn btn-primary">Change Password</button>
+                    <button type="submit" class="btn btn-primary">Change password</button>
                 </div>
             </form>
         </div>
     </div>
 
-    <script src="https://code.jquery.com/jquery-3.7.1.min.js" integrity="sha256-/JqT3SQfawRcv/BIHPThkBvs0OEvtFFmqPF/lYI/Cxo=" crossorigin="anonymous"></script>
-    <script src="https://unpkg.com/htmx.org@1.9.9/dist/htmx.min.js" defer></script>
+    <script src="/public/http/js/highlight.js"></script>
+    <script src="https://unpkg.com/htmx.org@1.9.9/dist/htmx.min.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.1/js/all.min.js"></script>
-    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/toastify-js"></script>
     <script>
-        $(document).ready(function() {
-            $('#menu-btn').click(function() {
-                $('#mobile-menu').toggleClass('hidden');
+        var IGNITE_MODE_URL = "{{modePreferenceURL}}";
+
+        function igniteToast(message, ok, opts) {
+            opts = opts || {};
+            var node = document.createElement("span");
+            node.appendChild(document.createTextNode(message || ""));
+            if (opts.reload) {
+                node.appendChild(document.createTextNode(" "));
+                var reload = document.createElement("button");
+                reload.type = "button";
+                reload.textContent = "Reload";
+                reload.addEventListener("click", function () { window.location.reload(); });
+                node.appendChild(reload);
+            }
+            Toastify({
+                node: node,
+                duration: opts.reload ? 8000 : 3000,
+                close: true,
+                gravity: "top",
+                position: "right",
+                backgroundColor: ok
+                    ? "linear-gradient(to right, #00b09b, #96c93d)"
+                    : "linear-gradient(to right, #FBBF24, #FF4500)"
+            }).showToast();
+        }
+
+        function igniteLooksLikeCSRF(xhr) {
+            if (!xhr || xhr.status !== 403) return false;
+            var text = "";
+            if (typeof xhr.responseText === "string") text = xhr.responseText.toLowerCase();
+            return text.indexOf("csrf") !== -1 || text.indexOf("cross-site") !== -1;
+        }
+
+        function igniteCSRF() {
+            var meta = document.querySelector('meta[name="csrf-token"]');
+            return meta ? (meta.getAttribute("content") || "") : "";
+        }
+
+        function igniteFetch(url, options) {
+            var opts = options ? Object.assign({}, options) : {};
+            var headers = new Headers(opts.headers || {});
+            if (!headers.has("X-CSRF-Token")) headers.set("X-CSRF-Token", igniteCSRF());
+            opts.headers = headers;
+            return fetch(url, opts);
+        }
+
+        function igniteReadableMessage(text) {
+            if (!text) return false;
+            var value = String(text).replace(/^\s+|\s+$/g, "");
+            if (!value || value.length > 240) return false;
+            if (value.indexOf("\n") !== -1 || value.indexOf("\r") !== -1) return false;
+            if (value.indexOf("<") !== -1 || value.indexOf("{") !== -1 || value.indexOf("}") !== -1) return false;
+            return true;
+        }
+
+        function igniteResponseMessage(xhr, fallback) {
+            var text = "";
+            if (xhr && typeof xhr.responseText === "string") text = xhr.responseText.trim();
+            if (!text) return fallback || "";
+            if (text.charAt(0) === "{") {
+                try {
+                    var data = JSON.parse(text);
+                    var message = "";
+                    if (data && data.error) {
+                        if (data.error.user_message) message = String(data.error.user_message);
+                        else if (data.error.message) message = String(data.error.message);
+                    }
+                    if (!message && data && data.message) message = String(data.message);
+                    if (!message && data && data.user_message) message = String(data.user_message);
+                    if (igniteReadableMessage(message)) return message;
+                } catch (e) {}
+                return fallback || "";
+            }
+            if (igniteReadableMessage(text)) return text;
+            return fallback || "";
+        }
+
+        function igniteFailureMessage(evt) {
+            var xhr = evt.detail && evt.detail.xhr;
+            var path = igniteRequestPath(evt);
+            var fallback = "That action failed.";
+            if (xhr && xhr.status === 409 && (path.indexOf("/dhcp/start") !== -1 || path.indexOf("/dhcp/submit_dhcp") !== -1)) {
+                fallback = "DHCP is disabled. Set DHCP_ENABLED=true before starting a server.";
+            }
+            return igniteResponseMessage(xhr, fallback);
+        }
+
+        function igniteApplyMode(mode) {
+            document.documentElement.setAttribute("data-theme", mode);
+            document.querySelectorAll(".mode-btn").forEach(function (btn) {
+                btn.setAttribute("aria-pressed", btn.getAttribute("data-mode") === mode ? "true" : "false");
             });
+        }
+
+        function igniteSetMode(mode) {
+            if (mode !== "cozy" && mode !== "console") return;
+            var previous = document.documentElement.getAttribute("data-theme") === "console" ? "console" : "cozy";
+            igniteApplyMode(mode);
+            igniteFetch(IGNITE_MODE_URL, {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({ mode: mode })
+            }).then(function (response) {
+                if (response.ok) return;
+                igniteApplyMode(previous);
+                return response.text().then(function (text) {
+                    igniteToast(igniteResponseMessage({ responseText: text }, "Could not save the display mode."), false);
+                });
+            }).catch(function () {
+                igniteApplyMode(previous);
+                igniteToast("Could not save the display mode.", false);
+            });
+        }
+
+        var modeForm = document.querySelector("form.tog");
+        if (modeForm) {
+            modeForm.addEventListener("submit", function (e) {
+                var mode = e.submitter && e.submitter.value;
+                if (mode !== "cozy" && mode !== "console") return;
+                e.preventDefault();
+                igniteSetMode(mode);
+            });
+        }
+
+        function placeStageMenu(drop) {
+            var menu = drop.querySelector(":scope > .dropdown-content");
+            var btn = drop.querySelector(":scope > button");
+            if (!menu || !btn) return;
+            var rect = btn.getBoundingClientRect();
+            var height = menu.scrollHeight || menu.offsetHeight || 240;
+            var roomBelow = window.innerHeight - rect.bottom - 8;
+            var top = rect.bottom + 4;
+            if (roomBelow < height && rect.top > roomBelow) {
+                top = rect.top - height - 4;
+            }
+            if (top + height > window.innerHeight - 8) {
+                top = Math.max(8, window.innerHeight - height - 8);
+            }
+            menu.style.position = "fixed";
+            menu.style.maxHeight = Math.max(160, window.innerHeight - 16) + "px";
+            menu.style.overflowY = "auto";
+            menu.style.top = Math.max(8, top) + "px";
+            menu.style.right = Math.max(8, window.innerWidth - rect.right) + "px";
+            menu.style.left = "auto";
+            menu.style.zIndex = "80";
+        }
+
+        function clearStageMenu(drop) {
+            var menu = drop.querySelector(":scope > .dropdown-content");
+            if (!menu) return;
+            menu.style.position = "";
+            menu.style.top = "";
+            menu.style.right = "";
+            menu.style.left = "";
+            menu.style.maxHeight = "";
+            menu.style.overflowY = "";
+        }
+
+        document.addEventListener("focusin", function (e) {
+            var drop = e.target.closest && e.target.closest(".stage .dropdown");
+            if (drop) placeStageMenu(drop);
+        });
+        document.addEventListener("focusout", function (e) {
+            var drop = e.target.closest && e.target.closest(".stage .dropdown");
+            if (!drop) return;
+            setTimeout(function () {
+                if (!drop.contains(document.activeElement)) clearStageMenu(drop);
+            }, 0);
+        });
+        var stage = document.querySelector(".stage");
+        if (stage) {
+            stage.addEventListener("scroll", function () {
+                stage.querySelectorAll(".dropdown:focus-within").forEach(placeStageMenu);
+            });
+        }
+
+        document.addEventListener("keydown", function (e) {
+            var tag = (e.target && e.target.tagName || "").toLowerCase();
+            var typing = tag === "input" || tag === "textarea" || tag === "select" || (e.target && e.target.isContentEditable);
+            if (e.key === "\\" && !e.metaKey && !e.ctrlKey && !e.altKey) {
+                if (typing) return;
+                e.preventDefault();
+                igniteSetMode(document.documentElement.getAttribute("data-theme") === "console" ? "cozy" : "console");
+                return;
+            }
+            if (typing || e.metaKey || e.ctrlKey || e.altKey) return;
+            if (document.querySelector("dialog[open], .modal.modal-open")) return;
+            var pages = { "1": "/", "2": "/dhcp", "3": "/tftp", "4": "/osimages", "5": "/syslinux", "6": "/provision" };
+            if (pages[e.key]) {
+                e.preventDefault();
+                window.location.href = pages[e.key];
+            }
         });
 
-        document.body.addEventListener('htmx:afterRequest', function(evt) {
-            if (evt.detail.failed) {
-                let errorMessage = "An unknown error occurred.";
-                if (evt.detail.xhr.responseText) {
-                    errorMessage = evt.detail.xhr.responseText;
+        function igniteRequestPath(evt) {
+            if (evt.detail && evt.detail.pathInfo && evt.detail.pathInfo.requestPath) {
+                return evt.detail.pathInfo.requestPath;
+            }
+            if (evt.detail && evt.detail.xhr && evt.detail.xhr.responseURL) {
+                return evt.detail.xhr.responseURL;
+            }
+            return "";
+        }
+
+        function igniteSilent(evt) {
+            var url = igniteRequestPath(evt);
+            return url.indexOf("/dashboard/summary") !== -1 || url.indexOf(IGNITE_MODE_URL) !== -1;
+        }
+
+        function igniteStampRaw(node) {
+            var names = ["data-updated", "data-modified", "data-checked", "data-seen-at"];
+            for (var i = 0; i < names.length; i++) {
+                if (node.hasAttribute(names[i])) return node.getAttribute(names[i]) || "";
+            }
+            if (node.hasAttribute("datetime")) return node.getAttribute("datetime") || "";
+            return null;
+        }
+
+        function igniteZoneStamp(date) {
+            if (!date || isNaN(date.getTime())) return "";
+            return new Intl.DateTimeFormat(undefined, {
+                month: "short",
+                day: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                timeZoneName: "short"
+            }).format(date);
+        }
+
+        function igniteZoneName(date) {
+            var parts = new Intl.DateTimeFormat(undefined, { timeZoneName: "short" }).formatToParts(date);
+            for (var i = 0; i < parts.length; i++) {
+                if (parts[i].type === "timeZoneName") return parts[i].value;
+            }
+            return "";
+        }
+
+        function igniteFormatTimes(root) {
+            var scope = root && root.querySelectorAll ? root : document;
+            scope.querySelectorAll("[data-time], time[datetime]").forEach(function (node) {
+                var raw = igniteStampRaw(node);
+                if (raw === null) return;
+                var kind = node.getAttribute("data-time") || "datetime";
+                if (!raw) {
+                    if (kind !== "title") node.textContent = "—";
+                    return;
                 }
-                Toastify({
-                    text: errorMessage,
-                    duration: 3000,
-                    close: true,
-                    gravity: "top",
-                    position: "right",
-                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
-                }).showToast();
+                var date = new Date(raw);
+                if (isNaN(date.getTime())) return;
+                var stamp = igniteZoneStamp(date);
+                if (kind === "title") {
+                    node.title = stamp;
+                    return;
+                }
+                node.textContent = stamp;
+                if (node.hasAttribute("title")) node.title = stamp;
+                var zoneNode = node.closest(".stat") && node.closest(".stat").querySelector("[data-zone]");
+                var zone = igniteZoneName(date);
+                if (zoneNode && zone) zoneNode.textContent = zone;
+            });
+            scope.querySelectorAll("[data-seen-title][data-seen-at]").forEach(function (node) {
+                var raw = node.getAttribute("data-seen-at") || "";
+                if (!raw) return;
+                var date = new Date(raw);
+                if (isNaN(date.getTime())) return;
+                node.setAttribute("data-seen-title", igniteZoneStamp(date));
+            });
+        }
+
+        function igniteSyncAttention() {
+            var head = document.querySelector("#status-services [data-attention-cozy]");
+            if (!head) return;
+            var cozy = document.getElementById("overview-sub-cozy");
+            var consoleSub = document.getElementById("overview-sub-console");
+            if (cozy) cozy.textContent = head.getAttribute("data-attention-cozy") || "";
+            if (consoleSub) consoleSub.textContent = head.getAttribute("data-attention-console") || "";
+        }
+
+        igniteFormatTimes(document);
+
+        document.body.addEventListener("htmx:afterSwap", function (evt) {
+            var target = evt.detail && evt.detail.target;
+            igniteFormatTimes(target || document);
+            if (target && target.id === "status-services") igniteSyncAttention();
+        });
+
+        document.body.addEventListener("htmx:afterRequest", function (evt) {
+            if (igniteSilent(evt)) return;
+            if (evt.detail.failed) {
+                if (igniteLooksLikeCSRF(evt.detail.xhr)) {
+                    igniteToast("Your session expired", false, { reload: true });
+                    return;
+                }
+                igniteToast(igniteFailureMessage(evt), false);
             } else if (evt.detail.successful) {
-                let successMessage = evt.detail.xhr.responseText;
-                if (successMessage && !successMessage.trim().startsWith('<')) {
-                    Toastify({
-                        text: successMessage,
-                        duration: 3000,
-                        close: true,
-                        gravity: "top",
-                        position: "right",
-                        backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
-                    }).showToast();
+                var successMessage = igniteResponseMessage(evt.detail.xhr, "");
+                if (successMessage && successMessage !== "That action failed.") {
+                    igniteToast(successMessage, true);
                 }
             }
         });
 
-        // Authentication functions
-        function logout() {
-            fetch('/auth/logout', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                }
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    window.location.href = '/login';
-                }
-            })
-            .catch(error => {
-                console.error('Logout error:', error);
-                // Force redirect to login page even if request fails
-                window.location.href = '/login';
+        document.body.addEventListener("htmx:responseError", function (evt) {
+            if (igniteRequestPath(evt).indexOf("/dashboard/summary") === -1) return;
+            var slot = document.getElementById("overview-summary");
+            if (slot) slot.removeAttribute("hx-trigger");
+        });
+
+        var logoutForm = document.getElementById("logout-form");
+        if (logoutForm) {
+            logoutForm.addEventListener("submit", function (e) {
+                e.preventDefault();
+                igniteFetch("/auth/logout", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json", "Accept": "application/json" }
+                }).then(function (response) {
+                    return response.text().then(function (text) {
+                        var data = {};
+                        try { data = JSON.parse(text); } catch (err) {}
+                        if (response.ok && data.success) {
+                            window.location.href = "/login";
+                            return;
+                        }
+                        igniteToast(igniteResponseMessage({ responseText: text }, "Could not log out."), false);
+                    });
+                }).catch(function () {
+                    igniteToast("Could not log out.", false);
+                });
             });
         }
 
         function openChangePasswordModal() {
-            document.getElementById('change-password-modal').classList.add('modal-open');
+            document.getElementById("change-password-modal").classList.add("modal-open");
         }
 
         function closeChangePasswordModal() {
-            document.getElementById('change-password-modal').classList.remove('modal-open');
-            document.getElementById('change-password-form').reset();
+            document.getElementById("change-password-modal").classList.remove("modal-open");
+            document.getElementById("change-password-form").reset();
         }
 
-        // Handle change password form submission
-        document.getElementById('change-password-form').addEventListener('submit', function(e) {
+        document.getElementById("change-password-form").addEventListener("submit", function (e) {
             e.preventDefault();
-
-            const currentPassword = document.getElementById('current-password').value;
-            const newPassword = document.getElementById('new-password').value;
-            const confirmPassword = document.getElementById('confirm-password').value;
-
-            // Validate passwords match
+            var currentPassword = document.getElementById("current-password").value;
+            var newPassword = document.getElementById("new-password").value;
+            var confirmPassword = document.getElementById("confirm-password").value;
             if (newPassword !== confirmPassword) {
-                Toastify({
-                    text: "New passwords do not match",
-                    duration: 3000,
-                    close: true,
-                    gravity: "top",
-                    position: "right",
-                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
-                }).showToast();
+                Toastify({ text: "New passwords do not match", duration: 3000, close: true, gravity: "top", position: "right", backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)" }).showToast();
                 return;
             }
-
-            // Send password change request
-            fetch('/auth/change-password', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                },
-                body: JSON.stringify({
-                    current_password: currentPassword,
-                    new_password: newPassword
-                })
-            })
-            .then(response => response.json())
-            .then(data => {
-                if (data.success) {
-                    Toastify({
-                        text: data.message,
-                        duration: 3000,
-                        close: true,
-                        gravity: "top",
-                        position: "right",
-                        backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
-                    }).showToast();
-                    closeChangePasswordModal();
-                } else {
-                    Toastify({
-                        text: data.message,
-                        duration: 3000,
-                        close: true,
-                        gravity: "top",
-                        position: "right",
-                        backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
-                    }).showToast();
-                }
-            })
-            .catch(error => {
-                console.error('Password change error:', error);
-                Toastify({
-                    text: "An error occurred while changing password",
-                    duration: 3000,
-                    close: true,
-                    gravity: "top",
-                    position: "right",
-                    backgroundColor: "linear-gradient(to right, #FBBF24, #FF4500)",
-                }).showToast();
+            igniteFetch("/auth/change-password", {
+                method: "POST",
+                headers: { "Content-Type": "application/json", "Accept": "application/json" },
+                body: JSON.stringify({ current_password: currentPassword, new_password: newPassword })
+            }).then(function (response) {
+                return response.text().then(function (text) {
+                    var data = {};
+                    try { data = JSON.parse(text); } catch (err) {}
+                    igniteToast(igniteResponseMessage({ responseText: text }, "An error occurred while changing password"), response.ok && !!data.success);
+                    if (response.ok && data.success) closeChangePasswordModal();
+                });
+            }).catch(function () {
+                igniteToast("An error occurred while changing password", false);
             });
         });
     </script>

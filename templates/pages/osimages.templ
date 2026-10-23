@@ -1,174 +1,155 @@
 {{ define "content" }}
-<div>
-    <div class="flex justify-between items-center mb-6">
-        <h1 class="text-3xl font-bold">OS Images Management</h1>
-        <div class="flex space-x-2">
-            <button class="btn btn-primary" onclick="document.getElementById('downloadModal').showModal()">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
-                </svg>
-                Download OS Image
-            </button>
-            <button class="btn btn-secondary" 
-                    hx-post="/ipxe/update"
-                    hx-swap="none"
-                    hx-on::after-request="handleIPXEResponse(event)">
-                <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
-                </svg>
-                Regenerate iPXE Config
-            </button>
-        </div>
+<header class="pagehead">
+    <div>
+        <h1><span class="only-cozy">OS images</span><span class="only-console">osimages</span></h1>
+        <p class="sub only-cozy">Kernels and initrds for network installs</p>
+        <p class="sub only-console">{{countPhrase (len .OSImages) "image" "images"}} · {{countPhrase .DownloadCount "download" "downloads"}}</p>
     </div>
+    <div class="actions">
+        <button class="b" type="button" hx-post="/ipxe/update" hx-swap="none">Regenerate iPXE config</button>
+        <button class="b p" type="button" onclick="document.getElementById('os').focus()">Download OS image</button>
+    </div>
+</header>
 
-    <!-- Active Downloads (auto-refreshes while downloads are running) -->
-    <div id="active-downloads"{{if .Downloads}} hx-get="/osimages" hx-select="#active-downloads" hx-trigger="every 5s" hx-swap="outerHTML"{{end}}>
+<div class="os-top">
     {{if .Downloads}}
-    <div class="card bg-base-200 shadow-xl mb-6">
-        <div class="card-body">
-            <h2 class="card-title">Active Downloads</h2>
-            <div class="overflow-x-auto">
-                <table class="table table-zebra w-full">
-                    <thead>
-                        <tr>
-                            <th>OS</th>
-                            <th>Version</th>
-                            <th>Status</th>
-                            <th>Progress</th>
-                            <th>Started</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {{range .Downloads}}
-                        <tr>
-                            <td>{{.OS}}</td>
-                            <td>{{.Version}}</td>
-                            <td>
-                                <div class="badge badge-info">{{.Status}}</div>
-                            </td>
-                            <td>
-                                <div class="flex items-center gap-2">
-                                    <progress class="progress progress-primary w-24" value="{{.Progress}}" max="100"></progress>
-                                    <span class="text-xs">{{.Progress}}%</span>
-                                </div>
-                            </td>
-                            <td>{{.StartedAt.Format "15:04:05"}}</td>
-                            <td>
-                                {{if or (eq .Status "downloading") (eq .Status "queued")}}
-                                <button class="btn btn-xs btn-error" 
-                                        hx-post="/osimages/cancel/{{.ID}}"
-                                        hx-confirm="Are you sure you want to cancel this download?">
-                                    Cancel
-                                </button>
-                                {{end}}
-                            </td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
-            </div>
+    {{with index .Downloads 0}}
+    <article class="sv on">
+        <div class="fire"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
+        <div>
+            <small>Downloading · {{.Progress}}%</small>
+            <b>{{.OS}} {{.Version}}</b>
         </div>
-    </div>
+        <span class="st wa" style="margin-left:auto">Active</span>
+    </article>
     {{end}}
-    </div>
-
-    <!-- OS Images List -->
-    <div class="card bg-base-200 shadow-xl">
-        <div class="card-body">
-            <h2 class="card-title">Available OS Images</h2>
-            
-            {{if .OSImages}}
-            <div class="overflow-x-auto">
-                <table class="table table-zebra w-full">
-                    <thead>
-                        <tr>
-                            <th>OS</th>
-                            <th>Version</th>
-                            <th>Architecture</th>
-                            <th>Kernel Size</th>
-                            <th>Initrd Size</th>
-                            <th>Created</th>
-                            <th>Actions</th>
-                        </tr>
-                    </thead>
-                    <tbody>
-                        {{range .OSImages}}
-                        <tr>
-                            <td>
-                                <div class="flex items-center space-x-2">
-                                    {{if eq .OS "ubuntu"}}
-                                        <div class="w-6 h-6 bg-orange-500 rounded text-white text-xs flex items-center justify-center font-bold">U</div>
-                                    {{else if eq .OS "centos"}}
-                                        <div class="w-6 h-6 bg-purple-600 rounded text-white text-xs flex items-center justify-center font-bold">C</div>
-                                    {{else if eq .OS "nixos"}}
-                                        <div class="w-6 h-6 bg-blue-600 rounded text-white text-xs flex items-center justify-center font-bold">N</div>
-                                    {{else if eq .OS "debian"}}
-                                        <div class="w-6 h-6 bg-red-600 rounded text-white text-xs flex items-center justify-center font-bold">D</div>
-                                    {{else if eq .OS "fedora"}}
-                                        <div class="w-6 h-6 bg-blue-700 rounded text-white text-xs flex items-center justify-center font-bold">F</div>
-                                    {{else if eq .OS "opensuse"}}
-                                        <div class="w-6 h-6 bg-green-600 rounded text-white text-xs flex items-center justify-center font-bold">S</div>
-                                    {{end}}
-                                    <span class="capitalize">{{.OS}}</span>
-                                </div>
-                            </td>
-                            <td><span class="badge badge-outline">{{.Version}}</span></td>
-                            <td>{{.Architecture}}</td>
-                            <td>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}--{{end}}</td>
-                            <td>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}--{{end}}</td>
-                            <td>{{.CreatedAt.Format "2006-01-02 15:04"}}</td>
-                            <td>
-                                <div class="flex space-x-1">
-                                    <button class="btn btn-xs btn-info" 
-                                            onclick="showOSImageInfo('{{.ID}}')">
-                                        Info
-                                    </button>
-                                    {{if not .Active}}
-                                    <button class="btn btn-xs btn-error" 
-                                            hx-delete="/osimages/delete/{{.ID}}"
-                                            hx-trigger="click"
-                                            hx-swap="none"
-                                            hx-on::after-request="window.location.reload()"
-                                            hx-confirm="Are you sure you want to delete this OS image?">
-                                        Delete
-                                    </button>
-                                    {{end}}
-                                </div>
-                            </td>
-                        </tr>
-                        {{end}}
-                    </tbody>
-                </table>
-            </div>
-            {{else}}
-            <div class="text-center py-8">
-                <div class="text-gray-500 mb-4">
-                    <svg class="w-16 h-16 mx-auto mb-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
-                    </svg>
-                </div>
-                <h3 class="text-lg font-semibold text-gray-700 mb-2">No OS Images Available</h3>
-                <p class="text-gray-500 mb-4">Download your first OS image to get started</p>
-                <button class="btn btn-primary" onclick="document.getElementById('downloadModal').showModal()">
-                    Download OS Image
-                </button>
-            </div>
-            {{end}}
+    {{else}}
+    <article class="sv">
+        <div class="fire off"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
+        <div>
+            <small>Downloads</small>
+            <b>Idle</b>
         </div>
-    </div>
+    </article>
+    {{end}}
+    <article class="sv">
+        <div>
+            <small>iPXE config</small>
+            <b>Regenerate after image changes</b>
+        </div>
+        <span class="st ok" style="margin-left:auto">OK</span>
+    </article>
+    <section class="stats strip" aria-label="Image totals">
+        <div class="stat"><div class="stat-title">Images</div><div class="stat-value">{{len .OSImages}}</div></div>
+        <div class="stat"><div class="stat-title">Downloading</div><div class="stat-value">{{.DownloadCount}}</div></div>
+        <div class="stat"><div class="stat-title">Kernels</div><div class="stat-value">{{formatBytes .KernelBytes}}</div></div>
+        <div class="stat"><div class="stat-title">Initrds</div><div class="stat-value">{{formatBytes .InitrdBytes}}</div></div>
+        <div class="stat"><div class="stat-title">Arch</div><div class="stat-value">{{.ArchLabel}}</div></div>
+    </section>
 </div>
 
-<!-- Download Modal -->
-<dialog id="downloadModal" class="modal">
-    <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">Download OS Image</h3>
-        <form hx-post="/osimages/download" hx-swap="none" hx-on::after-request="handleDownloadResponse(event)">
-            <div class="form-control mb-4">
-                <label class="label">
-                    <span class="label-text">Operating System</span>
-                </label>
-                <select name="os" class="select select-bordered w-full" required onchange="updateVersions(this.value)">
+<div id="osimage-downloads" class="main">
+    <section class="panel">
+        <div class="ph">
+            <h3>Images</h3>
+            <span class="mu">{{countPhrase (len .OSImages) "ready" "ready"}}{{if .DownloadCount}} · {{countPhrase .DownloadCount "download" "downloads"}}{{end}}</span>
+        </div>
+        <div id="active-downloads"{{if .Downloads}} hx-get="/osimages" hx-select="#osimage-downloads" hx-target="#osimage-downloads" hx-trigger="every 5s"{{end}}>
+        {{if .Downloads}}
+        <div class="sec">Active downloads</div>
+        {{range .Downloads}}
+        <div class="dl-row">
+            <span><b>{{.OS}}</b> <span class="mono">{{.Version}}</span></span>
+            <span class="prog"><i style="width: {{.Progress}}%"></i></span>
+            <span class="mono">{{.Progress}}%</span>
+            <span class="mu">started <time datetime="{{rfc3339 .StartedAt}}" data-time="time">{{utcLabel .StartedAt "15:04:05"}}</time></span>
+            {{if or (eq .Status "downloading") (eq .Status "queued")}}
+            <button class="b sm" hx-post="/osimages/cancel/{{.ID}}" hx-confirm="Cancel this download?">Cancel</button>
+            {{else}}
+            <span class="st in">{{.Status}}</span>
+            {{end}}
+        </div>
+        {{end}}
+        {{end}}
+        </div>
+        <div class="sec">Available images</div>
+        {{if .OSImages}}
+        <div class="cozy-view cards">
+            {{range .OSImages}}
+            <article class="cd" style="cursor: default;">
+                <div class="r">
+                    <span><span class="ico {{.OS}}">{{initial .OS}}</span><b>{{.OS}} {{.Version}}</b></span>
+                    <span class="st ok">Ready</span>
+                </div>
+                <div class="kv">
+                    <span>Arch</span><span>{{.Architecture}}</span>
+                    <span>Kernel</span><span>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</span>
+                    <span>Initrd</span><span>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</span>
+                    <span>Created</span><span><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></span>
+                </div>
+                <div class="actions">
+                    <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
+                    {{if not .Active}}
+                    <button class="b dg sm"
+                            hx-delete="/osimages/delete/{{.ID}}"
+                            hx-swap="none"
+                            hx-on::after-request="if (event.detail.successful) window.location.reload()"
+                            hx-confirm="Delete this OS image?">Delete…</button>
+                    {{end}}
+                </div>
+            </article>
+            {{end}}
+        </div>
+        <div class="console-view scroll">
+            <table>
+                <thead>
+                    <tr>
+                        <th>OS</th><th>Version</th><th>Arch</th><th>Kernel</th><th>Initrd</th><th>Created</th><th class="acts">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {{range .OSImages}}
+                    <tr>
+                        <td><span class="ico {{.OS}}">{{initial .OS}}</span>{{.OS}}</td>
+                        <td class="mono">{{.Version}}</td>
+                        <td>{{.Architecture}}</td>
+                        <td>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</td>
+                        <td>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</td>
+                        <td><time datetime="{{rfc3339 .CreatedAt}}" data-time="datetime">{{utcLabel .CreatedAt "2006-01-02 15:04"}}</time></td>
+                        <td class="acts">
+                            <div class="actions stable">
+                                <button class="b sm" type="button" onclick="showOSImageInfo('{{.ID}}')">Info</button>
+                                {{if not .Active}}
+                                <button class="b dg sm"
+                                        hx-delete="/osimages/delete/{{.ID}}"
+                                        hx-swap="none"
+                                        hx-on::after-request="if (event.detail.successful) window.location.reload()"
+                                        hx-confirm="Delete this OS image?">Delete…</button>
+                                {{end}}
+                            </div>
+                        </td>
+                    </tr>
+                    {{end}}
+                </tbody>
+            </table>
+        </div>
+        {{else}}
+        <div class="note">
+            <p>No OS images yet. Download a kernel and initrd to boot from.</p>
+        </div>
+        {{end}}
+    </section>
+
+    <section class="panel">
+        <div class="ph">
+            <h3>Download an image</h3>
+            <span class="mu">kernel + initrd</span>
+        </div>
+        <form id="download-form" hx-post="/osimages/download" hx-swap="none" hx-on::after-request="handleDownloadResponse(event)">
+            <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+            <div class="fld">
+                <label for="os">Operating system</label>
+                <select id="os" name="os" class="select select-bordered w-full" required onchange="updateVersions(this.value)">
                     <option value="">Select OS</option>
                     <option value="ubuntu">Ubuntu</option>
                     <option value="debian">Debian</option>
@@ -178,42 +159,42 @@
                     <option value="nixos">NixOS</option>
                 </select>
             </div>
-            
-            <div class="form-control mb-4">
-                <label class="label">
-                    <span class="label-text">Version</span>
-                </label>
+            <div class="fld">
+                <label for="versionSelect">Version</label>
                 <select name="version" id="versionSelect" class="select select-bordered w-full" required>
-                    <option value="">Select version first</option>
+                    <option value="">Select version</option>
                 </select>
             </div>
-            
-            <div class="form-control mb-4">
-                <label class="label">
-                    <span class="label-text">Architecture</span>
-                </label>
-                <select name="architecture" class="select select-bordered w-full">
+            <div class="fld">
+                <label for="architecture">Architecture</label>
+                <select id="architecture" name="architecture" class="select select-bordered w-full">
                     {{range .Architectures}}
                     <option value="{{.}}">{{.}}</option>
                     {{end}}
                 </select>
             </div>
-            
-            <div class="modal-action">
-                <button type="button" class="btn" onclick="document.getElementById('downloadModal').close()">Cancel</button>
-                <button type="submit" class="btn btn-primary">Start Download</button>
+            <div class="fld">
+                <span class="mu">Supported: Ubuntu · Debian · Fedora · CentOS · NixOS</span>
+            </div>
+            <div class="ipxe-note">
+                <b>iPXE boot menu</b>
+                <span class="mu">Regenerate after adding or removing images.</span>
+                <div style="margin-top:8px">
+                    <button class="b sm" type="button" hx-post="/ipxe/update" hx-swap="none">Regenerate iPXE config</button>
+                </div>
+            </div>
+            <div class="panel-foot">
+                <button type="submit" class="b p sm">Start download</button>
+                <button type="reset" class="b sm">Reset</button>
             </div>
         </form>
-    </div>
-</dialog>
+    </section>
+</div>
 
-<!-- OS Image Info Modal -->
 <dialog id="infoModal" class="modal">
     <div class="modal-box">
-        <h3 class="font-bold text-lg mb-4">OS Image Information</h3>
-        <div id="osImageInfo">
-            <!-- Content will be loaded here -->
-        </div>
+        <h3 class="font-bold text-lg mb-4">OS image</h3>
+        <div id="osImageInfo"></div>
         <div class="modal-action">
             <button type="button" class="btn" onclick="document.getElementById('infoModal').close()">Close</button>
         </div>
@@ -223,62 +204,65 @@
 <script>
 function updateVersions(os) {
     const versionSelect = document.getElementById('versionSelect');
-    versionSelect.innerHTML = '<option value="">Select version</option>';
-    
+    versionSelect.replaceChildren();
+    const placeholder = document.createElement('option');
+    placeholder.value = '';
+    placeholder.textContent = 'Select version';
+    versionSelect.appendChild(placeholder);
     if (!os) return;
-    
-    fetch(`/osimages/available-versions?os=${os}`)
-        .then(response => {
-            if (!response.ok) {
-                throw new Error('Failed to fetch versions');
-            }
+    fetch('/osimages/available-versions?os=' + encodeURIComponent(os))
+        .then(function (response) {
+            if (!response.ok) throw new Error('Failed to fetch versions');
             return response.json();
         })
-        .then(versions => {
-            versions.forEach(versionInfo => {
+        .then(function (versions) {
+            versions.forEach(function (versionInfo) {
                 const option = document.createElement('option');
                 option.value = versionInfo.value;
                 option.textContent = versionInfo.display_name;
                 versionSelect.appendChild(option);
             });
         })
-        .catch(error => {
-            console.error('Error fetching versions:', error);
-            // Optional: show error message
-        });
+        .catch(function (error) { console.error('Error fetching versions:', error); });
 }
 
 function showOSImageInfo(imageId) {
-    fetch(`/osimages/info/${imageId}`)
-        .then(response => response.json())
-        .then(data => {
-            const infoDiv = document.getElementById('osImageInfo');
-            infoDiv.innerHTML = `
-                <div class="space-y-3">
-                    <div><strong>ID:</strong> ${data.id}</div>
-                    <div><strong>OS:</strong> ${data.os}</div>
-                    <div><strong>Version:</strong> ${data.version}</div>
-                    <div><strong>Architecture:</strong> ${data.architecture}</div>
-                    <div><strong>Kernel Path:</strong> ${data.kernel_path}</div>
-                    <div><strong>Initrd Path:</strong> ${data.initrd_path}</div>
-                    <div><strong>Kernel Size:</strong> ${formatBytes(data.kernel_size)}</div>
-                    <div><strong>Initrd Size:</strong> ${formatBytes(data.initrd_size)}</div>
-                    <div><strong>Download URL:</strong> <a href="${data.download_url || '#'}" target="_blank" class="link link-primary text-xs break-all">${data.download_url || 'N/A'}</a></div>
-                    <div><strong>Checksum:</strong> <code class="text-xs">${data.checksum}</code></div>
-                    <div><strong>Created:</strong> ${new Date(data.created_at).toLocaleString()}</div>
-                    <div><strong>Updated:</strong> ${new Date(data.updated_at).toLocaleString()}</div>
-                </div>
-            `;
+    fetch('/osimages/info/' + encodeURIComponent(imageId))
+        .then(function (response) { return response.json(); })
+        .then(function (data) {
+            fillFacts(document.getElementById('osImageInfo'), [
+                ['ID', data.id, 'mono'],
+                ['OS', data.os, ''],
+                ['Version', data.version, ''],
+                ['Arch', data.architecture, ''],
+                ['Kernel', data.kernel_path, 'mono'],
+                ['Initrd', data.initrd_path, 'mono'],
+                ['Kernel size', formatBytes(data.kernel_size), ''],
+                ['Initrd size', formatBytes(data.initrd_size), '']
+            ]);
             document.getElementById('infoModal').showModal();
         })
-        .catch(error => {
-            console.error('Error fetching OS image info:', error);
-            alert('Failed to load OS image information');
-        });
+        .catch(function () { alert('Failed to load OS image information'); });
+}
+
+function fillFacts(el, rows) {
+    el.replaceChildren();
+    var grid = document.createElement('div');
+    grid.className = 'kv';
+    rows.forEach(function (row) {
+        var label = document.createElement('span');
+        label.textContent = row[0];
+        var value = document.createElement('span');
+        if (row[2]) value.className = row[2];
+        value.textContent = row[1] == null ? '' : String(row[1]);
+        grid.appendChild(label);
+        grid.appendChild(value);
+    });
+    el.appendChild(grid);
 }
 
 function formatBytes(bytes) {
-    if (bytes === 0) return '0 Bytes';
+    if (!bytes) return '0 Bytes';
     const k = 1024;
     const sizes = ['Bytes', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
@@ -287,58 +271,15 @@ function formatBytes(bytes) {
 
 function handleDownloadResponse(event) {
     const xhr = event.detail.xhr;
-    if (xhr.status === 200) {
-        try {
-            const response = JSON.parse(xhr.responseText);
-            if (response.status === 'started') {
-                // Close modal
-                document.getElementById('downloadModal').close();
-                
-                // Show success message
-                Toastify({
-                    text: response.message,
-                    duration: 5000,
-                    close: true,
-                    gravity: "top",
-                    position: "right",
-                    backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
-                }).showToast();
-                
-                // Refresh the page after a short delay to show updated list
-                setTimeout(() => {
-                    window.location.reload();
-                }, 1000);
-            }
-        } catch (e) {
-            console.error('Error parsing response:', e);
+    if (!xhr || xhr.status !== 200) return;
+    try {
+        const response = JSON.parse(xhr.responseText);
+        if (response.status === 'started') {
+            setTimeout(function () { window.location.reload(); }, 600);
         }
+    } catch (e) {
+        console.error('Error parsing response:', e);
     }
 }
-
-function handleIPXEResponse(event) {
-    const xhr = event.detail.xhr;
-    if (xhr.status === 200) {
-        // Show success message
-        Toastify({
-            text: "iPXE configuration regenerated successfully",
-            duration: 3000,
-            close: true,
-            gravity: "top",
-            position: "right",
-            backgroundColor: "linear-gradient(to right, #00b09b, #96c93d)",
-        }).showToast();
-    } else {
-        // Show error message
-        Toastify({
-            text: "Failed to regenerate iPXE configuration",
-            duration: 5000,
-            close: true,
-            gravity: "top",
-            position: "right",
-            backgroundColor: "linear-gradient(to right, #ff5f6d, #ffc371)",
-        }).showToast();
-    }
-}
-
 </script>
 {{ end }}

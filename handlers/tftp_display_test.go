@@ -30,6 +30,9 @@ func TestTFTPPageShowsConfiguredRoot(t *testing.T) {
 	require.Equal(t, http.StatusOK, rec.Code)
 	body := rec.Body.String()
 	require.Contains(t, body, "./public/tftp")
+	require.Contains(t, body, "⌂ TFTP root")
+	require.Contains(t, body, `stat-title">Root`)
+	require.NotContains(t, body, `href="/tftp">/</a>`)
 	require.NotContains(t, body, dir)
 
 	data, err := (&TFTPHandlers{}).getFileInfo("./")

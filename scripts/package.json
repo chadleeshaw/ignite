@@ -1,0 +1,8 @@
+{
+  "private": true,
+  "description": "Headless capture for the README screenshots. See scripts/screenshots.mjs.",
+  "dependencies": {
+    "puppeteer-core": "24.15.0",
+    "sharp": "0.34.3"
+  }
+}

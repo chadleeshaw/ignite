@@ -7,7 +7,9 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
+	"time"
 )
 
 // maxUploadBytes caps TFTP upload request bodies (512 MB).
@@ -286,33 +288,43 @@ func (h *TFTPHandlers) HandleUpload(w http.ResponseWriter, r *http.Request) {
 	w.Write([]byte("File uploaded successfully"))
 }
 
-// FileInfo represents file metadata for display
+// FileInfo represents file metadata for display.
+// Name is the root-relative path used by open, download, and delete.
+// Base is the entry name shown in the table. ModTime is the filesystem
+// time; the page formats it in the browser's local zone.
 type FileInfo struct {
 	Name           string
+	Base           string
 	Size           string
+	ModTime        time.Time
 	LastModified   string
 	LastModifiedAt string
 	IsDir          bool
 }
 
-// TFTPData holds information for rendering the TFTP management page
+// TFTPCrumb is one step of the directory path under the TFTP root.
+type TFTPCrumb struct {
+	Name string
+	Dir  string
+}
+
+// TFTPData holds information for rendering the TFTP management page.
+// Mode is the server UI preference. Empty renders as cozy.
 type TFTPData struct {
 	Title           string
 	Mode            string
+	Page            string
 	CSRFToken       string
 	OverallStatus   string
 	ServerRunning   bool
+	ServerStatus    string
 	ServerDirectory string
 	PrevDirectory   string
 	Root            string
 	Breadcrumbs     []TFTPCrumb
 	Files           []FileInfo
-}
-
-// TFTPCrumb is one step below the TFTP root in the page breadcrumb.
-type TFTPCrumb struct {
-	Dir  string
-	Name string
+	FileCount       int
+	DirCount        int
 }
 
 // getTFTP retrieves file information for the root TFTP directory.
@@ -361,25 +373,81 @@ func (h *TFTPHandlers) getFileInfo(dir string) (*TFTPData, error) {
 
 		fileInfos = append(fileInfos, FileInfo{
 			Name:           relativePath,
+			Base:           entry.Name(),
 			Size:           humanReadableSize(fileInfo.Size()),
+			ModTime:        fileInfo.ModTime(),
 			LastModified:   fileInfo.ModTime().Format("2006-01-02 15:04:05"),
 			LastModifiedAt: formatRFC3339(fileInfo.ModTime()),
 			IsDir:          fileInfo.IsDir(),
 		})
 	}
+	orderTFTPFiles(fileInfos)
+
+	fileCount, dirCount := 0, 0
+	for _, info := range fileInfos {
+		if info.IsDir {
+			dirCount++
+		} else {
+			fileCount++
+		}
+	}
 
 	return &TFTPData{
-		Title:           "TFTP Server Management",
+		Title:           "TFTP",
+		Page:            "tftp",
 		ServerRunning:   isTFTPRunning(),
+		ServerStatus:    TFTPStatus(),
 		ServerDirectory: relDir,
 		PrevDirectory:   removeLastDir(relDir),
 		Root:            tftpPageRoot(),
 		Files:           fileInfos,
+		FileCount:       fileCount,
+		DirCount:        dirCount,
+		Breadcrumbs:     tftpCrumbs(relDir),
 	}, nil
 }
 
+// orderTFTPFiles lists directories before files, then by display name.
+func orderTFTPFiles(files []FileInfo) {
+	sort.SliceStable(files, func(i, j int) bool {
+		if files[i].IsDir != files[j].IsDir {
+			return files[i].IsDir
+		}
+		return strings.ToLower(tftpDisplayName(files[i])) < strings.ToLower(tftpDisplayName(files[j]))
+	})
+}
+
+func tftpDisplayName(f FileInfo) string {
+	if f.Base != "" {
+		return f.Base
+	}
+	return f.Name
+}
+
+// tftpCrumbs splits a root-relative directory into linked steps.
+func tftpCrumbs(rel string) []TFTPCrumb {
+	rel = strings.Trim(rel, `/\`)
+	if rel == "" || rel == "." {
+		return nil
+	}
+	parts := strings.FieldsFunc(rel, func(r rune) bool {
+		return r == '/' || r == '\\'
+	})
+	crumbs := make([]TFTPCrumb, 0, len(parts))
+	acc := ""
+	for _, part := range parts {
+		if acc == "" {
+			acc = part
+		} else {
+			acc = acc + "/" + part
+		}
+		crumbs = append(crumbs, TFTPCrumb{Name: part, Dir: acc})
+	}
+	return crumbs
+}
+
 // tftpPageRoot is the path the TFTP page prints. File operations keep using
-// the absolute TFTPDir.
+// the absolute TFTPDir. The value is the configured TFTP_DIR when one was set.
 func tftpPageRoot() string {
 	if TFTPDisplayRoot != "" {
 		return TFTPDisplayRoot
