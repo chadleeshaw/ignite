@@ -84,10 +84,13 @@ type OSDefinition struct {
 }
 
 type OSVersion struct {
-	DisplayName      string   `json:"display_name"`
-	BaseURL          string   `json:"base_url"`
-	Architectures    []string `json:"architectures"`
-	ExpectedChecksum string   `json:"expected_checksum,omitempty"` // Optional SHA256 hex digest; when set, each downloaded file for this version must match it
+	DisplayName   string   `json:"display_name"`
+	BaseURL       string   `json:"base_url"`
+	Architectures []string `json:"architectures"`
+	// ExpectedChecksum is unused. One digest cannot describe both the kernel
+	// and the initrd, so applying it to each file could never succeed.
+	// Per-file checksums arrive with the catalog refresh.
+	ExpectedChecksum string `json:"expected_checksum,omitempty"`
 }
 
 // ConfigBuilder provides a builder pattern for configuration

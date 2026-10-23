@@ -16,7 +16,7 @@ type OSImage struct {
 	InitrdPath   string    `json:"initrd_path"`  // ubuntu/22.04/initrd.img
 	KernelSize   int64     `json:"kernel_size"`  // Size in bytes
 	InitrdSize   int64     `json:"initrd_size"`  // Size in bytes
-	Checksum     string    `json:"checksum"`     // SHA256 fingerprints of the downloaded files (kernel:initrd); verified against config only when expected checksums are provided
+	Checksum     string    `json:"checksum"`     // SHA256 of the kernel and the initrd, joined as kernel:initrd
 	Active       bool      `json:"active"`       // Default version for OS
 	DownloadURL  string    `json:"download_url"` // Original download URL
 	CreatedAt    time.Time `json:"created_at"`
