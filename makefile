@@ -28,6 +28,12 @@ css:
 	@npm install --prefix ./public --silent
 	@./public/node_modules/.bin/tailwindcss -i ./public/http/css/includes.css -o ./public/http/css/tailwind.css --minify
 
+# Rebuild the Provision editor bundle from public/editor/src.
+editor:
+	@echo "Building provision editor..."
+	@npm install --prefix ./public/editor --silent
+	@npm run build --prefix ./public/editor --silent
+
 # Clean build artifacts
 clean:
 	@echo "Cleaning up..."
@@ -57,6 +63,7 @@ help:
 	@echo "  dev      - Run in development mode"
 	@echo "  test     - Run tests"
 	@echo "  css      - Build CSS assets"
+	@echo "  editor   - Rebuild the provision editor bundle"
 	@echo "  clean    - Clean build artifacts"
 	@echo "  db-mock  - Add mock data to database"
 	@echo "  db-clear - Clear database"

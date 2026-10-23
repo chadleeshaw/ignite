@@ -460,8 +460,39 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(prov, "innerHTML") || strings.Contains(prov, "outerHTML") || strings.Contains(prov, "insertAdjacentHTML") {
 		t.Error("provision page still has an HTML string sink")
 	}
-	if !strings.Contains(prov, "/public/http/js/highlight.js") || !strings.Contains(prov, "igniteHighlight(") {
-		t.Error("provision preview is not wired to the shared highlighter")
+	if strings.Contains(prov, "previewFile(") || strings.Contains(prov, ">Preview<") {
+		t.Error("provision preview button still renders")
+	}
+	formAt := strings.Index(prov, `id="provision-editor-form"`)
+	if formAt < 0 {
+		t.Fatal("provision editor form missing")
+	}
+	form := prov[formAt:]
+	end := strings.Index(form, "</form>")
+	if end < 0 {
+		t.Fatal("provision editor form is not closed")
+	}
+	form = form[:end]
+	for _, want := range []string{
+		`action="/provision/save-file"`,
+		`name="csrf_token"`,
+		`name="path"`,
+		`name="content"`,
+		`id="editor-textarea"`,
+		`/public/http/js/editor.js`,
+		`/public/http/css/editor.css`,
+	} {
+		if !strings.Contains(prov, want) {
+			t.Errorf("provision editor missing %q", want)
+		}
+	}
+	if !strings.Contains(form, `name="content"`) || !strings.Contains(form, `id="editor-textarea"`) {
+		t.Error("editor textarea is not inside the save form")
+	}
+	if strings.Contains(prov, "/public/http/js/editor.js") && strings.Contains(renderNamed(t, "index", OverviewPage{
+		Title: "Overview", Page: "overview", CSRFToken: "session-token",
+	}), "/public/http/js/editor.js") {
+		t.Error("overview loaded the provision editor bundle")
 	}
 }
 

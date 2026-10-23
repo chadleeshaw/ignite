@@ -84,6 +84,9 @@
     </section>
 
     <section class="panel" id="editor-panel">
+        <form id="provision-editor-form" method="post" action="/provision/save-file" onsubmit="return saveFile(event)">
+        <input type="hidden" name="csrf_token" value="{{.CSRFToken}}">
+        <input type="hidden" name="path" id="editor-path" value="">
         <div class="ph editor-head">
             <h3 class="mono" id="current-filename">No file selected</h3>
             <span class="tag" id="type-tag" hidden></span>
@@ -91,8 +94,7 @@
             <span class="grow"></span>
             <span id="file-status" class="st wa" hidden>Unsaved changes</span>
             <button class="b sm" type="button" onclick="validateSyntax()">Validate</button>
-            <button class="b sm" type="button" onclick="previewFile()">Preview</button>
-            <button class="b sm p" type="button" id="save-btn" onclick="saveFile()" disabled>Save</button>
+            <button class="b sm p" type="submit" id="save-btn" disabled>Save</button>
             <button class="b sm dg" type="button" id="delete-btn" onclick="deleteCurrent()" disabled>Delete…</button>
         </div>
         <div class="chips">
@@ -102,17 +104,24 @@
             <button type="button" class="chip" onclick="insertTemplate('network-config')">+ Network</button>
             <span class="mu" style="margin-left:auto;align-self:center">Snippets</span>
         </div>
-        <div class="code-edit">
+        <div class="code-edit" id="code-edit">
             <pre class="ln" id="editor-lines" aria-hidden="true">1</pre>
-            <textarea id="editor-textarea" spellcheck="false" placeholder="Select a file to edit or create a new one..."
-                      oninput="onEditorInput()" onkeyup="updateCursorPosition()" onclick="updateCursorPosition()"
-                      onscroll="syncEditorScroll()"></textarea>
+            <div class="editor-field">
+                <pre class="editor-highlight" aria-hidden="true"><code></code></pre>
+                <textarea id="editor-textarea" name="content" spellcheck="false" wrap="soft"
+                          title="Tab indents. Press Esc, then Tab, to leave the editor."
+                          placeholder="Select a file to edit or create a new one..."
+                          oninput="onEditorInput()" onkeyup="updateCursorPosition()" onclick="updateCursorPosition()"
+                          onscroll="syncEditorScroll()"></textarea>
+            </div>
         </div>
         <div class="editor-foot">
             <span id="syntax-status" class="st ok" hidden>Checked</span>
+            <span id="editor-lang"></span>
             <span id="editor-info">0 lines · 0 chars</span>
             <span id="cursor-position" style="margin-left:auto">Ln 1, Col 1</span>
         </div>
+        </form>
     </section>
 </div>
 
@@ -135,7 +144,7 @@
         </div>
         <div>
             <h4 class="font-semibold mb-2">Editing</h4>
-            <p class="mu">Pick a file, edit, then Save. Preview uses the shared highlighter.</p>
+            <p class="mu">Pick a file, edit, then Save. Syntax highlights in the editor. Tab indents; Esc, then Tab, leaves the field.</p>
         </div>
     </div>
 </section>
@@ -148,8 +157,34 @@ function toast(message, isSuccess) {
     if (typeof igniteToast === "function") igniteToast(message, isSuccess);
 }
 
+function categoryFromPath(filePath) {
+    var parts = String(filePath || "").split("/").filter(Boolean);
+    return parts.length >= 2 ? parts[parts.length - 2] : "";
+}
+
+function rememberEditor(path, name, language, category) {
+    var area = document.getElementById("editor-textarea");
+    var pathInput = document.getElementById("editor-path");
+    if (pathInput) pathInput.value = path || "";
+    if (!area) return;
+    area.dataset.filename = path || name || "";
+    area.dataset.language = language || "";
+    area.dataset.category = category || "";
+    area.dispatchEvent(new Event("ignite-editor-refresh"));
+}
+
+function editorCSRF() {
+    if (typeof igniteCSRF === "function") {
+        var token = igniteCSRF();
+        if (token) return token;
+    }
+    var input = document.querySelector('#provision-editor-form input[name="csrf_token"]');
+    return input ? input.value : "";
+}
+
 function loadFile(path, name, language, type, category) {
     currentFile = { path: path, name: name, language: language, type: type, category: category };
+    rememberEditor(path, name, language, category);
     document.getElementById("current-filename").textContent = name;
     var typeTag = document.getElementById("type-tag");
     var catTag = document.getElementById("category-tag");
@@ -162,6 +197,7 @@ function loadFile(path, name, language, type, category) {
     fetch("/provision/load-file?path=" + encodeURIComponent(path))
         .then(function (response) { return response.text(); })
         .then(function (content) {
+            rememberEditor(path, name, language, category);
             document.getElementById("editor-textarea").value = content;
             isModified = false;
             updateFileStatus();
@@ -214,16 +250,19 @@ function deleteFile(filePath, fileName, row) {
         .catch(function () { toast("Could not delete that file.", false); });
 }
 
-function saveFile() {
+function saveFile(event) {
+    if (event && event.preventDefault) event.preventDefault();
     if (!currentFile) {
         toast("No file selected", false);
-        return;
+        return false;
     }
-    var content = document.getElementById("editor-textarea").value;
+    var area = document.getElementById("editor-textarea");
+    var content = area ? area.value : "";
+    rememberEditor(currentFile.path, currentFile.name, currentFile.language, currentFile.category);
     var formData = new FormData();
     formData.append("path", currentFile.path);
     formData.append("content", content);
-    formData.append("csrf_token", typeof igniteCSRF === "function" ? igniteCSRF() : "");
+    formData.append("csrf_token", editorCSRF());
     igniteFetch("/provision/save-file", { method: "POST", body: formData })
         .then(function (response) {
             return response.text().then(function (text) {
@@ -239,10 +278,14 @@ function saveFile() {
             });
         })
         .catch(function () { toast("Could not save that file.", false); });
+    return false;
 }
 
 function clearEditor() {
+    rememberEditor("", "", "", "");
     document.getElementById("editor-textarea").value = "";
+    var lang = document.getElementById("editor-lang");
+    if (lang) lang.textContent = "";
     currentFile = null;
     isModified = false;
     document.getElementById("current-filename").textContent = "No file selected";
@@ -272,64 +315,6 @@ function syncEditorScroll() {
     var area = document.getElementById("editor-textarea");
     var gutter = document.getElementById("editor-lines");
     gutter.scrollTop = area.scrollTop;
-}
-
-function previewFile() {
-    if (!currentFile) {
-        toast("No file selected", false);
-        return;
-    }
-    var content = document.getElementById("editor-textarea").value;
-    var filename = currentFile.name || "Untitled";
-    var language = currentFile.language || "text";
-    var host = document.getElementById("modal-content");
-    host.replaceChildren();
-    var modal = document.createElement("div");
-    modal.id = "preview-modal";
-    modal.className = "modal modal-open";
-    var box = document.createElement("div");
-    box.className = "modal-box max-w-4xl";
-    var head = document.createElement("div");
-    head.className = "flex justify-between items-center mb-4";
-    var title = document.createElement("h3");
-    title.className = "font-bold text-lg";
-    title.textContent = "Preview: " + filename;
-    var badge = document.createElement("span");
-    badge.className = "badge badge-outline";
-    badge.textContent = language;
-    head.append(title, badge);
-    var frame = document.createElement("div");
-    frame.className = "bg-base-300 p-4 rounded-lg";
-    var pre = document.createElement("pre");
-    pre.id = "preview-content";
-    pre.className = "hl text-sm overflow-x-auto max-h-96 whitespace-pre-wrap";
-    var shown = language;
-    if (typeof igniteHighlightLanguage === "function" && (!shown || shown === "text")) {
-        shown = igniteHighlightLanguage(filename, content);
-    }
-    badge.textContent = shown;
-    if (typeof igniteHighlight === "function") {
-        igniteHighlight(pre, content, shown);
-    } else {
-        pre.textContent = content;
-    }
-    frame.appendChild(pre);
-    var actions = document.createElement("div");
-    actions.className = "modal-action";
-    var close = document.createElement("button");
-    close.type = "button";
-    close.className = "btn";
-    close.textContent = "Close";
-    close.addEventListener("click", closePreviewModal);
-    actions.appendChild(close);
-    box.append(head, frame, actions);
-    modal.appendChild(box);
-    host.appendChild(modal);
-}
-
-function closePreviewModal() {
-    var host = document.getElementById("modal-content");
-    if (host) host.replaceChildren();
 }
 
 function updateFileStatus() {
@@ -402,12 +387,14 @@ function insertTemplate(templateType) {
 }
 
 function createNewFile(filePath, filename, language, content) {
-    currentFile = { path: filePath, name: filename, language: language, type: "template", category: language };
+    var category = categoryFromPath(filePath) || language || "";
+    currentFile = { path: filePath, name: filename, language: language, type: "template", category: category };
+    rememberEditor(filePath, filename, language, category);
     document.getElementById("current-filename").textContent = filename;
     document.getElementById("type-tag").hidden = false;
     document.getElementById("type-tag").textContent = "Template";
     document.getElementById("category-tag").hidden = false;
-    document.getElementById("category-tag").textContent = language || "";
+    document.getElementById("category-tag").textContent = category || language || "";
     document.getElementById("save-btn").disabled = false;
     document.getElementById("delete-btn").disabled = false;
     document.getElementById("editor-textarea").value = content;
@@ -428,6 +415,18 @@ document.addEventListener("DOMContentLoaded", function () {
     var first = document.querySelector(".file-item");
     if (first) selectFile(first);
 });
+
+(function () {
+    if (!document.getElementById("editor-textarea")) return;
+    var css = document.createElement("link");
+    css.rel = "stylesheet";
+    css.href = "/public/http/css/editor.css";
+    document.head.appendChild(css);
+    var script = document.createElement("script");
+    script.src = "/public/http/js/editor.js";
+    script.defer = true;
+    document.body.appendChild(script);
+})();
 
 document.addEventListener("keydown", function (e) {
     if ((e.metaKey || e.ctrlKey) && (e.key === "s" || e.key === "S")) {

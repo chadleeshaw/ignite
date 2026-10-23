@@ -1,0 +1,77 @@
+/* Provision editor overlay. Colors are the Cozy/Console tokens on :root,
+   so a data-theme change repaints the same spans. Typography follows the
+   textarea, including the Console size set on #editor-textarea. */
+
+#code-edit.hl-on .editor-highlight {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  color: var(--text);
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 21px;
+}
+
+#code-edit.hl-on .editor-highlight code {
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+html[data-theme="console"] #code-edit.hl-on .editor-highlight {
+  font-size: 12px;
+  line-height: 19px;
+}
+
+#code-edit.hl-on #editor-textarea {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+  color: transparent;
+  caret-color: var(--text);
+  background: transparent;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+#code-edit.hl-on #editor-textarea::selection {
+  color: transparent;
+  background: rgba(255, 142, 0, 0.35);
+}
+
+#code-edit.hl-on #editor-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+#code-edit .tok-comment { color: var(--text-dim); }
+#code-edit .tok-keyword { color: var(--warn); }
+#code-edit .tok-string { color: var(--ok); }
+#code-edit .tok-number { color: var(--flame-300); }
+#code-edit .tok-key { color: var(--info); }
+#code-edit .tok-var { color: var(--idle); }
+#code-edit .tok-template { color: var(--violet); }
+#code-edit .tok-section { color: var(--flame-400); }
+#code-edit .tok-tag { color: var(--danger); }
+#code-edit .tok-punct { color: var(--neutral); }
+
+html[data-theme="console"] #code-edit .tok-comment { color: var(--text-muted); }
+html[data-theme="console"] #code-edit .tok-keyword { color: var(--flame-300); }
+html[data-theme="console"] #code-edit .tok-section { color: var(--warn); }
+html[data-theme="console"] #code-edit .tok-template { color: var(--violet); }
