@@ -11,10 +11,16 @@ import (
 	"time"
 )
 
-const (
-	catalogRefreshRunning   = "A catalog refresh is already running."
-	catalogAllSourcesFailed = "Couldn't reach any release source. Showing the last saved catalog."
-)
+const catalogRefreshRunning = "A catalog refresh is already running."
+
+// catalogSourceFailureMessage is the 503 sentence for a refresh that reached
+// no release source. The snapshot that remains decides the wording.
+func catalogSourceFailureMessage(origin catalog.Origin) string {
+	if origin == catalog.OriginBundled {
+		return "Couldn't reach any release source. Using the built-in list."
+	}
+	return "Couldn't reach any release source. Showing the last saved catalog."
+}
 
 // GetCatalog serves the release catalog. End-of-life releases are omitted.
 func (h *OSImageHandlers) GetCatalog(w http.ResponseWriter, r *http.Request) {
@@ -32,7 +38,7 @@ func (h *OSImageHandlers) GetCatalog(w http.ResponseWriter, r *http.Request) {
 // Both error bodies are the user-facing sentence, not an HTML page.
 func (h *OSImageHandlers) RefreshCatalog(w http.ResponseWriter, r *http.Request) {
 	if h.container == nil || h.container.Catalog == nil {
-		writePlain(w, http.StatusServiceUnavailable, catalogAllSourcesFailed)
+		writePlain(w, http.StatusServiceUnavailable, catalogSourceFailureMessage(""))
 		return
 	}
 	snap, err := h.container.Catalog.Refresh(r.Context())
@@ -41,7 +47,7 @@ func (h *OSImageHandlers) RefreshCatalog(w http.ResponseWriter, r *http.Request)
 		case errors.Is(err, catalog.ErrRefreshInProgress):
 			writePlain(w, http.StatusConflict, catalogRefreshRunning)
 		case errors.Is(err, catalog.ErrAllSourcesFailed):
-			writePlain(w, http.StatusServiceUnavailable, catalogAllSourcesFailed)
+			writePlain(w, http.StatusServiceUnavailable, catalogSourceFailureMessage(h.fallbackOrigin(r.Context())))
 		default:
 			HandleError(w, r, NewInternalError(fmt.Sprintf("Failed to refresh catalog: %v", err), "Unable to refresh the OS catalog"))
 		}
@@ -53,6 +59,18 @@ func (h *OSImageHandlers) RefreshCatalog(w http.ResponseWriter, r *http.Request)
 		return
 	}
 	writeJSON(w, http.StatusOK, listing)
+}
+
+// fallbackOrigin is the snapshot still being served after a failed refresh.
+func (h *OSImageHandlers) fallbackOrigin(ctx context.Context) catalog.Origin {
+	if h.container == nil || h.container.Catalog == nil {
+		return ""
+	}
+	snap, err := h.container.Catalog.Current(ctx)
+	if err != nil {
+		return ""
+	}
+	return snap.Origin
 }
 
 func (h *OSImageHandlers) currentListing(ctx context.Context) catalog.Listing {

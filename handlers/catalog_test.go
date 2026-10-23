@@ -76,16 +76,60 @@ func TestCatalogRefreshConflictAndUnavailableArePlainText(t *testing.T) {
 	require.NotContains(t, rec.Body.String(), "<html")
 	require.NotContains(t, rec.Body.String(), "user_message")
 
-	h = NewOSImageHandlers(&Container{
-		Catalog: &catalog.Fixed{RefreshErr: catalog.ErrAllSourcesFailed},
-	})
-	rec = httptest.NewRecorder()
-	req = httptest.NewRequest(http.MethodPost, "/osimages/catalog/refresh", nil)
-	h.RefreshCatalog(rec, req)
-	require.Equal(t, http.StatusServiceUnavailable, rec.Code)
-	require.Contains(t, rec.Header().Get("Content-Type"), "text/plain")
-	require.Equal(t, "Couldn't reach any release source. Showing the last saved catalog.", rec.Body.String())
-	require.NotContains(t, rec.Body.String(), "{")
+}
+
+func TestCatalogRefreshUnavailableDependsOnSnapshot(t *testing.T) {
+	cases := []struct {
+		name   string
+		origin catalog.Origin
+		hx     bool
+		want   string
+	}{
+		{
+			name:   "cached json",
+			origin: catalog.OriginCached,
+			want:   "Couldn't reach any release source. Showing the last saved catalog.",
+		},
+		{
+			name:   "cached hx",
+			origin: catalog.OriginCached,
+			hx:     true,
+			want:   "Couldn't reach any release source. Showing the last saved catalog.",
+		},
+		{
+			name:   "bundled json",
+			origin: catalog.OriginBundled,
+			want:   "Couldn't reach any release source. Using the built-in list.",
+		},
+		{
+			name:   "bundled hx",
+			origin: catalog.OriginBundled,
+			hx:     true,
+			want:   "Couldn't reach any release source. Using the built-in list.",
+		},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			h := NewOSImageHandlers(&Container{
+				Catalog: &catalog.Fixed{
+					RefreshErr: catalog.ErrAllSourcesFailed,
+					Snap:       catalog.Snapshot{Origin: tc.origin},
+				},
+			})
+			rec := httptest.NewRecorder()
+			req := httptest.NewRequest(http.MethodPost, "/osimages/catalog/refresh", nil)
+			if tc.hx {
+				req.Header.Set("HX-Request", "true")
+				req.Header.Set("Accept", "text/html")
+			}
+			h.RefreshCatalog(rec, req)
+			require.Equal(t, http.StatusServiceUnavailable, rec.Code)
+			require.Contains(t, rec.Header().Get("Content-Type"), "text/plain")
+			require.Equal(t, tc.want, rec.Body.String())
+			require.NotContains(t, rec.Body.String(), "<html")
+			require.NotContains(t, rec.Body.String(), "{")
+		})
+	}
 }
 
 func TestGetCatalogRefreshingSortAndLatest(t *testing.T) {
