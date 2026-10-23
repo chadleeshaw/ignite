@@ -341,6 +341,35 @@
             return "";
         }
 
+        function igniteSameDay(a, b) {
+            return a.getFullYear() === b.getFullYear() && a.getMonth() === b.getMonth() && a.getDate() === b.getDate();
+        }
+
+        function igniteClock(date) {
+            return new Intl.DateTimeFormat(undefined, { hour: "numeric", minute: "2-digit" }).format(date);
+        }
+
+        function igniteFullStamp(date) {
+            return new Intl.DateTimeFormat(undefined, {
+                month: "short",
+                day: "numeric",
+                year: "numeric",
+                hour: "numeric",
+                minute: "2-digit",
+                second: "2-digit",
+                timeZoneName: "short"
+            }).format(date);
+        }
+
+        // Today's saves drop the date so the provision cell can show the whole
+        // clock and short zone. The title keeps the full timestamp.
+        function igniteSavedText(date) {
+            var zone = igniteZoneName(date);
+            var clock = igniteClock(date) + (zone ? " " + zone : "");
+            if (igniteSameDay(date, new Date())) return "Today " + clock;
+            return igniteZoneStamp(date);
+        }
+
         function igniteFormatTimes(root) {
             var scope = root && root.querySelectorAll ? root : document;
             scope.querySelectorAll("[data-time], time[datetime]").forEach(function (node) {
@@ -356,6 +385,11 @@
                 var stamp = igniteZoneStamp(date);
                 if (kind === "title") {
                     node.title = stamp;
+                    return;
+                }
+                if (kind === "saved") {
+                    node.textContent = igniteSavedText(date);
+                    node.title = igniteFullStamp(date);
                     return;
                 }
                 node.textContent = stamp;

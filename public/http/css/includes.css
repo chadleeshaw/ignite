@@ -816,7 +816,7 @@ html[data-theme="console"] .chip { border-radius: 6px; }
 .prov-top .stats.strip {
   display: grid;
   grid-auto-flow: row;
-  grid-template-columns: minmax(0, 1fr) minmax(8rem, 8.75rem);
+  grid-template-columns: minmax(0, 1fr) max-content;
   grid-template-rows: minmax(0, 1fr);
   align-items: stretch;
   height: 100%;
@@ -847,8 +847,18 @@ html[data-theme="console"] .chip { border-radius: 6px; }
 .prov-top .prov-cats > .stat {
   border-inline-end: 1px solid rgba(255, 255, 255, 0.07);
 }
-.prov-top .stat-saved {
+.prov-top .stats.strip > .stat-saved {
+  min-width: max-content;
+  width: max-content;
+  overflow: visible;
   border-inline-end: 0;
+}
+.prov-top .stat-saved .stat-title,
+.prov-top .stat-saved .stat-value {
+  width: max-content;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
 }
 .prov-top .stat-title,
 .prov-top .stat-value {

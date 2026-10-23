@@ -38,7 +38,7 @@
         </div>
         <div class="stat stat-saved">
             <div class="stat-title">Last saved</div>
-            <div class="stat-value">{{if .LastSaved.IsZero}}—{{else}}<time datetime="{{rfc3339 .LastSaved}}" data-time="time">{{utcLabel .LastSaved "15:04"}}</time>{{end}}</div>
+            <div class="stat-value">{{if .LastSaved.IsZero}}—{{else}}<time datetime="{{rfc3339 .LastSaved}}" data-time="saved" title="{{utcLabel .LastSaved "Jan 2, 2006, 3:04:05 PM"}}">{{utcLabel .LastSaved "15:04"}}</time>{{end}}</div>
         </div>
     </section>
 </div>

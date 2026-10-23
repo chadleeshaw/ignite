@@ -33,7 +33,7 @@ async function save(page, filename) {
   await page.waitForFunction(() => {
     const nodes = [...document.querySelectorAll("[data-time]")];
     if (!nodes.length) return true;
-    return nodes.some((node) => /[A-Za-z]{3}\s+\d{1,2},/.test(node.textContent || ""));
+    return nodes.some((node) => /Today\s+\d|\b(?:AM|PM)\b|[A-Za-z]{3}\s+\d{1,2},/.test(node.textContent || ""));
   }, { timeout: 8000 }).catch(() => {
     throw new Error(`${filename}: timestamps were not rewritten with a short zone`);
   });

@@ -446,6 +446,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 
 	prov := renderNamed(t, "provision", &ProvisionData{
 		Title: "Provision", Page: "provision", Files: nil, Categories: []string{"ipxe"},
+		LastSaved: time.Date(2026, 10, 23, 1, 36, 0, 0, time.UTC),
 	})
 	for _, id := range []string{"file-list", "current-filename", "editor-textarea", "editor-lines", "save-btn", "help-content", "editor-info"} {
 		if !strings.Contains(prov, `id="`+id+`"`) {
@@ -465,6 +466,9 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	}
 	if !strings.Contains(prov, `class="prov-cats"`) || !strings.Contains(prov, `stat stat-saved`) || !strings.Contains(prov, "Last saved") {
 		t.Error("provision strip is missing the category row or Last saved cell")
+	}
+	if !strings.Contains(prov, `data-time="saved"`) || !strings.Contains(prov, `title="Oct 23, 2026, 1:36:00 AM UTC"`) {
+		t.Error("last saved is missing its full timestamp title")
 	}
 	formAt := strings.Index(prov, `id="provision-editor-form"`)
 	if formAt < 0 {
