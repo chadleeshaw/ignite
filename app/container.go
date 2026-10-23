@@ -75,7 +75,7 @@ func NewContainer() (c *Container, err error) {
 		return nil, fmt.Errorf("failed to create OS catalog store: %w", err)
 	}
 	cat, err := catalog.New(catalog.Options{
-		Sources:   catalog.DefaultSources(httpClient),
+		Sources:   catalog.DefaultSources(httpClient, ""),
 		Lifecycle: catalog.EndOfLife{Client: httpClient},
 		Store:     store,
 	})
