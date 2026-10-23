@@ -42,7 +42,6 @@ func TestBootFileURLCollapsesSlashes(t *testing.T) {
 	assert.Error(t, err)
 }
 
-
 func TestProcessDownloadUsesCatalogFileNames(t *testing.T) {
 	var mu sync.Mutex
 	var got []string
