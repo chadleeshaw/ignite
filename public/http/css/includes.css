@@ -403,7 +403,17 @@ html[data-theme="console"] .sec { text-transform: lowercase; letter-spacing: 0; 
 .tiles2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .tiles3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 .tiles2 .sv, .tiles3 .sv { min-width: 0; flex: none; width: auto; }
-.sv .sub { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; }
+.sv-copy { min-width: 0; flex: 1 1 auto; }
+.sv-acts {
+  margin-left: auto;
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+.sv .sub { display: block; font-size: 12px; color: var(--text-muted); margin-top: 2px; line-height: 1.35; }
+.dhcp-hint { display: block; margin-top: 2px; }
 .refresh-note { font-size: 12.5px; margin: 0; }
 @media (max-width: 900px) {
   .overview-board { grid-template-columns: 1fr; }

@@ -28,25 +28,25 @@
     </div>
 
     <p class="sec">DHCP servers</p>
-    <div class="tiles3">
+    <div class="tiles2">
         {{range .DHCPServers}}
         <article class="sv {{if eq .Status "running"}}on{{end}}">
             <div class="fire {{if ne .Status "running"}}off{{end}}"><img src="/public/http/img/flame-nav.png" srcset="/public/http/img/flame-nav.png 1x, /public/http/img/flame-nav@2x.png 2x" width="19" height="24" alt=""></div>
-            <div style="min-width:0">
+            <div class="sv-copy">
                 <small>DHCP server</small>
                 <b class="mono">{{.IP}}</b>
                 <span class="sub">
                     {{if gt .Total 0}}{{.Free}} free · {{.Used}} used / {{.Total}} total{{else}}{{countPhrase .LeaseCount "lease" "leases"}}{{end}}{{if eq .Status "configured"}} · not started yet{{end}}
                 </span>
+                {{if and (eq .Status "configured") (allConfigured $)}}<span class="mu dhcp-hint">If DHCP is disabled, Start explains why.</span>{{end}}
                 <span class="mu" data-checked="{{formatRFC3339 .LastCheck}}" data-time="datetime">{{if .LastCheck.IsZero}}—{{else}}checked {{utcLabel .LastCheck "15:04:05"}}{{end}}</span>
             </div>
-            <span style="margin-left:auto;display:flex;align-items:center;gap:6px">
+            <div class="sv-acts">
                 <span class="st {{dhcpStateClass .Status}}" data-status="{{.Status}}">{{dhcpStateLabel .Status}}</span>
                 {{if ne .Status "running"}}
                 <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none">Start</button>
-                {{if and (eq .Status "configured") (allConfigured $)}}<span class="mu">If DHCP is disabled, Start explains why.</span>{{end}}
                 {{end}}
-            </span>
+            </div>
         </article>
         {{else}}
         <div class="note">

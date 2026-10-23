@@ -56,13 +56,13 @@
             <p class="mu" style="margin-top:4px">
                 {{if gt .LeaseRange 0}}{{.Free}} free · {{.Used}} used / {{.LeaseRange}} total{{else}}pool size not set{{end}}{{if eq .Status "configured"}} · not started yet{{end}}
             </p>
+            {{if and (eq .Status "configured") (allConfigured $)}}<p class="mu dhcp-hint">If DHCP is disabled, Start explains why.</p>{{end}}
         </div>
         <div class="actions stable">
             {{if eq .Status "running"}}
             <button class="b dg sm" hx-post="/dhcp/stop?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Stop</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
             {{else}}
             <button class="b sm" hx-post="/dhcp/start?server_id={{.ID}}" hx-swap="none"><span class="label-fit"><span>Start</span><span aria-hidden="true">Start</span><span aria-hidden="true">Stop</span></span></button>
-            {{if and (eq .Status "configured") (allConfigured $)}}<span class="mu">If DHCP is disabled, Start explains why.</span>{{end}}
             {{end}}
             <button class="b sm" hx-get="/open_modal?template=dhcpmodal&server_id={{.ID}}" hx-target="#modal-content">Edit</button>
             <button class="b dg sm" hx-post="/dhcp/delete?server_id={{.ID}}" hx-swap="none" hx-confirm="Delete this DHCP server?">Delete</button>
