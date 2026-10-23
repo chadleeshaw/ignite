@@ -188,17 +188,7 @@
             if (xhr && xhr.status === 409 && (path.indexOf("/dhcp/start") !== -1 || path.indexOf("/dhcp/submit_dhcp") !== -1)) {
                 fallback = "DHCP is disabled. Set DHCP_ENABLED=true before starting a server.";
             }
-            var message = igniteResponseMessage(xhr, fallback);
-            // A failed refresh keeps the snapshot already on screen. The 503
-            // sentence always says "last saved catalog", which is wrong while
-            // that snapshot is still the built-in list.
-            if (xhr && xhr.status === 503 && path.indexOf("/osimages/catalog/refresh") !== -1 && message.indexOf("last saved catalog") !== -1) {
-                var status = document.getElementById("catalog-status");
-                if (status && status.getAttribute("data-catalog-source") === "bundled") {
-                    return "Couldn't reach any release source. Using the built-in list.";
-                }
-            }
-            return message;
+            return igniteResponseMessage(xhr, fallback);
         }
 
         function igniteApplyMode(mode) {
