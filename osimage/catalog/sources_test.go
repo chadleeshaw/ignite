@@ -27,9 +27,15 @@ func TestDebianFedoraCentOSSourcesUseInjectedClient(t *testing.T) {
 	srv := newFixtureServer(t, map[string]string{
 		"/debian/dists/stable/Release":    debianStable,
 		"/debian/dists/oldstable/Release": debianOld,
-		"/releases.json":                  fedora,
-		"/":                               centos,
-		"/centos-stream.json":             `[{"cycle":"10","eol":"2030-05-31"},{"cycle":"9","eol":"2027-05-31"}]`,
+		"/debian/dists/trixie/main/installer-amd64/current/images/SHA256SUMS": "" +
+			"aaaa  ./netboot/gtk/debian-installer/amd64/linux\n" +
+			"bbbb  ./netboot/debian-installer/amd64/linux\n" +
+			"cccc  ./netboot/debian-installer/amd64/initrd.gz\n",
+		"/44/Everything/x86_64/os/.treeinfo":    "[checksums]\nimages/pxeboot/vmlinuz = sha256:dddd\nimages/pxeboot/initrd.img = sha256:eeee\n",
+		"/10-stream/BaseOS/x86_64/os/.treeinfo": "[checksums]\nimages/pxeboot/vmlinuz = sha256:ffff\nimages/pxeboot/initrd.img = SHA256:1111\n",
+		"/releases.json":                        fedora,
+		"/":                                     centos,
+		"/centos-stream.json":                   `[{"cycle":"10","eol":"2030-05-31"},{"cycle":"9","eol":"2027-05-31"}]`,
 	})
 	client := testClient(srv)
 
@@ -38,6 +44,9 @@ func TestDebianFedoraCentOSSourcesUseInjectedClient(t *testing.T) {
 	require.Len(t, debian, 2)
 	assert.Equal(t, "13", debian[0].Version)
 	assert.Equal(t, "13 (Trixie)", debian[0].DisplayName)
+	assert.Equal(t, "bbbb", debian[0].KernelSHA256)
+	assert.Equal(t, "cccc", debian[0].InitrdSHA256)
+	assert.NotEqual(t, "aaaa", debian[0].KernelSHA256)
 	assert.Equal(t, srv.URL+"/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/linux", debian[0].KernelURL)
 	assert.Contains(t, debian[0].InitrdURL, "/initrd.gz")
 	assert.Equal(t, "12", debian[1].Version)
@@ -46,13 +55,16 @@ func TestDebianFedoraCentOSSourcesUseInjectedClient(t *testing.T) {
 	fedoraReleases, err := Fedora{
 		Client:       client,
 		ReleasesURL:  srv.URL + "/releases.json",
-		DownloadBase: "https://download.fedoraproject.org/pub/fedora/linux/releases",
+		DownloadBase: srv.URL,
 	}.Releases(context.Background())
 	require.NoError(t, err)
 	require.Len(t, fedoraReleases, 3)
 	assert.Equal(t, []string{"42", "43", "44"}, []string{fedoraReleases[0].Version, fedoraReleases[1].Version, fedoraReleases[2].Version})
 	assert.Contains(t, fedoraReleases[2].KernelURL, "/44/Everything/x86_64/os/images/pxeboot/vmlinuz")
 	assert.Contains(t, fedoraReleases[2].InitrdURL, "/initrd.img")
+	assert.Equal(t, "dddd", fedoraReleases[2].KernelSHA256)
+	assert.Equal(t, "eeee", fedoraReleases[2].InitrdSHA256)
+	assert.Empty(t, fedoraReleases[0].KernelSHA256)
 
 	centosReleases, err := CentOS{Client: client, Mirror: srv.URL}.Releases(context.Background())
 	require.NoError(t, err)
@@ -61,6 +73,8 @@ func TestDebianFedoraCentOSSourcesUseInjectedClient(t *testing.T) {
 	assert.Equal(t, "9 Stream", centosReleases[0].DisplayName)
 	assert.Equal(t, "10", centosReleases[1].Version)
 	assert.Contains(t, centosReleases[1].KernelURL, "/10-stream/BaseOS/x86_64/os/images/pxeboot/vmlinuz")
+	assert.Equal(t, "ffff", centosReleases[1].KernelSHA256)
+	assert.Equal(t, "1111", centosReleases[1].InitrdSHA256)
 
 	dates, err := (EndOfLife{Client: client, BaseURL: srv.URL}).EOLDates(context.Background(), "centos-stream")
 	require.NoError(t, err)

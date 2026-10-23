@@ -43,6 +43,33 @@ func TestOSImagesPageSupportedLineMatchesCatalog(t *testing.T) {
 	require.NotContains(t, body, "Supported:")
 }
 
+func TestOSImageRowsMarkEOL(t *testing.T) {
+	chdirRepoRoot(t)
+	cfg, err := config.NewConfigBuilder().Build()
+	require.NoError(t, err)
+	h := NewOSImageHandlers(&Container{
+		Config:         cfg,
+		OSImageService: oneEOLImage{},
+		Catalog:        &catalog.Fixed{Snap: catalog.Snapshot{Origin: catalog.OriginBundled}},
+	})
+	rec := httptest.NewRecorder()
+	req := httptest.NewRequest(http.MethodGet, "/osimages", nil)
+	h.OSImagesPage(rec, req)
+	require.Equal(t, http.StatusOK, rec.Code)
+	body := rec.Body.String()
+	require.Contains(t, body, `data-eol="true"`)
+	require.Contains(t, body, ">EOL<")
+	require.NotContains(t, body, `data-eol="false"`)
+}
+
+type oneEOLImage struct{ emptyOSImages }
+
+func (oneEOLImage) GetAllOSImages(context.Context) ([]*osimage.OSImage, error) {
+	return []*osimage.OSImage{{
+		ID: "eol", OS: "fedora", Version: "42", Architecture: "x86_64", EOL: true, EOLDate: "2026-05-27",
+	}}, nil
+}
+
 type emptyOSImages struct{}
 
 func (emptyOSImages) GetAllOSImages(context.Context) ([]*osimage.OSImage, error) {

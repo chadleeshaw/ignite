@@ -15,6 +15,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -71,22 +72,76 @@ func NewOSImageService(repo OSImageRepository, downloadRepo DownloadStatusReposi
 
 // GetAllOSImages retrieves all OS images
 func (s *osImageServiceImpl) GetAllOSImages(ctx context.Context) ([]*OSImage, error) {
-	return s.repo.GetAll(ctx)
+	images, err := s.repo.GetAll(ctx)
+	if err != nil {
+		return nil, err
+	}
+	for _, image := range images {
+		s.annotate(ctx, image)
+	}
+	return images, nil
 }
 
 // GetOSImagesByOS retrieves all images for a specific operating system
 func (s *osImageServiceImpl) GetOSImagesByOS(ctx context.Context, osName string) ([]*OSImage, error) {
-	return s.repo.GetByOS(ctx, osName)
+	images, err := s.repo.GetByOS(ctx, osName)
+	if err != nil {
+		return nil, err
+	}
+	for _, image := range images {
+		s.annotate(ctx, image)
+	}
+	return images, nil
 }
 
 // GetOSImage retrieves an OS image by ID
 func (s *osImageServiceImpl) GetOSImage(ctx context.Context, id string) (*OSImage, error) {
-	return s.repo.Get(ctx, id)
+	image, err := s.repo.Get(ctx, id)
+	if err != nil {
+		return nil, err
+	}
+	s.annotate(ctx, image)
+	return image, nil
 }
 
 // GetDefaultVersion retrieves the default version for an OS
 func (s *osImageServiceImpl) GetDefaultVersion(ctx context.Context, osName string) (*OSImage, error) {
-	return s.repo.GetDefaultVersion(ctx, osName)
+	image, err := s.repo.GetDefaultVersion(ctx, osName)
+	if err != nil {
+		return nil, err
+	}
+	s.annotate(ctx, image)
+	return image, nil
+}
+
+// annotate fills eol and eol_date from the catalog. A lookup miss keeps a
+// stored date and still treats an unknown date as supported.
+func (s *osImageServiceImpl) annotate(ctx context.Context, image *OSImage) {
+	if image == nil {
+		return
+	}
+	rel, ok := s.lookupRelease(ctx, OSImageConfig{
+		OS:           image.OS,
+		Version:      image.Version,
+		Architecture: image.Architecture,
+	})
+	if ok {
+		image.EOLDate = catalog.FormatDay(rel.EOLDate)
+		image.EOL = rel.EOL(time.Now())
+		return
+	}
+	image.EOL = storedEOL(image.EOLDate)
+}
+
+func storedEOL(day string) bool {
+	if day == "" {
+		return false
+	}
+	parsed, err := time.Parse("2006-01-02", day)
+	if err != nil {
+		return false
+	}
+	return (catalog.Release{EOLDate: parsed}).EOL(time.Now())
 }
 
 // SetDefaultVersion sets the default version for an OS
@@ -320,7 +375,7 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		return // cancelled; CancelDownload already marked the row
 	}
 
-	kernelSize, kernelChecksum, err := s.downloadFile(ctx, kernelURL, kernelPath)
+	kernelSize, kernelChecksum, err := s.downloadFile(ctx, kernelURL, kernelPath, release.KernelSHA256)
 	if err != nil {
 		s.failDownload(ctx, status, fmt.Errorf("failed to download kernel: %w", err))
 		return
@@ -337,7 +392,7 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		return
 	}
 
-	initrdSize, initrdChecksum, err := s.downloadFile(ctx, initrdURL, initrdPath)
+	initrdSize, initrdChecksum, err := s.downloadFile(ctx, initrdURL, initrdPath, release.InitrdSHA256)
 	if err != nil {
 		_ = os.Remove(kernelPath)
 		s.failDownload(ctx, status, fmt.Errorf("failed to download initrd: %w", err))
@@ -364,6 +419,8 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		Checksum:     kernelChecksum + ":" + initrdChecksum,
 		Active:       false,
 		DownloadURL:  kernelURL,
+		EOL:          release.EOL(time.Now()),
+		EOLDate:      catalog.FormatDay(release.EOLDate),
 		CreatedAt:    now,
 		UpdatedAt:    now,
 	}
@@ -395,8 +452,10 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 // downloadFile downloads a file from URL to destPath. The data is streamed to
 // a temp file in the destination directory and renamed into place only on
 // success, so a failed or cancelled download never leaves a partial file at
-// destPath. It returns the size and SHA256 hex digest of the downloaded file.
-func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath string) (int64, string, error) {
+// destPath. expected, when set, is the published SHA256. A mismatch fails
+// the download and does not keep the file. An empty expected records the
+// computed digest. It returns the size and SHA256 hex digest.
+func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath, expected string) (int64, string, error) {
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return 0, "", fmt.Errorf("failed to create destination directory: %w", err)
 	}
@@ -442,6 +501,9 @@ func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath str
 	}
 
 	checksum := hex.EncodeToString(hash.Sum(nil))
+	if expected != "" && !strings.EqualFold(checksum, expected) {
+		return 0, "", fmt.Errorf("checksum mismatch for %s", url)
+	}
 	if err := os.Rename(tmpName, destPath); err != nil {
 		return 0, "", fmt.Errorf("failed to finalize %s: %w", destPath, err)
 	}

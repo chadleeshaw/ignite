@@ -73,15 +73,20 @@ func (f Fedora) Releases(ctx context.Context) ([]Release, error) {
 	})
 	out := make([]Release, 0, len(versions))
 	for _, version := range versions {
-		base := fmt.Sprintf("%s/%s/Everything/x86_64/os/images/pxeboot", f.downloadBase(), version)
-		out = append(out, Release{
+		osURL := fmt.Sprintf("%s/%s/Everything/x86_64/os", f.downloadBase(), version)
+		base := osURL + "/images/pxeboot"
+		rel := Release{
 			OS:          "fedora",
 			Version:     version,
 			DisplayName: version,
 			Arch:        "x86_64",
 			KernelURL:   base + "/vmlinuz",
 			InitrdURL:   base + "/initrd.img",
-		})
+		}
+		if tree, _, err := fetch(ctx, f.Client, osURL+"/.treeinfo", nil); err == nil {
+			rel.KernelSHA256, rel.InitrdSHA256 = pxeBootSums(tree)
+		}
+		out = append(out, rel)
 	}
 	return out, nil
 }

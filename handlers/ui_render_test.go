@@ -387,7 +387,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 			KernelSize: 1000, CreatedAt: time.Date(2026, 1, 2, 3, 4, 5, 0, time.UTC),
 		}},
 	})
-	if !strings.Contains(osOut, "24.04") || !strings.Contains(osOut, `id="versionSelect"`) || !strings.Contains(osOut, `class="ico ubuntu"`) {
+	if !strings.Contains(osOut, "24.04") || !strings.Contains(osOut, `id="versionSelect"`) || !strings.Contains(osOut, `class="ico ubuntu"`) || !strings.Contains(osOut, `data-eol="false"`) {
 		t.Error("os images list or download form missing")
 	}
 	if !strings.Contains(osOut, "1 image") || !strings.Contains(osOut, `<kbd>1</kbd>–<kbd>6</kbd> pages`) || !strings.Contains(osOut, "Ready") {

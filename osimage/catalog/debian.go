@@ -53,15 +53,20 @@ func (d Debian) suite(ctx context.Context, suite string) (Release, error) {
 		return Release{}, fmt.Errorf("debian %s: %w", suite, err)
 	}
 	major := majorVersion(version)
-	base := d.mirror() + "/dists/" + codename + "/main/installer-amd64/current/images/netboot/debian-installer/amd64"
-	return Release{
+	images := d.mirror() + "/dists/" + codename + "/main/installer-amd64/current/images"
+	base := images + "/netboot/debian-installer/amd64"
+	rel := Release{
 		OS:          "debian",
 		Version:     major,
 		DisplayName: major + " (" + titleWord(codename) + ")",
 		Arch:        "x86_64",
 		KernelURL:   base + "/linux",
 		InitrdURL:   base + "/initrd.gz",
-	}, nil
+	}
+	if sums, _, err := fetch(ctx, d.Client, images+"/SHA256SUMS", nil); err == nil {
+		rel.KernelSHA256, rel.InitrdSHA256 = debianBootSums(sums)
+	}
+	return rel, nil
 }
 
 func parseDebianRelease(body string) (version, codename string, err error) {

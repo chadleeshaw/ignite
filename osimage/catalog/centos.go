@@ -50,15 +50,20 @@ func (c CentOS) Releases(ctx context.Context) ([]Release, error) {
 	})
 	out := make([]Release, 0, len(versions))
 	for _, version := range versions {
-		base := fmt.Sprintf("%s/%s-stream/BaseOS/x86_64/os/images/pxeboot", c.mirror(), version)
-		out = append(out, Release{
+		osURL := fmt.Sprintf("%s/%s-stream/BaseOS/x86_64/os", c.mirror(), version)
+		base := osURL + "/images/pxeboot"
+		rel := Release{
 			OS:          "centos",
 			Version:     version,
 			DisplayName: version + " Stream",
 			Arch:        "x86_64",
 			KernelURL:   base + "/vmlinuz",
 			InitrdURL:   base + "/initrd.img",
-		})
+		}
+		if tree, _, err := fetch(ctx, c.Client, osURL+"/.treeinfo", nil); err == nil {
+			rel.KernelSHA256, rel.InitrdSHA256 = pxeBootSums(tree)
+		}
+		out = append(out, rel)
 	}
 	return out, nil
 }

@@ -19,6 +19,8 @@ type OSImage struct {
 	Checksum     string    `json:"checksum"`     // SHA256 of the kernel and the initrd, joined as kernel:initrd
 	Active       bool      `json:"active"`       // Default version for OS
 	DownloadURL  string    `json:"download_url"` // Original download URL
+	EOL          bool      `json:"eol"`          // True when the release is past its end-of-life date
+	EOLDate      string    `json:"eol_date"`     // YYYY-MM-DD, or empty when the date is unknown
 	CreatedAt    time.Time `json:"created_at"`
 	UpdatedAt    time.Time `json:"updated_at"`
 }

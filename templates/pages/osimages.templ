@@ -76,10 +76,10 @@
         {{if .OSImages}}
         <div class="cozy-view cards">
             {{range .OSImages}}
-            <article class="cd" style="cursor: default;">
+            <article class="cd" data-eol="{{if .EOL}}true{{else}}false{{end}}" style="cursor: default;">
                 <div class="r">
                     <span><span class="ico {{.OS}}">{{initial .OS}}</span><b>{{.OS}} {{.Version}}</b></span>
-                    <span class="st ok">Ready</span>
+                    {{if .EOL}}<span class="st wa">EOL</span>{{else}}<span class="st ok">Ready</span>{{end}}
                 </div>
                 <div class="kv">
                     <span>Arch</span><span>{{.Architecture}}</span>
@@ -109,9 +109,9 @@
                 </thead>
                 <tbody>
                     {{range .OSImages}}
-                    <tr>
+                    <tr data-eol="{{if .EOL}}true{{else}}false{{end}}">
                         <td><span class="ico {{.OS}}">{{initial .OS}}</span>{{.OS}}</td>
-                        <td class="mono">{{.Version}}</td>
+                        <td class="mono">{{.Version}}{{if .EOL}} <span class="st wa">EOL</span>{{end}}</td>
                         <td>{{.Architecture}}</td>
                         <td>{{if .KernelSize}}{{formatBytes .KernelSize}}{{else}}—{{end}}</td>
                         <td>{{if .InitrdSize}}{{formatBytes .InitrdSize}}{{else}}—{{end}}</td>

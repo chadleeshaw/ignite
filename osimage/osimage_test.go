@@ -2,6 +2,7 @@ package osimage
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"testing"
 	"time"
@@ -12,6 +13,7 @@ import (
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
+	"github.com/stretchr/testify/require"
 )
 
 // MockOSImageRepository is a mock implementation of OSImageRepository
@@ -723,3 +725,51 @@ func TestCancelDownload_SignalsWorker(t *testing.T) {
 	mockDownloadRepo.AssertExpectations(t)
 }
 
+func TestGetOSImageAnnotatesEOLDate(t *testing.T) {
+	mockRepo := &MockOSImageRepository{}
+	mockDownloadRepo := &MockDownloadStatusRepository{}
+	service := createTestService(mockRepo, mockDownloadRepo, createTestConfig())
+	service.catalog = &catalog.Fixed{Snap: catalog.Snapshot{Releases: []catalog.Release{
+		{OS: "ubuntu", Version: "20.04", Arch: "x86_64", EOLDate: time.Date(2025, 5, 31, 0, 0, 0, 0, time.UTC)},
+		{OS: "ubuntu", Version: "24.04", Arch: "x86_64"},
+	}}}
+
+	ctx := context.Background()
+	mockRepo.On("Get", ctx, "old").Return(&OSImage{
+		ID: "old", OS: "ubuntu", Version: "20.04", Architecture: "x86_64",
+	}, nil)
+	mockRepo.On("Get", ctx, "new").Return(&OSImage{
+		ID: "new", OS: "ubuntu", Version: "24.04", Architecture: "x86_64",
+	}, nil)
+	mockRepo.On("Get", ctx, "kept").Return(&OSImage{
+		ID: "kept", OS: "debian", Version: "11", Architecture: "x86_64", EOLDate: "2020-01-01",
+	}, nil)
+	mockRepo.On("Get", ctx, "unknown-date").Return(&OSImage{
+		ID: "unknown-date", OS: "debian", Version: "12", Architecture: "x86_64",
+	}, nil)
+
+	old, err := service.GetOSImage(ctx, "old")
+	require.NoError(t, err)
+	assert.True(t, old.EOL)
+	assert.Equal(t, "2025-05-31", old.EOLDate)
+
+	current, err := service.GetOSImage(ctx, "new")
+	require.NoError(t, err)
+	assert.False(t, current.EOL)
+	assert.Equal(t, "", current.EOLDate)
+
+	kept, err := service.GetOSImage(ctx, "kept")
+	require.NoError(t, err)
+	assert.True(t, kept.EOL)
+	assert.Equal(t, "2020-01-01", kept.EOLDate)
+
+	unknown, err := service.GetOSImage(ctx, "unknown-date")
+	require.NoError(t, err)
+	assert.False(t, unknown.EOL)
+	assert.Equal(t, "", unknown.EOLDate)
+
+	body, err := json.Marshal(unknown)
+	require.NoError(t, err)
+	assert.Contains(t, string(body), `"eol":false`)
+	assert.Contains(t, string(body), `"eol_date":""`)
+}
