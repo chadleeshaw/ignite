@@ -454,6 +454,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 
 	prov := renderNamed(t, "provision", &ProvisionData{
 		Title: "Provision", Page: "provision", Files: nil, Categories: []string{"ipxe"},
+		LastSaved: time.Date(2026, 10, 23, 1, 36, 0, 0, time.UTC),
 	})
 	for _, id := range []string{"file-list", "current-filename", "editor-textarea", "editor-lines", "save-btn", "help-content", "editor-info"} {
 		if !strings.Contains(prov, `id="`+id+`"`) {
@@ -468,8 +469,45 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(prov, "innerHTML") || strings.Contains(prov, "outerHTML") || strings.Contains(prov, "insertAdjacentHTML") {
 		t.Error("provision page still has an HTML string sink")
 	}
-	if !strings.Contains(prov, "/public/http/js/highlight.js") || !strings.Contains(prov, "igniteHighlight(") {
-		t.Error("provision preview is not wired to the shared highlighter")
+	if strings.Contains(prov, "previewFile(") || strings.Contains(prov, ">Preview<") {
+		t.Error("provision preview button still renders")
+	}
+	if !strings.Contains(prov, `class="prov-cats"`) || !strings.Contains(prov, `stat stat-saved`) || !strings.Contains(prov, "Last saved") {
+		t.Error("provision strip is missing the category row or Last saved cell")
+	}
+	if !strings.Contains(prov, `data-time="saved"`) || !strings.Contains(prov, `title="Oct 23, 2026, 1:36:00 AM UTC"`) {
+		t.Error("last saved is missing its full timestamp title")
+	}
+	formAt := strings.Index(prov, `id="provision-editor-form"`)
+	if formAt < 0 {
+		t.Fatal("provision editor form missing")
+	}
+	form := prov[formAt:]
+	end := strings.Index(form, "</form>")
+	if end < 0 {
+		t.Fatal("provision editor form is not closed")
+	}
+	form = form[:end]
+	for _, want := range []string{
+		`action="/provision/save-file"`,
+		`name="csrf_token"`,
+		`name="path"`,
+		`name="content"`,
+		`id="editor-textarea"`,
+		`/public/http/js/editor.js`,
+		`/public/http/css/editor.css`,
+	} {
+		if !strings.Contains(prov, want) {
+			t.Errorf("provision editor missing %q", want)
+		}
+	}
+	if !strings.Contains(form, `name="content"`) || !strings.Contains(form, `id="editor-textarea"`) {
+		t.Error("editor textarea is not inside the save form")
+	}
+	if strings.Contains(prov, "/public/http/js/editor.js") && strings.Contains(renderNamed(t, "index", OverviewPage{
+		Title: "Overview", Page: "overview", CSRFToken: "session-token",
+	}), "/public/http/js/editor.js") {
+		t.Error("overview loaded the provision editor bundle")
 	}
 }
 
