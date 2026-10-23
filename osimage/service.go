@@ -32,6 +32,8 @@ type downloadRequest struct {
 	id          string
 	osConfig    OSImageConfig
 	versionInfo config.OSVersion
+	kernelFile  string
+	initrdFile  string
 }
 
 // osImageServiceImpl provides business logic for OS image management.
@@ -135,7 +137,8 @@ func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSIma
 		return nil, fmt.Errorf("OS image already exists: %s %s", osConfig.OS, osConfig.Version)
 	}
 
-	versionInfo := s.config.OSImages.Sources[osConfig.OS].Versions[osConfig.Version]
+	def := s.config.OSImages.Sources[osConfig.OS]
+	versionInfo := def.Versions[osConfig.Version]
 
 	status := &DownloadStatus{
 		ID:        uuid.New().String(),
@@ -157,6 +160,8 @@ func (s *osImageServiceImpl) DownloadOSImage(ctx context.Context, osConfig OSIma
 		id:          status.ID,
 		osConfig:    osConfig,
 		versionInfo: versionInfo,
+		kernelFile:  def.KernelFile,
+		initrdFile:  def.InitrdFile,
 	}
 
 	// Persist the queued status BEFORE enqueueing so the worker can never
@@ -293,26 +298,39 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		}
 	}
 
-	baseURL := strings.TrimSuffix(versionInfo.BaseURL, "/")
-	kernelURL := fmt.Sprintf("%s/%s/vmlinuz", baseURL, arch)
-	initrdURL := fmt.Sprintf("%s/%s/initrd.img", baseURL, arch)
-
-	tftpDir := s.config.TFTP.Dir
-	downloadDir := filepath.Join(tftpDir, "os-images", osConfig.OS, osConfig.Version)
-	if err := os.MkdirAll(downloadDir, 0755); err != nil {
-		s.failDownload(ctx, status, fmt.Errorf("failed to create download directory: %w", err))
+	kernelURL, err := bootFileURL(versionInfo.BaseURL, req.kernelFile)
+	if err != nil {
+		s.failDownload(ctx, status, fmt.Errorf("kernel URL: %w", err))
+		return
+	}
+	initrdURL, err := bootFileURL(versionInfo.BaseURL, req.initrdFile)
+	if err != nil {
+		s.failDownload(ctx, status, fmt.Errorf("initrd URL: %w", err))
 		return
 	}
 
-	kernelPath := filepath.Join(downloadDir, "vmlinuz")
-	initrdPath := filepath.Join(downloadDir, "initrd.img")
+	kernelRel, err := RelPath(osConfig.OS, osConfig.Version, KernelName)
+	if err != nil {
+		s.failDownload(ctx, status, err)
+		return
+	}
+	initrdRel, err := RelPath(osConfig.OS, osConfig.Version, InitrdName)
+	if err != nil {
+		s.failDownload(ctx, status, err)
+		return
+	}
+	kernelPath := filepath.Join(s.config.TFTP.Dir, filepath.FromSlash(kernelRel))
+	initrdPath := filepath.Join(s.config.TFTP.Dir, filepath.FromSlash(initrdRel))
+	if err := os.MkdirAll(filepath.Dir(kernelPath), 0755); err != nil {
+		s.failDownload(ctx, status, fmt.Errorf("failed to create download directory: %w", err))
+		return
+	}
 
 	if err := ctx.Err(); err != nil {
 		return // cancelled; CancelDownload already marked the row
 	}
 
-	// Download kernel
-	kernelSize, kernelChecksum, err := s.downloadFile(ctx, kernelURL, kernelPath, versionInfo.ExpectedChecksum)
+	kernelSize, kernelChecksum, err := s.downloadFile(ctx, kernelURL, kernelPath)
 	if err != nil {
 		s.failDownload(ctx, status, fmt.Errorf("failed to download kernel: %w", err))
 		return
@@ -329,8 +347,7 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 		return
 	}
 
-	// Download initrd
-	initrdSize, initrdChecksum, err := s.downloadFile(ctx, initrdURL, initrdPath, versionInfo.ExpectedChecksum)
+	initrdSize, initrdChecksum, err := s.downloadFile(ctx, initrdURL, initrdPath)
 	if err != nil {
 		_ = os.Remove(kernelPath)
 		s.failDownload(ctx, status, fmt.Errorf("failed to download initrd: %w", err))
@@ -389,9 +406,7 @@ func (s *osImageServiceImpl) processDownload(req downloadRequest) {
 // a temp file in the destination directory and renamed into place only on
 // success, so a failed or cancelled download never leaves a partial file at
 // destPath. It returns the size and SHA256 hex digest of the downloaded file.
-// When expectedSHA256 is non-empty, the digest must match or an error is
-// returned.
-func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath, expectedSHA256 string) (int64, string, error) {
+func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath string) (int64, string, error) {
 	if err := os.MkdirAll(filepath.Dir(destPath), 0755); err != nil {
 		return 0, "", fmt.Errorf("failed to create destination directory: %w", err)
 	}
@@ -437,10 +452,6 @@ func (s *osImageServiceImpl) downloadFile(ctx context.Context, url, destPath, ex
 	}
 
 	checksum := hex.EncodeToString(hash.Sum(nil))
-	if expectedSHA256 != "" && !strings.EqualFold(checksum, expectedSHA256) {
-		return 0, "", fmt.Errorf("checksum mismatch for %s: expected %s, got %s", url, expectedSHA256, checksum)
-	}
-
 	if err := os.Rename(tmpName, destPath); err != nil {
 		return 0, "", fmt.Errorf("failed to finalize %s: %w", destPath, err)
 	}

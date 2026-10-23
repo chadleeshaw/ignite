@@ -12,11 +12,11 @@ type OSImage struct {
 	OS           string    `json:"os"`           // ubuntu, centos, nixos
 	Version      string    `json:"version"`      // 22.04, 8, 23.11
 	Architecture string    `json:"architecture"` // x86_64, arm64
-	KernelPath   string    `json:"kernel_path"`  // ubuntu/22.04/vmlinuz
-	InitrdPath   string    `json:"initrd_path"`  // ubuntu/22.04/initrd.img
+	KernelPath   string    `json:"kernel_path"`  // <TFTP>/os-images/<os>/<version>/vmlinuz
+	InitrdPath   string    `json:"initrd_path"`  // <TFTP>/os-images/<os>/<version>/initrd.img
 	KernelSize   int64     `json:"kernel_size"`  // Size in bytes
 	InitrdSize   int64     `json:"initrd_size"`  // Size in bytes
-	Checksum     string    `json:"checksum"`     // SHA256 fingerprints of the downloaded files (kernel:initrd); verified against config only when expected checksums are provided
+	Checksum     string    `json:"checksum"`     // SHA256 of the kernel and the initrd, joined as kernel:initrd
 	Active       bool      `json:"active"`       // Default version for OS
 	DownloadURL  string    `json:"download_url"` // Original download URL
 	CreatedAt    time.Time `json:"created_at"`

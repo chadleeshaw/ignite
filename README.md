@@ -206,6 +206,8 @@ sudo chown -R 1001:1001 /path/on/host
 
 Upgrading a v2.x container that was started without these mounts: copy the database and the TFTP directory out before removing the container, recreate it with both named volumes, and restore the files. `docker cp` into the new container writes as root, so return ownership to the `ignite` user (uid 1001) afterward. Syslinux archives extracted under `/tmp/syslinux-downloads` are not in either copy. Download those versions again after the upgrade. Redfish skips BMC certificate checks unless `BMC_TLS_VERIFY=true`.
 
+Downloaded OS images stay at `TFTP_DIR/os-images/<os>/<version>/vmlinuz` and `initrd.img` for every distribution. Ignite serves that directory over HTTP at `/os-images/<os>/<version>/`, which is the path the iPXE menu uses. Images already stored under those names do not need to be downloaded again. Regenerate the iPXE config after upgrading (`POST /ipxe/update`, or the button on the OS Images page) so `boot.ipxe` points at `/os-images/...` instead of `/<os>/<version>/<upstream file name>`.
+
 ```bash
 docker cp <container>:/app/data/ignite.db ./ignite.db
 docker cp <container>:/app/public/tftp ./tftp-backup
@@ -237,6 +239,7 @@ Ignite exposes a set of RESTful APIs to control and manage the server.
 | `/tftp/download`        | Downloads a file from the TFTP directory.|
 | `/tftp/view`            | Views a file from the TFTP directory.    |
 | `/tftp/serve`           | Serves a file from the TFTP directory.   |
+| `/os-images/<os>/<version>/vmlinuz` and `.../initrd.img` | Kernel and initrd for iPXE. No session. The path matches the file under `TFTP_DIR`. |
 | `/prov/gettemplates`    | Retrieves provisioning template options. |
 | `/prov/loadtemplate`    | Loads a provisioning template.           |
 | `/prov/getconfigs`      | Retrieves configuration options.         |

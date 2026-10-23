@@ -10,6 +10,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"ignite/osimage"
 )
 
 // Admin credentials. Guarded by credentialMu so concurrent logins and password
@@ -378,6 +380,17 @@ func isPublicAsset(path string) bool {
 	return true
 }
 
+// isBootImage reports a request for the public OS image tree. Every method
+// reaches the boot handler, which answers disallowed methods with 405.
+// The path matches osimage.RelPath.
+func isBootImage(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return false
+	}
+	base := "/" + osimage.DirName
+	return r.URL.Path == base || strings.HasPrefix(r.URL.Path, base+"/")
+}
+
 // isRenderedConfig reports GET /configs/{type}/{name}. The handler, not the
 // middleware, decides whether this client may see the file.
 func isRenderedConfig(r *http.Request) bool {
@@ -442,7 +455,7 @@ func AuthMiddleware(next http.Handler) http.Handler {
 		// Skip auth for static files and PXE boot files (needed for network booting).
 		// Rendered installer configs are not in that set: they carry the
 		// per-lease token and are served only by GET /configs/{type}/{name}.
-		if isPublicAsset(r.URL.Path) ||
+		if isPublicAsset(r.URL.Path) || isBootImage(r) ||
 			strings.HasPrefix(r.URL.Path, "/tftp/serve") {
 			next.ServeHTTP(w, r)
 			return

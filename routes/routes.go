@@ -2,17 +2,35 @@ package routes
 
 import (
 	"ignite/handlers"
+	"ignite/osimage"
 	"net/http"
 
 	"github.com/gorilla/mux"
 )
 
+// guardedRouter serves OS image requests before gorilla/mux rewrites them.
+// mux cleans ".." into a redirect and answers a method mismatch without
+// an Allow header. This handler sees the original path and method.
+type guardedRouter struct {
+	*mux.Router
+	boot http.Handler
+}
+
+func (g *guardedRouter) ServeHTTP(w http.ResponseWriter, r *http.Request) {
+	if g.boot != nil && handlers.BootFileRequest(r) {
+		g.boot.ServeHTTP(w, r)
+		return
+	}
+	g.Router.ServeHTTP(w, r)
+}
+
 // SetupWithContainerAndStatic configures routes with dependency injection and static files
-func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *handlers.StaticHandlers) *mux.Router {
+func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *handlers.StaticHandlers) *guardedRouter {
 	router := mux.NewRouter().StrictSlash(true)
 
 	// Setup static file serving
 	setupStaticRoutes(router, staticHandler)
+	boot := setupBootFileRoute(router, container)
 
 	// Create handler instances with dependencies
 	authHandlers := handlers.NewAuthHandlers(container)
@@ -52,7 +70,22 @@ func SetupWithContainerAndStatic(container *handlers.Container, staticHandler *h
 	router.NotFoundHandler = http.HandlerFunc(handlers.NotFound)
 	router.MethodNotAllowedHandler = http.HandlerFunc(handlers.MethodNotAllowed)
 
-	return router
+	return &guardedRouter{Router: router, boot: boot}
+}
+
+// setupBootFileRoute serves downloaded kernels and initrds at the same
+// relative URL the iPXE menu emits. PXE clients have no session.
+// Every method is registered. The handler returns 405 for the ones it
+// does not serve, with Allow: GET, HEAD.
+func setupBootFileRoute(router *mux.Router, container *handlers.Container) http.Handler {
+	if container == nil || container.Config == nil || container.Config.TFTP.Dir == "" {
+		return nil
+	}
+	handler := handlers.NewBootFileHandler(container.Config.TFTP.Dir)
+	prefix := "/" + osimage.DirName
+	router.Handle(prefix, handler)
+	router.PathPrefix(prefix + "/").Handler(handler)
+	return handler
 }
 
 func setupStaticRoutes(router *mux.Router, staticHandler *handlers.StaticHandlers) {

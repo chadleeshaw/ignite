@@ -367,6 +367,7 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 		OSImages      []*osimage.OSImage
 		Downloads     []*osimage.DownloadStatus
 		Architectures []string
+		SupportedOS   []string
 		KernelBytes   int64
 		InitrdBytes   int64
 		ArchLabel     string

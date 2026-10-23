@@ -174,7 +174,7 @@
                 </select>
             </div>
             <div class="fld">
-                <span class="mu">Supported: Ubuntu · Debian · Fedora · CentOS · NixOS</span>
+                <span class="mu">Supported: {{range $i, $name := .SupportedOS}}{{if $i}} · {{end}}{{$name}}{{end}}</span>
             </div>
             <div class="ipxe-note">
                 <b>iPXE boot menu</b>

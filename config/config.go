@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -84,10 +85,25 @@ type OSDefinition struct {
 }
 
 type OSVersion struct {
-	DisplayName      string   `json:"display_name"`
-	BaseURL          string   `json:"base_url"`
-	Architectures    []string `json:"architectures"`
-	ExpectedChecksum string   `json:"expected_checksum,omitempty"` // Optional SHA256 hex digest; when set, each downloaded file for this version must match it
+	DisplayName   string   `json:"display_name"`
+	BaseURL       string   `json:"base_url"`
+	Architectures []string `json:"architectures"`
+	// ExpectedChecksum is unused. One digest cannot describe both the kernel
+	// and the initrd, so applying it to each file could never succeed.
+	ExpectedChecksum string `json:"expected_checksum,omitempty"`
+}
+
+// SupportedNames returns each source's display name in case-insensitive order.
+// The OS Images page prints this list, so the help text stays tied to the catalog.
+func (c OSImageConfig) SupportedNames() []string {
+	names := make([]string, 0, len(c.Sources))
+	for _, def := range c.Sources {
+		names = append(names, def.DisplayName)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		return strings.ToLower(names[i]) < strings.ToLower(names[j])
+	})
+	return names
 }
 
 // ConfigBuilder provides a builder pattern for configuration
@@ -271,7 +287,9 @@ func BMCTLSModeLog(verify bool) string {
 	return "BMC TLS verification: disabled (set BMC_TLS_VERIFY=true to enable)"
 }
 
-// getDefaultOSImageConfig returns the default OS image configuration
+// getDefaultOSImageConfig returns the bundled OS image catalog.
+// KernelFile and InitrdFile are per OS, so every version of an OS uses those
+// two upstream names. BaseURL is the directory that contains them.
 func getDefaultOSImageConfig() OSImageConfig {
 	return OSImageConfig{
 		Sources: map[string]OSDefinition{
@@ -280,19 +298,19 @@ func getDefaultOSImageConfig() OSImageConfig {
 				KernelFile:  "vmlinuz",
 				InitrdFile:  "initrd",
 				Versions: map[string]OSVersion{
-					"20.04": {
-						DisplayName:   "20.04 LTS",
-						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/20.04.6-c92baa25/",
-						Architectures: []string{"x86_64"},
-					},
 					"22.04": {
 						DisplayName:   "22.04 LTS",
-						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-b0159fca/",
+						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/22.04.5-3b4b797c/",
 						Architectures: []string{"x86_64"},
 					},
 					"24.04": {
 						DisplayName:   "24.04 LTS",
-						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.3-8efa196d/",
+						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/24.04.4-494663bf/",
+						Architectures: []string{"x86_64"},
+					},
+					"26.04": {
+						DisplayName:   "26.04 LTS",
+						BaseURL:       "https://github.com/netbootxyz/ubuntu-squash/releases/download/26.04.1-c43af979/",
 						Architectures: []string{"x86_64"},
 					},
 				},
@@ -319,19 +337,9 @@ func getDefaultOSImageConfig() OSImageConfig {
 				KernelFile:  "bzImage-x86_64-linux",
 				InitrdFile:  "initrd-x86_64-linux",
 				Versions: map[string]OSVersion{
-					"23.05": {
-						DisplayName:   "23.05",
-						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-23.05/",
-						Architectures: []string{"x86_64"},
-					},
-					"23.11": {
-						DisplayName:   "23.11",
-						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-23.11/",
-						Architectures: []string{"x86_64"},
-					},
-					"24.05": {
-						DisplayName:   "24.05",
-						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-24.05/",
+					"26.05": {
+						DisplayName:   "26.05",
+						BaseURL:       "https://github.com/nix-community/nixos-images/releases/download/nixos-26.05/",
 						Architectures: []string{"x86_64"},
 					},
 				},
@@ -341,14 +349,14 @@ func getDefaultOSImageConfig() OSImageConfig {
 				KernelFile:  "linux",
 				InitrdFile:  "initrd.gz",
 				Versions: map[string]OSVersion{
-					"11": {
-						DisplayName:   "11 (Bullseye)",
-						BaseURL:       "http://deb.debian.org/debian/dists/bullseye/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
-						Architectures: []string{"x86_64"},
-					},
 					"12": {
 						DisplayName:   "12 (Bookworm)",
 						BaseURL:       "http://deb.debian.org/debian/dists/bookworm/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
+						Architectures: []string{"x86_64"},
+					},
+					"13": {
+						DisplayName:   "13 (Trixie)",
+						BaseURL:       "http://deb.debian.org/debian/dists/trixie/main/installer-amd64/current/images/netboot/debian-installer/amd64/",
 						Architectures: []string{"x86_64"},
 					},
 				},
@@ -358,14 +366,9 @@ func getDefaultOSImageConfig() OSImageConfig {
 				KernelFile:  "linux",
 				InitrdFile:  "initrd",
 				Versions: map[string]OSVersion{
-					"15.5": {
-						DisplayName:   "Leap 15.5",
-						BaseURL:       "http://download.opensuse.org/distribution/leap/15.5/repo/oss/boot/x86_64/loader/",
-						Architectures: []string{"x86_64"},
-					},
-					"15.6": {
-						DisplayName:   "Leap 15.6",
-						BaseURL:       "http://download.opensuse.org/distribution/leap/15.6/repo/oss/boot/x86_64/loader/",
+					"16.0": {
+						DisplayName:   "Leap 16.0",
+						BaseURL:       "http://download.opensuse.org/distribution/leap/16.0/repo/oss/boot/x86_64/loader/",
 						Architectures: []string{"x86_64"},
 					},
 					"tumbleweed": {
@@ -380,19 +383,14 @@ func getDefaultOSImageConfig() OSImageConfig {
 				KernelFile:  "vmlinuz",
 				InitrdFile:  "initrd.img",
 				Versions: map[string]OSVersion{
-					"39": {
-						DisplayName:   "39",
-						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/39/Everything/x86_64/os/images/pxeboot/",
+					"43": {
+						DisplayName:   "43",
+						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/43/Everything/x86_64/os/images/pxeboot/",
 						Architectures: []string{"x86_64"},
 					},
-					"40": {
-						DisplayName:   "40",
-						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/40/Everything/x86_64/os/images/pxeboot/",
-						Architectures: []string{"x86_64"},
-					},
-					"41": {
-						DisplayName:   "41",
-						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/41/Everything/x86_64/os/images/pxeboot/",
+					"44": {
+						DisplayName:   "44",
+						BaseURL:       "https://download.fedoraproject.org/pub/fedora/linux/releases/44/Everything/x86_64/os/images/pxeboot/",
 						Architectures: []string{"x86_64"},
 					},
 				},
