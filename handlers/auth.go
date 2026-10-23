@@ -370,15 +370,6 @@ func isAuthenticated(r *http.Request) bool {
 // isPublicAsset reports whether path is a static file the installer or the
 // browser may fetch without a session. Provision configs are excluded even
 // when they live under /public/provision/configs/.
-// isBootImage reports a kernel or initrd fetch. The path matches
-// osimage.RelPath, which is where the downloader stores the files.
-func isBootImage(r *http.Request) bool {
-	if r.Method != http.MethodGet && r.Method != http.MethodHead {
-		return false
-	}
-	return strings.HasPrefix(r.URL.Path, "/"+osimage.DirName+"/")
-}
-
 func isPublicAsset(path string) bool {
 	if !strings.HasPrefix(path, "/public/") {
 		return false
@@ -387,6 +378,17 @@ func isPublicAsset(path string) bool {
 		return false
 	}
 	return true
+}
+
+// isBootImage reports a request for the public OS image tree. Every method
+// reaches the boot handler, which answers disallowed methods with 405.
+// The path matches osimage.RelPath.
+func isBootImage(r *http.Request) bool {
+	if r == nil || r.URL == nil {
+		return false
+	}
+	base := "/" + osimage.DirName
+	return r.URL.Path == base || strings.HasPrefix(r.URL.Path, base+"/")
 }
 
 // isRenderedConfig reports GET /configs/{type}/{name}. The handler, not the
