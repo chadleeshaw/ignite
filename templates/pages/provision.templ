@@ -28,13 +28,15 @@
         <span class="st ok" style="margin-left:auto">Rendered</span>
     </article>
     <section class="stats strip" aria-label="Provision files">
-        {{range .CategoryCounts}}
-        <div class="stat">
-            <div class="stat-title">{{.Name}}</div>
-            <div class="stat-value">{{.Count}}</div>
+        <div class="prov-cats">
+            {{range .CategoryCounts}}
+            <div class="stat">
+                <div class="stat-title">{{.Name}}</div>
+                <div class="stat-value">{{.Count}}</div>
+            </div>
+            {{end}}
         </div>
-        {{end}}
-        <div class="stat">
+        <div class="stat stat-saved">
             <div class="stat-title">Last saved</div>
             <div class="stat-value">{{if .LastSaved.IsZero}}—{{else}}<time datetime="{{rfc3339 .LastSaved}}" data-time="time">{{utcLabel .LastSaved "15:04"}}</time>{{end}}</div>
         </div>

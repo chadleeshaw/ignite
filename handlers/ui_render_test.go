@@ -463,6 +463,9 @@ func TestPagesRenderThemesFromMode(t *testing.T) {
 	if strings.Contains(prov, "previewFile(") || strings.Contains(prov, ">Preview<") {
 		t.Error("provision preview button still renders")
 	}
+	if !strings.Contains(prov, `class="prov-cats"`) || !strings.Contains(prov, `stat stat-saved`) || !strings.Contains(prov, "Last saved") {
+		t.Error("provision strip is missing the category row or Last saved cell")
+	}
 	formAt := strings.Index(prov, `id="provision-editor-form"`)
 	if formAt < 0 {
 		t.Fatal("provision editor form missing")

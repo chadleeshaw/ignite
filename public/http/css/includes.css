@@ -809,19 +809,61 @@ html[data-theme="console"] .chip { border-radius: 6px; }
   grid-template-columns: max-content max-content minmax(0, 1fr);
   gap: 12px;
   margin-top: 12px;
-  align-items: start;
+  align-items: stretch;
 }
+/* One row beside the tiles: equal category cells, then a wider Last saved.
+   Labels stay on one line; a tight cell ellipsizes instead of breaking letters. */
 .prov-top .stats.strip {
-  grid-template-columns: repeat(auto-fit, minmax(9rem, 1fr));
-}
-.prov-top .stat {
+  display: grid;
+  grid-auto-flow: row;
+  grid-template-columns: minmax(0, 1fr) minmax(8rem, 8.75rem);
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  height: 100%;
   min-width: 0;
-  overflow: hidden;
 }
-.prov-top .stat-title {
-  white-space: normal;
-  overflow-wrap: anywhere;
-  line-height: 1.25;
+.prov-top .stats.strip > :not([hidden]) ~ :not([hidden]) {
+  border: 0;
+}
+.prov-top .prov-cats {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  min-width: 0;
+  height: 100%;
+}
+.prov-top .prov-cats > .stat,
+.prov-top .stat-saved {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  width: auto;
+  height: 100%;
+  overflow: hidden;
+  padding: 8px 10px !important;
+}
+.prov-top .prov-cats > .stat {
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.07);
+}
+.prov-top .stat-saved {
+  border-inline-end: 0;
+}
+.prov-top .stat-title,
+.prov-top .stat-value {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.prov-top .stat-value {
+  line-height: 1.15;
 }
 .os-top { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(0, 2.4fr); gap: 12px; margin-top: 12px; }
 .dl-row {
