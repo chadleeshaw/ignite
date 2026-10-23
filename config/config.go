@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"sort"
 	"strconv"
 	"strings"
 )
@@ -89,8 +90,20 @@ type OSVersion struct {
 	Architectures []string `json:"architectures"`
 	// ExpectedChecksum is unused. One digest cannot describe both the kernel
 	// and the initrd, so applying it to each file could never succeed.
-	// Per-file checksums arrive with the catalog refresh.
 	ExpectedChecksum string `json:"expected_checksum,omitempty"`
+}
+
+// SupportedNames returns each source's display name in case-insensitive order.
+// The OS Images page prints this list, so the help text stays tied to the catalog.
+func (c OSImageConfig) SupportedNames() []string {
+	names := make([]string, 0, len(c.Sources))
+	for _, def := range c.Sources {
+		names = append(names, def.DisplayName)
+	}
+	sort.Slice(names, func(i, j int) bool {
+		return strings.ToLower(names[i]) < strings.ToLower(names[j])
+	})
+	return names
 }
 
 // ConfigBuilder provides a builder pattern for configuration

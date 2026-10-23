@@ -167,6 +167,19 @@ func TestDefaultOSImageCatalog(t *testing.T) {
 	}
 }
 
+func TestOSImageConfig_SupportedNames(t *testing.T) {
+	cfg, err := NewConfigBuilder().Build()
+	assert.NoError(t, err)
+	assert.Equal(t, []string{
+		"CentOS",
+		"Debian",
+		"Fedora",
+		"NixOS",
+		"openSUSE",
+		"Ubuntu",
+	}, cfg.OSImages.SupportedNames())
+}
+
 func TestOSVersion_ExpectedChecksum(t *testing.T) {
 	v := OSVersion{
 		DisplayName:      "22.04 LTS",
