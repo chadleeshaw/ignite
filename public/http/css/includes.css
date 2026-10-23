@@ -745,7 +745,9 @@ html[data-theme="console"] .chip { border-radius: 6px; }
   background: rgba(5, 8, 22, 0.55);
 }
 .stage:has(#editor-panel) .code-edit {
+  flex: 1 1 0;
   height: auto;
+  min-height: 0;
   max-height: 100%;
 }
 .code-edit .ln {
@@ -765,6 +767,25 @@ html[data-theme="console"] .chip { border-radius: 6px; }
   max-height: 100%;
 }
 .code-edit .ln::-webkit-scrollbar { display: none; }
+#provision-editor-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+.editor-field {
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  height: 100%;
+  max-height: 100%;
+  overflow: hidden;
+}
+.editor-highlight { display: none; }
 #editor-textarea {
   width: 100%;
   min-height: 0;
@@ -780,9 +801,80 @@ html[data-theme="console"] .chip { border-radius: 6px; }
   line-height: 21px;
   padding: 12px 16px;
   resize: none;
+  tab-size: 4;
 }
 .editor-head { flex-wrap: wrap; }
-.prov-top { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(0, 2fr); gap: 12px; margin-top: 12px; }
+.prov-top {
+  display: grid;
+  grid-template-columns: max-content max-content minmax(0, 1fr);
+  gap: 12px;
+  margin-top: 12px;
+  align-items: stretch;
+}
+/* One row beside the tiles: equal category cells, then a wider Last saved.
+   Labels stay on one line; a tight cell ellipsizes instead of breaking letters. */
+.prov-top .stats.strip {
+  display: grid;
+  grid-auto-flow: row;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  grid-template-rows: minmax(0, 1fr);
+  align-items: stretch;
+  height: 100%;
+  min-width: 0;
+}
+.prov-top .stats.strip > :not([hidden]) ~ :not([hidden]) {
+  border: 0;
+}
+.prov-top .prov-cats {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: minmax(0, 1fr);
+  min-width: 0;
+  height: 100%;
+}
+.prov-top .prov-cats > .stat,
+.prov-top .stat-saved {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 1px;
+  min-width: 0;
+  width: auto;
+  height: 100%;
+  overflow: hidden;
+  padding: 8px 10px !important;
+}
+.prov-top .prov-cats > .stat {
+  border-inline-end: 1px solid rgba(255, 255, 255, 0.07);
+}
+.prov-top .stats.strip > .stat-saved {
+  min-width: max-content;
+  width: max-content;
+  overflow: visible;
+  border-inline-end: 0;
+}
+.prov-top .stat-saved .stat-title,
+.prov-top .stat-saved .stat-value {
+  width: max-content;
+  max-width: none;
+  overflow: visible;
+  text-overflow: clip;
+}
+.prov-top .stat-title,
+.prov-top .stat-value {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  margin: 0;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  overflow-wrap: normal;
+  word-break: normal;
+}
+.prov-top .stat-value {
+  line-height: 1.15;
+}
 .os-top { display: grid; grid-template-columns: minmax(180px, 1fr) minmax(180px, 1fr) minmax(0, 2.4fr); gap: 12px; margin-top: 12px; }
 .dl-row {
   display: grid;
@@ -805,6 +897,7 @@ html[data-theme="console"] .ipxe-note { border-radius: 8px; }
 @media (max-width: 1100px) {
   .prov-top, .os-top, .dl-row { grid-template-columns: 1fr; }
 }
+html[data-theme="console"] .code-edit .ln,
 html[data-theme="console"] #editor-textarea { font-size: 12px; line-height: 19px; }
 .editor-foot {
   display: flex;

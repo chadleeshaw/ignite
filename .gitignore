@@ -13,6 +13,7 @@ vmlinuz
 bin
 public/tftp/*
 public/node_modules
+public/editor/node_modules
 scripts/node_modules
 public/http/css/tailwind.css
 public/tftp/pxelinux.cfg/*

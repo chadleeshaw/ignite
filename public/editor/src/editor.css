@@ -1,0 +1,97 @@
+/* Provision editor overlay. Colors are the Cozy/Console tokens on :root,
+   so a data-theme change repaints the same spans. Typography follows the
+   textarea, including the Console size set on #editor-textarea. */
+
+#code-edit.hl-on .editor-highlight {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  pointer-events: none;
+  background: transparent;
+  color: var(--text);
+  white-space: pre-wrap;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 21px;
+}
+
+#code-edit.hl-on .editor-highlight code {
+  display: block;
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: inherit;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+html[data-theme="console"] #code-edit.hl-on .editor-highlight {
+  font-size: 12px;
+  line-height: 19px;
+}
+
+#code-edit.hl-on #editor-textarea {
+  position: relative;
+  z-index: 1;
+  height: 100%;
+  max-height: 100%;
+  overflow: auto;
+  color: transparent;
+  caret-color: var(--text);
+  background: transparent;
+  white-space: pre-wrap;
+  tab-size: 4;
+}
+
+#code-edit.hl-on #editor-textarea::selection {
+  color: transparent;
+  background: rgba(255, 142, 0, 0.35);
+}
+
+#code-edit.hl-on #editor-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* Same hues as the theme tokens, pushed until each class is obvious on the
+   dark editor and at least 4.5:1 against #1a1f45 and the lighter panel mix.
+   Cozy and Console share these colors; both backgrounds are the night ramp. */
+#code-edit {
+  --hl-comment: #9aa6c6; /* --text-dim */
+  --hl-key: #6eb6ff; /* --info */
+  --hl-string: #3ddea0; /* --ok */
+  --hl-number: #ffb020; /* --flame-300, also booleans */
+  --hl-keyword: #ffd15a; /* --warn */
+  --hl-section: #ff7a33; /* --flame-600 */
+  --hl-template: #ff8ad4; /* --violet, the {{ }} delimiters */
+  --hl-field: #ffe1f8; /* --violet, the .Field inside */
+  --hl-var: #5ce1ff; /* --idle */
+  --hl-tag: #ff8b72; /* --danger */
+  --hl-punct: #c5cdee; /* --neutral */
+  --hl-template-bg: rgba(255, 79, 190, 0.16);
+}
+
+#code-edit .tok-comment { color: var(--hl-comment); font-style: italic; }
+#code-edit .tok-keyword { color: var(--hl-keyword); }
+#code-edit .tok-string { color: var(--hl-string); }
+#code-edit .tok-number,
+#code-edit .tok-bool { color: var(--hl-number); }
+#code-edit .tok-key { color: var(--hl-key); }
+#code-edit .tok-var { color: var(--hl-var); }
+#code-edit .tok-template,
+#code-edit .tok-template-field {
+  background-color: var(--hl-template-bg);
+  border-radius: 2px;
+}
+#code-edit .tok-template { color: var(--hl-template); }
+#code-edit .tok-template-field { color: var(--hl-field); }
+#code-edit .tok-section { color: var(--hl-section); }
+#code-edit .tok-tag { color: var(--hl-tag); }
+#code-edit .tok-punct { color: var(--hl-punct); }
